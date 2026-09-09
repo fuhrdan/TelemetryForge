@@ -90,3 +90,17 @@ The repository also indexes operational maintenance/live paths:
 The SSE index is separate from the event-time indexes because live delivery is
 ordered by server ingestion time. Source event timestamps can arrive late or
 out of order.
+
+
+## v1.1 Schema Intelligence tables
+
+These tables describe telemetry shape rather than the PostgreSQL schema itself:
+
+```text
+schema_observations
+schema_registry
+schema_drift_findings
+```
+
+See [Schema Intelligence](../schema/schema-intelligence.md) for field semantics,
+required-field inference, and compatibility rules.

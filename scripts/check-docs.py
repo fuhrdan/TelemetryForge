@@ -50,6 +50,9 @@ REQUIRED = [
     ROOT / "docs" / "operations" / "upgrade-v1.md",
     ROOT / "docs" / "operations" / "rollback-v1.md",
     ROOT / "docs" / "demo" / "v1-portfolio-demo.md",
+    ROOT / "docs" / "schema" / "schema-intelligence.md",
+    ROOT / "docs" / "schema" / "opentelemetry-semantic-conventions.md",
+    ROOT / "docs" / "roadmap" / "v1.1.0.md",
 ]
 
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

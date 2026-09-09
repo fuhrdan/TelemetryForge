@@ -36,3 +36,19 @@ A production deployment should base retention on:
 
 Later TelemetryForge releases will connect retention and sampling choices to
 the Telemetry Cost Simulator.
+
+
+## Schema observation ledger
+
+v1.1.0 adds `schema_observations`, a tenant-scoped per-event idempotency ledger.
+It should not grow forever.
+
+Recommended maintenance:
+
+```bash
+telemetryctl schema prune --older-than 840h
+```
+
+The 35-day default intentionally exceeds the 30-day development telemetry
+retention window. Pruning observations preserves the accumulated schema registry
+and drift history.

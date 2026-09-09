@@ -10,9 +10,9 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current release:** `v1.0.0` — Evidence Graph, tenant isolation, scoped
-> authentication, response redaction, Kafka TLS/SASL, production deployment
-> profile, and complete incident-investigation workflow.
+> **Current release:** `v1.1.0` — Schema Intelligence, versioned schema history,
+> drift detection, OpenTelemetry semantic-convention awareness, and a dashboard
+> Schema Health workflow built on the v1 security/evidence foundation.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -25,6 +25,26 @@ and evidence decisions become irreversible.
 
 Keeps a rolling full-fidelity pre-policy telemetry buffer and freezes incident
 windows before retention removes them.
+
+### Schema Intelligence
+
+Learns the actual tenant/source/type schema seen in production telemetry and
+tracks declared `schema_version` history without turning every sparse field into
+a false alarm.
+
+It detects:
+
+- additive fields;
+- same-version JSON type changes;
+- disappearance of established required fields;
+- declared-version compatibility changes;
+- legacy OpenTelemetry semantic attributes; and
+- unexpected `schema_url` changes.
+
+Schema observation runs after normalization and before policy mutation, and is
+**fail-open by default** so registry problems do not become ingestion outages.
+
+Read [Schema Intelligence](docs/schema/schema-intelligence.md).
 
 ### Cardinality Firewall
 
@@ -65,7 +85,32 @@ Compares baseline/active/shadow canonical bytes and exact sample-series shape.
 Dollar projections appear only when an operator explicitly provides a reviewed
 pricing model.
 
-### Evidence Graph
+### Schema Intelligence
+
+Inspect what one producer has actually emitted:
+
+```bash
+go run ./cmd/telemetryctl schema inspect \
+  --source orders-api \
+  --type order.created \
+  --tenant default
+```
+
+Compare two declared versions:
+
+```bash
+go run ./cmd/telemetryctl schema diff \
+  --source orders-api \
+  --type order.created \
+  --from 1.0 \
+  --to 2.0 \
+  --tenant default
+```
+
+The canonical envelope now accepts optional OpenTelemetry `schema_url` in
+addition to the required application `schema_version`.
+
+## Evidence Graph
 
 Builds explainable incident relationships from captured evidence:
 
@@ -120,7 +165,8 @@ flowchart LR
 
     W --> F[Flight Recorder]
     F --> N[Normalizer]
-    N --> CF[Cardinality Firewall]
+    N --> SI[Schema Intelligence]
+    SI --> CF[Cardinality Firewall]
     CF --> DB[(TimescaleDB)]
     CF -. candidate .-> SP[Shadow Policy]
 
@@ -189,7 +235,19 @@ deployment marker
 
 Select the automatic incident in the dashboard to inspect the Evidence Graph.
 
-See [v1 Portfolio Demo](docs/demo/v1-portfolio-demo.md).
+Exercise v1.1 schema drift separately:
+
+```bash
+make demo-schema
+```
+
+That demo establishes `orders-api / order.created` v1, introduces a missing
+required field and type conflict without changing the version, then emits a
+breaking v2 declaration. Refresh the dashboard and inspect **Schema
+Intelligence**.
+
+See [v1 Portfolio Demo](docs/demo/v1-portfolio-demo.md) and
+[Schema Intelligence](docs/schema/schema-intelligence.md).
 
 ## Authentication
 
@@ -217,6 +275,31 @@ Example API-key document:
 
 Clients **must omit** `tenant_id` from the event envelope. The gateway assigns
 tenant identity from the authenticated key.
+
+## Schema Intelligence
+
+Inspect what one producer has actually emitted:
+
+```bash
+go run ./cmd/telemetryctl schema inspect \
+  --source orders-api \
+  --type order.created \
+  --tenant default
+```
+
+Compare two declared versions:
+
+```bash
+go run ./cmd/telemetryctl schema diff \
+  --source orders-api \
+  --type order.created \
+  --from 1.0 \
+  --to 2.0 \
+  --tenant default
+```
+
+The canonical envelope now accepts optional OpenTelemetry `schema_url` in
+addition to the required application `schema_version`.
 
 ## Evidence Graph
 
@@ -358,6 +441,7 @@ internal/policy/             Cardinality Firewall + shadow policy
 internal/reliability/        retries/error classification
 internal/replay/             isolated Incident Replay
 internal/security/           auth, tenant context, redaction
+internal/schema/             schema derivation, semantic conventions, diffs
 internal/storage/            PostgreSQL/TimescaleDB
 internal/stream/             Kafka producer/consumer/TLS/SASL/lag
 internal/worker/             bounded processing pipeline
@@ -375,7 +459,7 @@ docs/                        human-readable engineering docs
 
 ## Security status
 
-v1.0.0 closes the major portfolio security gaps, but no repository can make a
+The v1 security boundary remains unchanged in v1.1.0. No repository can make a
 deployment "secure" without the environment around it.
 
 Operators remain responsible for:

@@ -102,3 +102,38 @@ telemetryctl cost simulate \
 ```
 
 No pricing file means no dollar estimate.
+
+
+## Inspect schema history
+
+```bash
+telemetryctl schema inspect   --source orders-api   --type order.created   --tenant default
+```
+
+The output includes each observed application-declared version, health,
+observation counts, inferred-required fields, semantic findings, and schema
+fingerprint.
+
+## Diff schema versions
+
+```bash
+telemetryctl schema diff   --source orders-api   --type order.created   --from 1.0   --to 2.0   --tenant default
+```
+
+Compatibility is `compatible`, `review`, or `breaking` based on field additions,
+removals, inferred-required state, and type changes.
+
+
+## Prune old schema observation reservations
+
+Schema Intelligence uses a per-event observation ledger to make worker retries
+idempotent. Remove reservations older than the normal investigation horizon:
+
+```bash
+telemetryctl schema prune --older-than 840h --tenant default
+```
+
+Default: 35 days. The command refuses values below 30 days.
+
+This maintenance command removes only the idempotency ledger. Registry versions,
+field state, and drift findings remain intact.

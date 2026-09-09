@@ -26,6 +26,9 @@ Flight Recorder (full fidelity)
 Normalizer
        |
        v
+Schema Intelligence
+       |
+       v
 Cardinality Firewall
   active + shadow
        |
@@ -115,6 +118,21 @@ Tenant-aware data includes:
 - Evidence Graph snapshots
 
 Pre-v1 rows migrate to tenant `default`.
+
+## Schema Intelligence
+
+v1.1 observes normalized telemetry before policy mutation and records a
+versioned, tenant-scoped source/type schema.
+
+The registry tracks field paths/types, observation counts, inferred-required
+fields, semantic-convention findings, application `schema_version`, and optional
+OpenTelemetry `schema_url`.
+
+The observation is idempotent by `(tenant_id,event_id)` and fail-open by
+default, so worker retries cannot inflate counts and a registry outage does not
+become a telemetry outage.
+
+Schema drift does not mutate or reject the event.
 
 ## Evidence Graph
 

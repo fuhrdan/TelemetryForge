@@ -134,6 +134,7 @@ services:
       TELEMETRYFORGE_POLICY_FILE: "/etc/telemetryforge/policies/active.json"
       TELEMETRYFORGE_SHADOW_POLICY_FILE: "/etc/telemetryforge/policies/shadow.json"
       TELEMETRYFORGE_CARDINALITY_MAX_DIMENSIONS: "20000"
+      TELEMETRYFORGE_SCHEMA_FAIL_OPEN: "true"
       TELEMETRYFORGE_INCIDENT_LATENCY_MS: "1000"
       TELEMETRYFORGE_INCIDENT_ERROR_COUNT: "5"
       TELEMETRYFORGE_DATABASE_URL: "postgres://telemetryforge:telemetryforge@timescaledb:5432/telemetryforge?sslmode=disable"

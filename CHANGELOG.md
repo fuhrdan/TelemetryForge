@@ -4,6 +4,33 @@
 
 _No changes yet._
 
+## [1.1.0] - 2026-09-09
+
+### Schema Intelligence
+- Added tenant-scoped source/type/version schema registry and history.
+- Added optional OpenTelemetry `schema_url` to the canonical event envelope.
+- Added bounded payload/tag field discovery and value-free schema fingerprints.
+- Capped each accumulated schema registry at 2,048 unique field paths with a deduplicated safety warning.
+- Added idempotent schema observations keyed by tenant/event ID.
+- Added guarded schema observation ledger pruning with a 35-day default horizon.
+- Added additive, type-change, required-field-missing, semantic-convention, and schema-URL drift findings.
+- Added 20-observation / 95%-presence required-field inference.
+- Added version-to-version compatibility diffs.
+
+### OpenTelemetry semantic conventions
+- Added a focused compatibility catalog aligned with semantic conventions 1.44.0.
+- Added warnings for legacy HTTP/deployment/network attribute names.
+- Added payload semantic-type mismatch detection.
+
+### Operations / UI
+- Added fail-open schema registration by default with optional fail-closed mode.
+- Added `telemetryctl schema inspect` and `telemetryctl schema diff`.
+- Added schema registry/history/drift/diff HTTP APIs.
+- Added dashboard Schema Health and schema-history panels.
+- Added `make demo-schema` deterministic drift demonstration.
+- Added ADRs 0025-0027 and human-readable Schema Intelligence documentation.
+
+
 ## [1.0.0] - 2026-09-09
 
 ### Evidence Graph

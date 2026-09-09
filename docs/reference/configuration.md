@@ -36,15 +36,16 @@ an external secret/configuration mechanism.
 | `TELEMETRYFORGE_INCIDENT_ERROR_COUNT` | `5` | Error-count threshold within the built-in one-minute window |
 
 The current error window, Flight Recorder lookback, cooldown, and 10,000-source
-incident-detector state cap are still code-level defaults. The v0.8.0 policy-as-code
-format currently governs Cardinality Firewall decisions; incident thresholds can be
-migrated into versioned policy in a later release.
+incident-detector state cap are still code-level defaults. Cardinality Firewall
+policy is versioned JSON; incident thresholds can move into versioned policy in
+a later release.
 
 ## Dashboard
 
-`TELEMETRYFORGE_API_BASE` is a **build-time** Next.js value used by the
-same-origin rewrite. Local development defaults to `http://localhost:8080`;
-the dashboard container is built with `http://gateway:8080`.
+The Next.js server proxies `/telemetry-api/*` to the Go gateway at runtime.
+`TELEMETRYFORGE_API_BASE` selects that upstream and
+`TELEMETRYFORGE_DASHBOARD_API_KEY` supplies the optional read-only server-side
+credential. The raw key is never embedded in browser JavaScript.
 
 ## Security note
 
@@ -178,3 +179,38 @@ Client certificate/key must be configured together.
 | `TELEMETRYFORGE_DASHBOARD_API_KEY` | empty | Read-only raw gateway key held only by the Next.js server |
 
 Production should use a tenant-scoped `read` key for the dashboard.
+
+
+## Schema Intelligence
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TELEMETRYFORGE_SCHEMA_FAIL_OPEN` | `true` | Continue normal telemetry processing if schema registry persistence fails |
+
+Schema drift itself never rejects telemetry in v1.1.
+
+The canonical event fields used by the registry are:
+
+```text
+schema_version   required application-declared schema version
+schema_url       optional OpenTelemetry semantic-convention schema URL
+```
+
+The required-field inference floor (20 observations / 95% presence), maximum
+512 fields per event, and five-level payload walk are v1.1 code-level safety
+defaults.
+
+
+### Schema Intelligence fixed safety bounds
+
+The current release intentionally keeps these as code-level invariants rather
+than configuration knobs:
+
+```text
+5 payload nesting levels per event
+512 discovered fields per event
+2,048 accumulated unique field paths per schema version
+```
+
+The limits prevent hostile or accidental dynamic field-name generation from
+turning schema observation into unbounded application/database state.

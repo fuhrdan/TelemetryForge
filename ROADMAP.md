@@ -11,51 +11,60 @@
 | v0.7.0 | Folded into v0.8.0 | Reliability/repository hardening |
 | v0.8.0 | Released | Kubernetes, Cardinality Firewall, Terraform, policy/shadow pipeline |
 | v0.9.0 | Released | Incident Replay, Cost Simulator, self-observability, real Kafka lag, k6 methodology |
-| **v1.0.0** | **Current release** | **Evidence Graph, auth/tenant isolation, redaction, Kafka security, production profile/runbooks** |
+| v1.0.0 | Released | Evidence Graph, auth/tenant isolation, redaction, Kafka security, production profile/runbooks |
+| **v1.1.0** | **Current release** | **Schema Intelligence, schema history/drift, OpenTelemetry semantic-convention awareness** |
+| v1.2.0 | Planned | Distributed Cardinality Intelligence |
+| v1.3.0 | Planned | Multi-destination Telemetry Router |
+| v1.4.0 | Planned | Adaptive Sampling & Telemetry Shaping |
+| v1.5.0 | Planned | Portable `.tfincident` incident archives |
+| v1.6.0 | Planned | Policy lifecycle, approvals, promotion, rollback |
+| v1.7.0 | Planned | Change / deployment intelligence |
+| v1.8.0 | Planned | Connector and plugin platform |
+| v1.9.0 | Planned | Scale, HA, chaos and operational proof |
+| v2.0.0 | Planned | Evidence-first intelligent telemetry control plane |
 
-## v1.0.0 delivered
+## v1.1.0 delivered
 
-### Evidence Graph
-- evidence nodes from frozen telemetry/replay/cost analysis
-- shared correlation/trace evidence
-- temporal/source context
-- latency-before-error evidence
-- deployment/change-before-error association
-- explicit recovery contradiction
-- supporting / contradicting / related classifications
-- hypothesis status without automated root-cause claims
-- API, CLI, dashboard, persisted snapshot
+### Schema registry
 
-### Security
-- scoped API-key authentication
-- hash-only API-key server configuration
-- authentication-derived tenant identity
-- client tenant spoofing rejection
-- tenant-scoped database state
-- tenant-scoped Cardinality Firewall/incident state
-- server-side dashboard read-key proxy
-- presentation-time redaction
-- Kafka TLS/mTLS/SASL PLAIN/SCRAM
+- tenant-scoped source/type/version registry
+- optional OpenTelemetry `schema_url`
+- bounded payload field discovery
+- deterministic value-free schema fingerprints
+- event-ID idempotent observations
+- schema history by application-declared version
 
-### Deployment / operations
-- Kubernetes production overlay
-- non-root/seccomp/service-account-token hardening
-- authenticated metrics guidance
-- upgrade runbook
-- rollback runbook
-- final portfolio demo
+### Drift intelligence
 
-## After v1.0
+- additive field detection
+- same-version JSON type conflicts
+- required-field inference after an observation floor
+- breaking removal of established required fields
+- cross-version compatibility diff
+- sticky per-version health (`healthy`, `warning`, `breaking`)
 
-Future work should be evidence-driven rather than roadmap inflation.
+### OpenTelemetry awareness
 
-Potential directions include:
+- focused high-value semantic-attribute catalog
+- stable attribute recognition
+- legacy HTTP/deployment/network migration warnings
+- payload JSON semantic type checks
+- separate application `schema_version` from OpenTelemetry `schema_url`
 
-- shared/distributed Cardinality Firewall estimator state
-- richer schema registry and lineage
-- policy signing/rotation
-- tenant-specific retention/redaction policy
-- external observability output connectors
-- benchmark result artifacts from representative environments
-- optional evidence-first AI explanations that cite Evidence Graph nodes and
-  preserve contradictions
+### Operations
+
+- fail-open schema registration by default
+- `telemetryctl schema inspect`
+- `telemetryctl schema diff`
+- schema registry/history/drift APIs
+- Schema Health dashboard
+- deterministic `make demo-schema`
+
+## v1.2.0 next
+
+Move Cardinality Firewall estimation from replica-local state toward a shared,
+tenant-aware cluster view with budgets, trend forecasting, and consistent
+decisions across workers.
+
+See the 1.x -> 2.0 roadmap in the repository history for the longer product
+sequence.

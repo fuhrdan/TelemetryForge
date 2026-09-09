@@ -105,6 +105,12 @@ func (server *Server) routes() {
 			server.mux.HandleFunc("GET /api/v1/replays", server.handleReplayRuns)
 			server.mux.HandleFunc("GET /api/v1/cost-simulations", server.handleCostSimulations)
 		}
+		if _, ok := server.reader.(storage.SchemaReader); ok {
+			server.mux.HandleFunc("GET /api/v1/schemas", server.handleSchemas)
+			server.mux.HandleFunc("GET /api/v1/schema-history", server.handleSchemaHistory)
+			server.mux.HandleFunc("GET /api/v1/schema-drift", server.handleSchemaDrift)
+			server.mux.HandleFunc("GET /api/v1/schema-diff", server.handleSchemaDiff)
+		}
 	}
 }
 

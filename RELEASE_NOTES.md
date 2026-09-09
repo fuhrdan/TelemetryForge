@@ -1,142 +1,163 @@
-# TelemetryForge v1.0.0 Release Notes
+# TelemetryForge v1.1.0 Release Notes
 
-## Evidence-backed incident control plane
+## Schema Intelligence
 
-v1.0.0 completes the original TelemetryForge portfolio arc: ingest telemetry
-durably, preserve incident evidence, protect downstream observability systems,
-evaluate policy safely, replay incidents, estimate telemetry impact, explain
-captured relationships, and expose explicit production security boundaries.
+v1.1.0 adds a versioned, tenant-aware schema registry that learns from real
+telemetry after normalization and before policy mutation.
 
-## Evidence Graph
+The feature is advisory by design: schema drift is explained and surfaced, not
+used as an automatic ingestion rejection mechanism.
 
-Added an explainable graph generated from frozen incidents.
+## Registry model
 
-Relationships are classified as:
-
-```text
-supporting
-contradicting
-related
-```
-
-The graph can connect evidence through:
-
-- correlation ID
-- trace ID
-- source/time sequence
-- latency-before-error
-- deployment/change-before-error
-- recovery signal
-- replay runs
-- cost simulations
-
-A change/error temporal relationship explicitly says that it **does not prove
-causality**.
-
-The dashboard shows graph summary, hypotheses, supporting evidence, and
-contradictory evidence.
-
-## Authentication and authorization
-
-Added API-key authentication with hash-only server configuration.
-
-Scopes:
+Each schema is keyed by:
 
 ```text
-ingest
-read
-admin
+tenant_id
+source
+event_type
+schema_version
 ```
 
-`admin` implies all scopes.
+The canonical envelope also accepts optional:
 
-Health/readiness remain unauthenticated for orchestrator probes.
+```text
+schema_url
+```
 
-## Tenant isolation
+for the OpenTelemetry semantic-convention schema identifier.
 
-Tenant identity is assigned from authentication.
+Application `schema_version` and OpenTelemetry `schema_url` remain distinct.
 
-Client-supplied `tenant_id` is rejected.
+## Drift detection
 
-Tenant boundaries now cover:
+v1.1 records:
 
-- Kafka partition key/header
-- event deduplication
-- telemetry queries
-- Flight Recorder/incidents
-- Cardinality Firewall state/findings
-- automatic incident state
-- quarantine
-- replay/cost history
-- Evidence Graph
+- additive fields as `info`;
+- same-version JSON type changes as `breaking`;
+- established required-field disappearance as `breaking`;
+- legacy semantic-convention names as `warning`;
+- changed `schema_url` under the same application version as `warning`;
+- version-to-version field additions/removals/type changes.
 
-Existing pre-v1 data migrates to the `default` tenant.
+A field becomes inferred required only after at least 20 observations and at
+least 95% presence. This avoids treating sparse optional fields as mandatory.
 
-## Dashboard credential boundary
+## Bounded inspection
 
-The browser no longer depends on a direct gateway rewrite.
+Per event, Schema Intelligence is bounded to:
 
-A server-side Next.js `/telemetry-api/*` proxy injects a tenant-scoped read-only
-credential, keeping the raw key out of browser JavaScript and supporting
-authenticated SSE.
+```text
+512 fields
+5 payload nesting levels
+```
 
-## Redaction
+Oversized shapes create a `schema_truncated` warning and continue through the
+normal telemetry pipeline.
 
-Added configurable presentation-time tag redaction and optional payload
-suppression.
+Accumulated state is separately bounded to 2,048 unique field paths per
+tenant/source/type/version. Additional dynamic paths stop accumulating and
+produce a deduplicated `registry_field_limit` warning rather than growing the
+registry indefinitely.
 
-Stored Flight Recorder/frozen evidence remains full fidelity.
+## Retry / failure safety
 
-## Kafka security
+Schema observations use:
+
+```text
+PRIMARY KEY (tenant_id, event_id)
+```
+
+so Kafka retry cannot inflate counts.
+
+The per-event observation ledger can be pruned with
+`telemetryctl schema prune`; the conservative default is 35 days and does not
+delete accumulated registry/drift history.
+
+Registry dependency failures are fail-open by default:
+
+```text
+TELEMETRYFORGE_SCHEMA_FAIL_OPEN=true
+```
+
+An operator may explicitly choose fail-closed behavior.
+
+## OpenTelemetry awareness
+
+The built-in compatibility subset recognizes high-value stable attributes such
+as:
+
+```text
+service.name
+deployment.environment.name
+http.request.method
+http.response.status_code
+network.protocol.version
+server.address
+server.port
+url.scheme
+```
+
+It also warns on common legacy names including `http.method` and
+`http.status_code`.
+
+The focused catalog was aligned with OpenTelemetry Semantic Conventions 1.44.0
+at release-build time; it is intentionally not a bundled copy of the full
+upstream registry.
+
+## API
 
 Added:
 
-- TLS 1.2+
-- custom CA
-- optional mTLS client certificate
-- SASL PLAIN
-- SCRAM-SHA-256
-- SCRAM-SHA-512
+```text
+GET /api/v1/schemas
+GET /api/v1/schema-history?source=...&type=...
+GET /api/v1/schema-drift
+GET /api/v1/schema-diff?source=...&type=...&from=...&to=...
+```
 
-Gateway, worker, and telemetryctl use the same environment contract.
+All endpoints inherit the v1 authenticated tenant boundary.
 
-## Kubernetes production profile
-
-Added a production Kustomize overlay with:
-
-- `api_key` auth
-- secret-mounted hash document
-- dashboard read credential
-- payload redaction
-- Kafka TLS/SCRAM
-- non-root/seccomp
-- disabled service-account token automount
-- authenticated metrics guidance
-
-## Operations
+## CLI
 
 Added:
 
-- v1 upgrade runbook
-- v1 rollback runbook
-- portfolio demo guide
-- production profile guide
-
-## Compatibility
-
-Pre-v1 data receives:
-
-```text
-tenant_id = default
+```bash
+telemetryctl schema inspect --source orders-api --type order.created
+telemetryctl schema diff --source orders-api --type order.created --from 1.0 --to 2.0
+telemetryctl schema prune --older-than 840h
 ```
 
-The local disabled-auth Compose profile also uses `default`, preserving existing
-local data visibility after migration.
+## Dashboard
 
-## Validation philosophy
+Added a **Schema Intelligence** surface showing:
 
-v1.0.0 does not claim that configuration files alone create a universally
-secure production system.
+- current schema health counts;
+- latest source/type/version registry entries;
+- field and inferred-required counts;
+- selectable schema version history; and
+- recent drift findings.
 
-The repository documents which controls are implemented and which remain
-deployment/operator responsibilities.
+## Demo
+
+```bash
+make demo-schema
+```
+
+creates an established schema, same-version drift, a legacy semantic attribute,
+and a deliberately breaking v2 declaration.
+
+## Database
+
+Migration `008_schema_intelligence.sql` adds:
+
+- `schema_observations`
+- `schema_registry`
+- `schema_drift_findings`
+
+## Security / compatibility
+
+The v1.0 authentication, tenant-isolation, dashboard proxy, redaction, Kafka
+security, and production deployment boundaries remain in place.
+
+Schema registry reads and writes are tenant-scoped.

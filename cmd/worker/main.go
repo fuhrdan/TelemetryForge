@@ -30,7 +30,7 @@ func main() {
 	traceShutdown, err := observability.InitTracing(
 		ctx,
 		"telemetryforge-worker",
-		"1.0.0",
+		"1.1.0",
 		os.Getenv("TELEMETRYFORGE_OTLP_TRACES_ENDPOINT"),
 	)
 	if err != nil {
@@ -108,9 +108,16 @@ func main() {
 	incidentConfig.ErrorThreshold = envInt("TELEMETRYFORGE_INCIDENT_ERROR_COUNT", incidentConfig.ErrorThreshold)
 	detector := incident.NewDetector(store, incidentConfig)
 
+	schemaInspector := worker.NewSchemaInspectorWithMode(
+		store,
+		logger,
+		envBool("TELEMETRYFORGE_SCHEMA_FAIL_OPEN", true),
+	)
+
 	pipeline, err := worker.NewChain(
 		recorder,
 		worker.Normalizer{},
+		schemaInspector,
 		worker.NewPolicyProcessor(policyEngine),
 		persister,
 		worker.NewIncidentDetector(detector, logger),
@@ -181,6 +188,7 @@ func main() {
 		"dlq_topic", env("TELEMETRYFORGE_WORKER_DLQ_TOPIC", "telemetry.dlq"),
 		"persistence", "postgresql/timescaledb",
 		"flight_recorder", "enabled",
+		"schema_intelligence", "enabled",
 		"policy", activePolicy.Name+"@"+activePolicy.Version,
 		"shadow_policy", shadowPolicyPath != "",
 		"admin_address", adminAddress)
@@ -224,4 +232,19 @@ func splitCSV(value string) []string {
 		}
 	}
 	return result
+}
+
+func envBool(name string, fallback bool) bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv(name)))
+	if value == "" {
+		return fallback
+	}
+	switch value {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
+	}
 }

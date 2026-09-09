@@ -13,7 +13,7 @@ to reconstruct every decision from implementation details.
 - [Testing strategy](development/testing.md)
 - [Troubleshooting](operations/troubleshooting.md)
 - [Project roadmap](../ROADMAP.md)
-- [v0.9.0 release plan / delivered scope](roadmap/v0.9.0.md)
+- [v1.1.0 delivered scope](roadmap/v1.1.0.md)
 
 ## Architecture
 
@@ -66,6 +66,11 @@ to reconstruct every decision from implementation details.
 - [Prometheus metrics catalog](observability/metrics.md)
 - [OpenTelemetry tracing](observability/tracing.md)
 - [Benchmark methodology](performance/benchmark-methodology.md)
+
+## Schema Intelligence
+
+- [Schema Intelligence](schema/schema-intelligence.md)
+- [OpenTelemetry semantic conventions](schema/opentelemetry-semantic-conventions.md)
 
 ## Policy and cardinality
 

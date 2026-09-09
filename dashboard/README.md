@@ -1,7 +1,7 @@
 # TelemetryForge Dashboard
 
-**Package version:** `1.0.0`
-**Release:** `v1.0.0`
+**Package version:** `1.1.0`
+**Release:** `v1.1.0`
 
 The dashboard is intentionally small and readable.
 
@@ -91,3 +91,14 @@ TELEMETRYFORGE_DASHBOARD_API_KEY
 ```
 
 The raw dashboard key remains server-side and should have `read` scope only.
+
+
+## v1.1.0 additions
+
+The dashboard now includes **Schema Intelligence**:
+
+- current healthy/warning/breaking counts;
+- latest source/type/version entries;
+- field and inferred-required counts;
+- clickable declared-version history; and
+- recent schema drift findings.

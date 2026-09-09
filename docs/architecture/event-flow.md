@@ -70,3 +70,13 @@ For every tag dimension:
 7. active/shadow differences are stored for review.
 
 The raw risky tag value is not copied into the cardinality-finding table.
+
+
+## v1.1 schema observation
+
+After normalization, the worker derives a bounded schema description and writes
+an idempotent registry observation before active/shadow policy.
+
+A drift finding is evidence only; it does not reject the event. If registry
+storage is unavailable and `TELEMETRYFORGE_SCHEMA_FAIL_OPEN=true`, the event
+continues to policy/persistence.

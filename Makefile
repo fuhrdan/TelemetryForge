@@ -1,4 +1,4 @@
-.PHONY: build run run-worker telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check
+.PHONY: build run run-worker telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence demo-schema test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check
 
 build:
 	go build ./...
@@ -85,6 +85,9 @@ demo-cardinality:
 
 demo-evidence:
 	python3 scripts/demo-traffic.py --evidence-demo --count 45 --interval 0.20
+
+demo-schema:
+	python3 scripts/demo-traffic.py --schema-demo --interval 0.05
 
 observability-check:
 	docker run --rm --entrypoint /bin/promtool \

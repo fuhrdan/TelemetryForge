@@ -126,3 +126,34 @@ telemetry.
 
 Use GitHub private security reporting when enabled or contact the repository
 owner privately.
+
+
+## Schema Intelligence
+
+The v1.1 schema registry stores:
+
+- tenant/source/type/version identity;
+- field paths and JSON types;
+- counts/timestamps;
+- semantic-convention metadata; and
+- schema fingerprints derived from field paths/types.
+
+It does **not** put raw telemetry values into schema fingerprints or registry
+field definitions.
+
+Field names can still reveal business concepts, so schema APIs require the same
+tenant-scoped `read` authorization as other operational evidence.
+
+`schema_url` is treated as metadata only. TelemetryForge v1.1 does not fetch or
+dereference client-supplied schema URLs, avoiding an SSRF-style network fetch
+boundary.
+
+
+## Schema-registry resource bounds
+
+Schema Intelligence never stores telemetry values in schema fingerprints, but
+producer-controlled field names are still untrusted metadata.
+
+v1.1.0 therefore caps each accumulated schema version at 2,048 unique field
+paths and caps per-event discovery at 512 paths / five payload levels. This
+prevents dynamic key generation from creating unbounded registry state.

@@ -71,3 +71,12 @@ The same runtime contract is available through:
 
 Kafka and TimescaleDB endpoints remain configuration contracts across all three
 deployment modes.
+
+
+## Schema Intelligence boundary
+
+Schema Intelligence is an advisory stage between normalization and policy. It
+sees the producer shape before `drop_tag`/quarantine decisions, while the Flight
+Recorder remains the full-fidelity evidence source before both.
+
+Registry persistence is fail-open by default.

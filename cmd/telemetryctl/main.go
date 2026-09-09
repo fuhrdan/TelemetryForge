@@ -21,6 +21,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
+	"github.com/fuhrdan/TelemetryForge/internal/schema"
 	"github.com/fuhrdan/TelemetryForge/internal/security"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
@@ -83,6 +84,24 @@ func main() {
 		}
 		if err := policyValidate(os.Args[3:]); err != nil {
 			exitErr(err)
+		}
+	case "schema":
+		switch os.Args[2] {
+		case "inspect":
+			if err := schemaInspect(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "diff":
+			if err := schemaDiff(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "prune":
+			if err := schemaPrune(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		default:
+			usage()
+			os.Exit(2)
 		}
 	default:
 		usage()
@@ -372,6 +391,102 @@ func incidentGraph(ctx context.Context, args []string) error {
 	return nil
 }
 
+func schemaInspect(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("schema inspect", flag.ContinueOnError)
+	source := set.String("source", "", "telemetry source")
+	eventType := set.String("type", "", "telemetry event type")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*source) == "" || strings.TrimSpace(*eventType) == "" {
+		return errors.New("--source and --type are required")
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	history, err := store.SchemaHistory(ctx, *source, *eventType)
+	if err != nil {
+		return err
+	}
+	if len(history) == 0 {
+		return fmt.Errorf("no schema history for %s / %s in tenant %s", *source, *eventType, *tenant)
+	}
+	payload, _ := json.MarshalIndent(history, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func schemaDiff(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("schema diff", flag.ContinueOnError)
+	source := set.String("source", "", "telemetry source")
+	eventType := set.String("type", "", "telemetry event type")
+	fromVersion := set.String("from", "", "older declared schema version")
+	toVersion := set.String("to", "", "newer declared schema version")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*source) == "" || strings.TrimSpace(*eventType) == "" ||
+		strings.TrimSpace(*fromVersion) == "" || strings.TrimSpace(*toVersion) == "" {
+		return errors.New("--source, --type, --from, and --to are required")
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	diff, err := store.SchemaDiff(ctx, *source, *eventType, *fromVersion, *toVersion)
+	if err != nil {
+		return err
+	}
+	printSchemaDiff(diff)
+	return nil
+}
+
+func printSchemaDiff(diff schema.VersionDiff) {
+	payload, _ := json.MarshalIndent(diff, "", "  ")
+	fmt.Println(string(payload))
+}
+
+func schemaPrune(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("schema prune", flag.ContinueOnError)
+	olderThan := set.Duration("older-than", 35*24*time.Hour, "minimum age of schema observation ledger rows to remove")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if *olderThan < 30*24*time.Hour {
+		return errors.New("--older-than must be at least 30 days to preserve the normal telemetry/replay investigation horizon")
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	cutoff := time.Now().UTC().Add(-*olderThan)
+	deleted, err := store.PruneSchemaObservations(ctx, cutoff)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("pruned %d schema observation ledger rows for tenant %s before %s\n", deleted, *tenant, cutoff.Format(time.RFC3339))
+	return nil
+}
+
 func policyValidate(args []string) error {
 	set := flag.NewFlagSet("policy validate", flag.ContinueOnError)
 	file := set.String("file", "", "policy JSON file")
@@ -406,7 +521,10 @@ func usage() {
   telemetryctl cost simulate --incident INC-42 [--tenant default] [--pricing pricing/vendor.json]
   telemetryctl dlq replay --file dead-letter.json [--topic telemetry.raw]
   telemetryctl dedup prune [--older-than 840h]
-  telemetryctl policy validate --file policies/active.json`)
+  telemetryctl policy validate --file policies/active.json
+  telemetryctl schema inspect --source checkout-api --type request.duration [--tenant default]
+  telemetryctl schema diff --source checkout-api --type request.duration --from 1.0 --to 2.0 [--tenant default]
+  telemetryctl schema prune [--older-than 840h] [--tenant default]`)
 }
 
 func exitErr(err error) {

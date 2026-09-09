@@ -155,6 +155,22 @@ A benchmark result needs the environment metadata described in
 
 Do not add unsupported throughput claims to README/release notes.
 
+### Schema Intelligence changes
+
+Schema drift must remain advisory unless a future version introduces an
+explicit versioned enforcement policy.
+
+Do not:
+
+- put raw telemetry values into schema fingerprints;
+- make schema state cross tenant boundaries;
+- treat one missing optional field as breaking;
+- expand payload inspection without preserving explicit bounds; or
+- make an advisory registry outage block telemetry by default.
+
+A semantic-convention catalog update should cite the upstream OpenTelemetry
+version it was reviewed against.
+
 ## Documentation standards
 
 Human-readable documentation is a project requirement.

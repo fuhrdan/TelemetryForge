@@ -24,6 +24,7 @@ type Event struct {
 	Value         *float64          `json:"value,omitempty"`
 	Unit          string            `json:"unit,omitempty"`
 	SchemaVersion string            `json:"schema_version"`
+	SchemaURL     string            `json:"schema_url,omitempty"`
 	CorrelationID string            `json:"correlation_id,omitempty"`
 }
 

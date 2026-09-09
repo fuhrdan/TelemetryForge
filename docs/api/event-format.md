@@ -16,6 +16,7 @@ All TelemetryForge telemetry uses a common versioned envelope.
   "value": 147.2,
   "unit": "ms",
   "schema_version": "1.0",
+  "schema_url": "https://opentelemetry.io/schemas/1.44.0",
   "correlation_id": "order-123"
 }
 ```
@@ -36,3 +37,16 @@ All TelemetryForge telemetry uses a common versioned envelope.
 | `correlation_id` | No | Identifier used to correlate related telemetry. |
 
 Unknown top-level fields are rejected by the current API contract. This is intentional: silent schema drift at the ingestion edge creates expensive downstream debugging problems.
+
+
+## `schema_version` vs `schema_url`
+
+`schema_version` is required and belongs to the application/producer schema
+contract tracked by TelemetryForge.
+
+`schema_url` is optional and, when present, identifies the OpenTelemetry
+semantic-convention schema associated with the telemetry.
+
+They are intentionally separate. Updating OpenTelemetry semantic conventions
+does not automatically mean an application's domain payload version changed,
+and vice versa.

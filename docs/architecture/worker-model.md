@@ -118,3 +118,16 @@ full-fidelity event.
 
 The optional shadow policy runs against the same normalized input but records
 only action differences.
+
+
+## Schema Intelligence processor
+
+The processor chain includes `SchemaInspector` after normalization and before
+policy.
+
+`SchemaInspector` is side-effect-only: it never changes the event. Schema
+observations are deduplicated by tenant/event ID in PostgreSQL so a whole-chain
+worker retry remains safe.
+
+The default mode is fail-open; operators can explicitly choose fail-closed
+registry behavior.

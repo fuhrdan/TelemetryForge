@@ -125,6 +125,42 @@ type EvidenceGraph = {
   hypotheses: EvidenceHypothesis[];
 };
 
+type SchemaSemanticFinding = {
+  key: string;
+  path: string;
+  severity: string;
+  kind: string;
+  message: string;
+  replacement?: string;
+};
+
+type SchemaEntry = {
+  source: string;
+  event_type: string;
+  declared_version: string;
+  fingerprint: string;
+  health: "healthy" | "warning" | "breaking";
+  first_seen: string;
+  last_seen: string;
+  observation_count: number;
+  field_count: number;
+  required_field_count: number;
+  semantic_findings?: SchemaSemanticFinding[];
+};
+
+type SchemaDrift = {
+  source: string;
+  event_type: string;
+  declared_version: string;
+  signature: string;
+  severity: "info" | "warning" | "breaking";
+  kind: string;
+  path?: string;
+  message: string;
+  last_seen: string;
+  occurrences: number;
+};
+
 type CostSimulation = {
   simulation_id: string;
   incident_id: string;
@@ -207,6 +243,10 @@ export default function Dashboard() {
   const [policyDiffs, setPolicyDiffs] = useState<PolicyDiff[]>([]);
   const [replayRuns, setReplayRuns] = useState<ReplayRun[]>([]);
   const [costSimulations, setCostSimulations] = useState<CostSimulation[]>([]);
+  const [schemas, setSchemas] = useState<SchemaEntry[]>([]);
+  const [schemaDrift, setSchemaDrift] = useState<SchemaDrift[]>([]);
+  const [selectedSchema, setSelectedSchema] = useState<SchemaEntry | null>(null);
+  const [schemaHistory, setSchemaHistory] = useState<SchemaEntry[]>([]);
 
   const refresh = useCallback(async () => {
     const [
@@ -216,6 +256,8 @@ export default function Dashboard() {
       diffResponse,
       replayResponse,
       costResponse,
+      schemasResponse,
+      schemaDriftResponse,
     ] = await Promise.all([
       fetch("/telemetry-api/api/v1/dashboard/summary?window=5m", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/incidents?limit=20", { cache: "no-store" }),
@@ -223,6 +265,8 @@ export default function Dashboard() {
       fetch("/telemetry-api/api/v1/policy/shadow-diffs?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/replays?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/cost-simulations?limit=20", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/schemas?limit=40", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/schema-drift?limit=30", { cache: "no-store" }),
     ]);
 
     if (summaryResponse.ok) {
@@ -247,6 +291,14 @@ export default function Dashboard() {
     if (costResponse.ok) {
       const payload = await costResponse.json();
       setCostSimulations(payload.simulations ?? []);
+    }
+    if (schemasResponse.ok) {
+      const payload = await schemasResponse.json();
+      setSchemas(payload.schemas ?? []);
+    }
+    if (schemaDriftResponse.ok) {
+      const payload = await schemaDriftResponse.json();
+      setSchemaDrift(payload.drift ?? []);
     }
   }, []);
 
@@ -293,6 +345,21 @@ export default function Dashboard() {
       });
   }, [selected]);
 
+  useEffect(() => {
+    if (!selectedSchema) {
+      setSchemaHistory([]);
+      return;
+    }
+    const query = new URLSearchParams({
+      source: selectedSchema.source,
+      type: selectedSchema.event_type,
+    });
+    fetch(`/telemetry-api/api/v1/schema-history?${query.toString()}`, { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((payload) => setSchemaHistory(payload.schemas ?? []))
+      .catch(() => setSchemaHistory([]));
+  }, [selectedSchema]);
+
   const sources = useMemo(
     () => Array.from(new Set(live.map((event) => event.source))).sort(),
     [live],
@@ -308,6 +375,13 @@ export default function Dashboard() {
     .slice(-50);
 
   const latest = [...visible].reverse().slice(0, 18);
+  const schemaHealth = schemas.reduce(
+    (counts, entry) => {
+      counts[entry.health] += 1;
+      return counts;
+    },
+    { healthy: 0, warning: 0, breaking: 0 },
+  );
 
   return (
     <main>
@@ -486,6 +560,82 @@ export default function Dashboard() {
               </div>
             </>
           )}
+        </article>
+      </section>
+
+      <section className="schema-grid">
+        <article className="panel schema-registry-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">SCHEMA INTELLIGENCE</div>
+              <h2>Schema health</h2>
+            </div>
+            <div className="schema-health-badges">
+              <span className="healthy">{schemaHealth.healthy} healthy</span>
+              <span className="warning">{schemaHealth.warning} warning</span>
+              <span className="breaking">{schemaHealth.breaking} breaking</span>
+            </div>
+          </div>
+          <div className="schema-table">
+            <div className="schema-header">
+              <span>Source / type</span><span>Version</span><span>Fields</span><span>Required</span><span>Health</span>
+            </div>
+            {schemas.slice(0, 14).map((entry) => (
+              <button
+                className={`schema-row ${selectedSchema?.source === entry.source && selectedSchema?.event_type === entry.event_type ? "selected" : ""}`}
+                key={`${entry.source}-${entry.event_type}-${entry.declared_version}`}
+                onClick={() => setSelectedSchema(entry)}
+                type="button"
+              >
+                <span><strong>{entry.source}</strong><small>{entry.event_type}</small></span>
+                <span>{entry.declared_version}</span>
+                <span>{entry.field_count}</span>
+                <span>{entry.required_field_count}</span>
+                <span className={`schema-status ${entry.health}`}>{entry.health}</span>
+              </button>
+            ))}
+            {schemas.length === 0 && <div className="empty schema-empty">No schemas observed yet.</div>}
+          </div>
+
+          {selectedSchema && (
+            <div className="schema-history">
+              <div>
+                <strong>{selectedSchema.source} · {selectedSchema.event_type}</strong>
+                <span>{schemaHistory.length} observed declared version{schemaHistory.length === 1 ? "" : "s"}</span>
+              </div>
+              <div className="schema-version-list">
+                {schemaHistory.map((version) => (
+                  <span className={`schema-version ${version.health}`} key={`${version.declared_version}-${version.fingerprint}`}>
+                    {version.declared_version} · {version.field_count} fields · {version.health}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </article>
+
+        <article className="panel schema-drift-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">SCHEMA DRIFT</div>
+              <h2>Recent compatibility findings</h2>
+            </div>
+            <span className="count-badge">{schemaDrift.length}</span>
+          </div>
+          <div className="schema-drift-list">
+            {schemaDrift.slice(0, 12).map((drift) => (
+              <div className="schema-drift-row" key={`${drift.source}-${drift.signature}`}>
+                <span className={`drift-severity ${drift.severity}`}>{drift.severity}</span>
+                <div>
+                  <strong>{drift.source} · {drift.event_type}</strong>
+                  <span>{drift.path || drift.kind} · schema {drift.declared_version}</span>
+                  <small>{drift.message}</small>
+                </div>
+                <time>{clock(drift.last_seen)}</time>
+              </div>
+            ))}
+            {schemaDrift.length === 0 && <div className="empty schema-empty">No schema drift findings yet.</div>}
+          </div>
         </article>
       </section>
 

@@ -13,6 +13,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/evidence"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
+	"github.com/fuhrdan/TelemetryForge/internal/schema"
 )
 
 // Query describes a bounded telemetry lookup.
@@ -52,4 +53,12 @@ type ReplayReader interface {
 type EvidenceStore interface {
 	SaveEvidenceGraph(ctx context.Context, graph evidence.Graph) error
 	EvidenceGraph(ctx context.Context, incidentID string) (evidence.Graph, bool, error)
+}
+
+// SchemaReader exposes tenant-scoped Schema Intelligence state.
+type SchemaReader interface {
+	ListSchemas(ctx context.Context, limit int) ([]schema.RegistryEntry, error)
+	SchemaHistory(ctx context.Context, source, eventType string) ([]schema.RegistryEntry, error)
+	ListSchemaDrifts(ctx context.Context, limit int) ([]schema.Drift, error)
+	SchemaDiff(ctx context.Context, source, eventType, fromVersion, toVersion string) (schema.VersionDiff, error)
 }

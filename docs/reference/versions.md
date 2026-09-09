@@ -1,6 +1,6 @@
 # Technology Version Baseline
 
-Verified for the v1.0.0 release work on **2026-09-09**.
+Verified for the v1.1.0 release work on **2026-09-09**.
 
 | Component | Project baseline | Rationale |
 |---|---:|---|
@@ -14,6 +14,7 @@ Verified for the v1.0.0 release work on **2026-09-09**.
 | [pgx](https://github.com/jackc/pgx/blob/master/CHANGELOG.md) | 5.10.0 | PostgreSQL client baseline |
 | [TimescaleDB](https://github.com/timescale/timescaledb/releases) | 2.30.0 / PostgreSQL 17 | Durable telemetry/time-series store |
 | [OpenTelemetry Go](https://pkg.go.dev/go.opentelemetry.io/otel) | 1.46.0 | Current trace API/SDK baseline |
+| [OpenTelemetry Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/) | 1.44.0 | Reference version for the focused v1.1 semantic-attribute compatibility catalog |
 | [Prometheus Go client](https://pkg.go.dev/github.com/prometheus/client_golang) | 1.24.1 | Process/application metrics |
 | [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) | 0.160.0 | Local OTLP receive/batch/export |
 | [Prometheus](https://prometheus.io/) | 3.13.3 | Local metrics store/query |

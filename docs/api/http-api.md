@@ -254,3 +254,48 @@ The graph returns:
 - an explicit non-causality disclaimer
 
 The latest graph snapshot is persisted for investigation history.
+
+
+## Schema Intelligence
+
+### `GET /api/v1/schemas`
+
+Returns the newest observed declared version for each tenant-scoped source/type.
+
+Optional:
+
+```text
+limit=1..500
+```
+
+### `GET /api/v1/schema-history`
+
+Required query parameters:
+
+```text
+source
+type
+```
+
+Returns every observed declared version for that producer identity.
+
+### `GET /api/v1/schema-drift`
+
+Returns newest-first deduplicated drift findings.
+
+### `GET /api/v1/schema-diff`
+
+Required query parameters:
+
+```text
+source
+type
+from
+to
+```
+
+Returns a field-level compatibility comparison between two persisted declared
+versions.
+
+Schema APIs require `read` scope in `api_key` mode and inherit the authenticated
+tenant. They cannot query another tenant by supplying a tenant query parameter.

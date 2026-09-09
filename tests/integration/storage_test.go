@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
+	"github.com/fuhrdan/TelemetryForge/internal/schema"
 	"github.com/fuhrdan/TelemetryForge/internal/security"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 )
@@ -472,5 +474,120 @@ func TestTenantIsolationAllowsSameIncidentID(t *testing.T) {
 		if len(events) != 1 || events[0].TenantID != tenant {
 			t.Fatalf("tenant %s incident events=%#v", tenant, events)
 		}
+	}
+}
+
+func TestSchemaIntelligenceIdempotencyAndBreakingDrift(t *testing.T) {
+	databaseURL := os.Getenv("TELEMETRYFORGE_INTEGRATION_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TELEMETRYFORGE_INTEGRATION_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	ctx = security.WithTenant(ctx, "schema-integration")
+
+	store, err := storage.NewPostgresStore(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	stamp := time.Now().UTC()
+	source := "orders-api-" + stamp.Format("150405.000000000")
+	var duplicate domain.Event
+	for index := 0; index < 24; index++ {
+		event := domain.Event{
+			ID:            "schema-v1-" + stamp.Format("150405.000000000") + "-" + string(rune('a'+index)),
+			TenantID:      "schema-integration",
+			Source:        source,
+			Type:          "order.created",
+			Timestamp:     stamp.Add(time.Duration(index) * time.Millisecond),
+			SchemaVersion: "1.0",
+			SchemaURL:     "https://opentelemetry.io/schemas/1.44.0",
+			Payload:       json.RawMessage(`{"order_id":"o-1","total":42.5,"currency":"USD"}`),
+		}
+		if index == 0 {
+			duplicate = event
+		}
+		if _, _, err := store.ObserveSchema(ctx, event, schema.Describe(event)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Same at-least-once event must be a no-op.
+	if _, _, err := store.ObserveSchema(ctx, duplicate, schema.Describe(duplicate)); err != nil {
+		t.Fatal(err)
+	}
+
+	drift := domain.Event{
+		ID:            "schema-drift-" + stamp.Format("150405.000000000"),
+		TenantID:      "schema-integration",
+		Source:        source,
+		Type:          "order.created",
+		Timestamp:     stamp.Add(time.Second),
+		SchemaVersion: "1.0",
+		SchemaURL:     "https://opentelemetry.io/schemas/1.44.0",
+		Payload:       json.RawMessage(`{"total":"42.50","currency":"USD"}`),
+	}
+	if _, _, err := store.ObserveSchema(ctx, drift, schema.Describe(drift)); err != nil {
+		t.Fatal(err)
+	}
+
+	history, err := store.SchemaHistory(ctx, source, "order.created")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("history=%d, want 1", len(history))
+	}
+	if history[0].ObservationCount != 25 {
+		t.Fatalf("observations=%d, want 25 (duplicate must not count)", history[0].ObservationCount)
+	}
+	if history[0].Health != "breaking" {
+		t.Fatalf("health=%q, want breaking", history[0].Health)
+	}
+
+	drifts, err := store.ListSchemaDrifts(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundType := false
+	foundMissing := false
+	for _, finding := range drifts {
+		if finding.Source != source {
+			continue
+		}
+		if finding.Kind == "type_changed" {
+			foundType = true
+		}
+		if finding.Kind == "required_field_missing" && finding.Path == "payload.order_id" {
+			foundMissing = true
+		}
+	}
+	if !foundType || !foundMissing {
+		t.Fatalf("type=%t missing=%t drifts=%#v", foundType, foundMissing, drifts)
+	}
+
+	versionTwo := domain.Event{
+		ID:            "schema-v2-" + stamp.Format("150405.000000000"),
+		TenantID:      "schema-integration",
+		Source:        source,
+		Type:          "order.created",
+		Timestamp:     stamp.Add(2 * time.Second),
+		SchemaVersion: "2.0",
+		SchemaURL:     "https://opentelemetry.io/schemas/1.44.0",
+		Payload:       json.RawMessage(`{"total":"50.00","currency":"USD"}`),
+	}
+	if _, _, err := store.ObserveSchema(ctx, versionTwo, schema.Describe(versionTwo)); err != nil {
+		t.Fatal(err)
+	}
+
+	diff, err := store.SchemaDiff(ctx, source, "order.created", "1.0", "2.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff.Compatibility != "breaking" {
+		t.Fatalf("compatibility=%q", diff.Compatibility)
 	}
 }

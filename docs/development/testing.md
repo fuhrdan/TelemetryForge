@@ -133,3 +133,30 @@ New checks include:
 
 The real Go 1.27.1 dependency-backed build remains the authoritative CI gate
 when the local sandbox cannot fetch/currently run that toolchain.
+
+
+## v1.1.0 Schema Intelligence coverage
+
+New coverage includes:
+
+- deterministic value-free schema fingerprints;
+- legacy OpenTelemetry semantic attribute warnings;
+- semantic payload type mismatches;
+- version diff compatibility classification;
+- sparse fields not becoming required prematurely;
+- same-version type changes becoming breaking drift;
+- `schema_url` changing under the same application version producing warning;
+- fail-open default worker behavior;
+- optional fail-closed transient classification;
+- schema API validation; and
+- dashboard schema/history TypeScript compilation.
+
+Database integration coverage verifies idempotent observation counts and
+version/drift history when the TimescaleDB/PostgreSQL CI service is available.
+
+
+Additional Schema Intelligence hardening tests cover:
+
+- accumulated registry field-cap enforcement;
+- deduplicated field-limit warning behavior; and
+- prune-cutoff validation before database mutation.

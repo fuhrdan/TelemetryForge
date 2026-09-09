@@ -188,3 +188,22 @@ Watch Grafana while the test runs. The backpressure scenario is expected to make
 Kafka lag visible when input exceeds a modest local worker/database capacity.
 
 Do not turn that one local result into a universal throughput claim.
+
+
+## Schema Intelligence demo
+
+```bash
+make demo-schema
+```
+
+Then open the TelemetryForge dashboard and find **Schema Intelligence**.
+
+The demo establishes 24 normal `orders-api / order.created` v1 observations,
+then sends same-version type/missing-field drift and finally a declared v2
+breaking shape.
+
+Direct CLI inspection:
+
+```bash
+go run ./cmd/telemetryctl schema inspect   --source orders-api   --type order.created
+```
