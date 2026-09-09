@@ -60,11 +60,27 @@ local defaults. They are not production credentials. See
 |---|---|---|
 | `TELEMETRYFORGE_POLICY_FILE` | `policies/active.json` for direct development | Active JSON policy |
 | `TELEMETRYFORGE_SHADOW_POLICY_FILE` | `policies/shadow.json` | Candidate shadow policy; set to `disabled` to turn off |
-| `TELEMETRYFORGE_CARDINALITY_MAX_DIMENSIONS` | `20000` | Maximum in-memory source/type/dimension estimators |
+| `TELEMETRYFORGE_CARDINALITY_MAX_DIMENSIONS` | `20000` | Bounds local replay/test tracker state and in-process report-suppression metadata; production shared state is database-backed |
 | `TELEMETRYFORGE_WORKER_ADMIN_ADDRESS` | `:8081` | Worker health/readiness listener |
 
 Docker/Kubernetes override the policy paths to
 `/etc/telemetryforge/policies/*.json`.
+
+### v1.2 distributed cardinality semantics
+
+Production workers use PostgreSQL/TimescaleDB shared state automatically; there
+is no separate Redis/service endpoint to configure.
+
+Shared state is keyed by tenant, active/shadow mode, source, event type,
+dimension, and one-hour UTC window. TimescaleDB retains those windows for seven
+days.
+
+The checked-in policy files also define versioned `budgets`. Budget thresholds
+are policy JSON, not environment variables.
+
+A shared-state database error is treated as a transient policy dependency
+failure. TelemetryForge does not silently fall back to replica-local production
+state.
 
 ## Kubernetes
 

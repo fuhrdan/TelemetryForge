@@ -1,6 +1,6 @@
 {
   "name": "candidate-cardinality-policy",
-  "version": "1.1.0-shadow",
+  "version": "1.2.0-shadow",
   "default_unique_threshold": 750,
   "default_action": "allow",
   "dangerous_keys": [
@@ -48,6 +48,24 @@
       "dimension": "device_id",
       "unique_threshold": 500,
       "action": "quarantine"
+    }
+  ],
+  "budgets": [
+    {
+      "name": "tenant-hourly-series",
+      "source": "*",
+      "type": "*",
+      "series_limit": 35000,
+      "warning_percent": 70,
+      "critical_percent": 90
+    },
+    {
+      "name": "checkout-hourly-series",
+      "source": "checkout-*",
+      "type": "*",
+      "series_limit": 7500,
+      "warning_percent": 65,
+      "critical_percent": 85
     }
   ]
 }

@@ -52,3 +52,22 @@ telemetryctl schema prune --older-than 840h
 The 35-day default intentionally exceeds the 30-day development telemetry
 retention window. Pruning observations preserves the accumulated schema registry
 and drift history.
+
+
+## Distributed cardinality state
+
+v1.2.0 stores hourly mergeable estimator rows in the
+`cardinality_cluster_state` hypertable.
+
+Retention:
+
+```text
+7 days
+```
+
+The current policy decision uses only the current hour. Seven days are retained
+for operational inspection/debugging without allowing cardinality-control state
+to grow indefinitely.
+
+`cardinality_budget_status` stores only the latest status for each
+versioned-policy budget and does not require time-series retention.

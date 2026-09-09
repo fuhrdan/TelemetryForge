@@ -137,3 +137,33 @@ Default: 35 days. The command refuses values below 30 days.
 
 This maintenance command removes only the idempotency ledger. Registry versions,
 field state, and drift findings remain intact.
+
+
+## Inspect distributed cardinality
+
+Top active dimensions:
+
+```bash
+telemetryctl cardinality top \
+  --mode active \
+  --limit 25 \
+  --tenant default
+```
+
+Candidate/shadow state:
+
+```bash
+telemetryctl cardinality top --mode shadow
+```
+
+The result is the current shared one-hour HLL view, not one worker's local
+memory.
+
+## Inspect series budgets
+
+```bash
+telemetryctl cardinality budgets --tenant default
+```
+
+Budget output is advisory and includes the policy name/version/mode that
+produced the status.

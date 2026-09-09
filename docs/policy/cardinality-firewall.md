@@ -51,10 +51,14 @@ without destroying the original incident evidence.
 ## Estimator
 
 TelemetryForge uses a hybrid bounded estimator per tracked
-`source / event type / dimension`:
+`tenant / mode / source / event type / dimension / hourly window`:
 
 - the first 16 distinct SHA-256-derived hashes are counted exactly; then
 - a small 64-register HyperLogLog estimate takes over.
+
+In production v1.2.0, that state is shared through TimescaleDB/PostgreSQL so
+multiple worker replicas merge into the same hourly estimate. Replay and cost
+simulation use an isolated local tracker with the same hourly-window semantics.
 
 The fixed exact window avoids small-threshold approximation surprises without
 keeping raw values or an unbounded set.
@@ -93,16 +97,14 @@ That heuristic produces an `allow` finding only. It does **not** activate
 `drop_tag` or `quarantine` early. Destructive policy actions require the
 configured cardinality threshold itself to be crossed.
 
-## Bounded memory
+## Bounded state
 
-The default worker tracks at most:
+Production shared state uses one fixed-size HLL/exact row per
+`tenant/mode/source/type/dimension/hour` and has a seven-day TimescaleDB
+retention policy.
 
-```text
-20,000 source/type/dimension combinations
-```
-
-When that cap is reached, the least recently observed dimension state is
-evicted.
+Replay/cost local state retains the original 20,000 tracked-dimension cap and
+evicts least-recently-observed local state at that bound.
 
 The report-suppression map is bounded separately and repeated findings for the
 same mode/source/type/dimension/action are emitted at most once per minute.
@@ -129,16 +131,30 @@ telemetryforge.quarantined=true
 telemetryforge.quarantine_dimensions=<comma-separated dimensions>
 ```
 
-No external vendor router exists yet, so v0.8.0 cannot literally block a vendor
-forwarder. The marker is the routing contract future output sinks will honor.
+No external vendor router exists yet, so `quarantine` currently protects the
+normal control-plane representation and establishes the contract that the later
+Telemetry Router must honor.
 
 ## Operational evidence
 
-The dashboard/API exposes:
+The dashboard/API exposes findings plus the current distributed state:
 
 ```text
 GET /api/v1/cardinality/findings
+GET /api/v1/cardinality/state?mode=active
+GET /api/v1/cardinality/budgets
 ```
+
+The first endpoint is rate-limited operational evidence. The `state` endpoint is
+the current shared hourly estimator view and is used for the "top exploding
+dimensions" dashboard.
+
+See also:
+
+- [Distributed Cardinality Intelligence](../cardinality/distributed-cardinality.md)
+- [Cardinality Budgets](../cardinality/budgets.md)
+
+Each finding includes:
 
 Each finding includes:
 

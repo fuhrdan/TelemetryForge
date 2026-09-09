@@ -1,6 +1,6 @@
 # ADR 0014: Use Bounded HyperLogLog for Cardinality Warnings
 
-**Status:** Accepted  
+**Status:** Superseded by ADR 0028 for production worker state
 **Date:** 2026-09-09
 
 ## Context
@@ -41,9 +41,8 @@ Would couple the control plane to one observability vendor.
 
 ## Consequences
 
-Estimates are approximate and replica-local in v0.8.0. A highly distributed
-worker fleet can therefore under-estimate global cardinality compared with a
-shared estimator.
+The original replica-local design shipped as the bounded first implementation.
 
-The feature remains valuable as an early firewall, but a later scale milestone
-may move estimator state to a shared mergeable representation.
+v1.2.0 supersedes production worker state with the shared mergeable hourly HLL
+described in ADR 0028. The local tracker remains intentionally in use for
+replay/cost analysis so historical evaluation cannot mutate production state.

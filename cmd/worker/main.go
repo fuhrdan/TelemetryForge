@@ -30,7 +30,7 @@ func main() {
 	traceShutdown, err := observability.InitTracing(
 		ctx,
 		"telemetryforge-worker",
-		"1.1.0",
+		"1.2.0",
 		os.Getenv("TELEMETRYFORGE_OTLP_TRACES_ENDPOINT"),
 	)
 	if err != nil {
@@ -78,10 +78,17 @@ func main() {
 		shadowPolicy = &loadedShadow
 	}
 
-	policyEngine, err := policy.NewEngine(
+	activeTracker := storage.NewDistributedCardinalityTracker(store, "active")
+	var shadowTracker policy.CardinalityTracker
+	if shadowPolicy != nil {
+		shadowTracker = storage.NewDistributedCardinalityTracker(store, "shadow")
+	}
+	policyEngine, err := policy.NewEngineWithTrackers(
 		activePolicy,
 		shadowPolicy,
 		store,
+		activeTracker,
+		shadowTracker,
 		envInt("TELEMETRYFORGE_CARDINALITY_MAX_DIMENSIONS", 20000),
 	)
 	if err != nil {
@@ -189,6 +196,7 @@ func main() {
 		"persistence", "postgresql/timescaledb",
 		"flight_recorder", "enabled",
 		"schema_intelligence", "enabled",
+		"distributed_cardinality", "timescaledb-hourly",
 		"policy", activePolicy.Name+"@"+activePolicy.Version,
 		"shadow_policy", shadowPolicyPath != "",
 		"admin_address", adminAddress)

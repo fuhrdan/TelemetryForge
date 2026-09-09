@@ -4,6 +4,32 @@
 
 _No changes yet._
 
+## [1.2.0] - 2026-09-09
+
+### Distributed Cardinality Intelligence
+- Replaced production replica-local cardinality decisions with shared hourly TimescaleDB/PostgreSQL state.
+- Added atomic 64-register HLL merging across worker replicas and exact first-16 hashed unique values.
+- Kept replay/cost analysis on isolated local hourly trackers so historical analysis cannot mutate production state.
+- Added seven-day retention for shared cardinality windows.
+
+### Series budgets / forecasting
+- Added versioned hourly unique-series budgets to policy-as-code.
+- Added tenant-wide and source-pattern budget aggregation using full series identities.
+- Added healthy/warning/critical/exceeded budget status without destructive automatic action.
+- Added observed/projected uniques and unique-growth-per-minute state.
+
+### API / CLI / dashboard
+- Added `GET /api/v1/cardinality/state` and `GET /api/v1/cardinality/budgets`.
+- Added `telemetryctl cardinality top` and `telemetryctl cardinality budgets`.
+- Added Distributed Cardinality and Series Budgets dashboard panels.
+- Updated policy validation to include budget configuration.
+
+### Documentation / testing
+- Added ADRs 0028-0029.
+- Added distributed-cardinality and budget guides.
+- Added shared-state integration tests and budget/policy unit tests.
+
+
 ## [1.1.0] - 2026-09-09
 
 ### Schema Intelligence

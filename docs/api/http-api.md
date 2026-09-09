@@ -299,3 +299,32 @@ versions.
 
 Schema APIs require `read` scope in `api_key` mode and inherit the authenticated
 tenant. They cannot query another tenant by supplying a tenant query parameter.
+
+
+## Distributed cardinality state
+
+### `GET /api/v1/cardinality/state`
+
+Returns current shared one-hour state for the authenticated tenant.
+
+Query parameters:
+
+```text
+mode=active|shadow
+limit=1..500
+```
+
+The response contains observed/projected unique cardinality, growth per minute,
+sample count, and timing metadata.
+
+Internal budget aggregation state is not exposed here.
+
+## Cardinality budgets
+
+### `GET /api/v1/cardinality/budgets`
+
+Returns recent active/shadow policy budget consumption for the authenticated
+tenant.
+
+Fields include budget scope, policy/version, series limit, observed/projected
+unique series, percentage consumed, and status.

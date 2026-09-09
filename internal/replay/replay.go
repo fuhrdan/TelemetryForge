@@ -248,6 +248,10 @@ func (recorder *memoryRecorder) RecordCardinalityFinding(context.Context, policy
 	recorder.findings++
 	return nil
 }
+
+func (recorder *memoryRecorder) RecordCardinalityBudgetStatus(context.Context, policy.BudgetStatus) error {
+	return nil
+}
 func (recorder *memoryRecorder) RecordPolicyDiff(context.Context, policy.Diff) error {
 	recorder.diffs++
 	return nil

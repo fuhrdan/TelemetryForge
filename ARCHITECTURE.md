@@ -1,6 +1,6 @@
 # TelemetryForge Architecture
 
-TelemetryForge v1.0.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v1.2.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
 
@@ -31,6 +31,8 @@ Schema Intelligence
        v
 Cardinality Firewall
   active + shadow
+       |
+       +--> shared hourly HLL / series budgets
        |
        v
 TimescaleDB
@@ -133,6 +135,32 @@ default, so worker retries cannot inflate counts and a registry outage does not
 become a telemetry outage.
 
 Schema drift does not mutate or reject the event.
+
+
+## Distributed Cardinality Intelligence
+
+Production workers use a shared TimescaleDB-backed tracker keyed by tenant,
+active/shadow mode, source, event type, dimension, and one-hour UTC window.
+
+Each update raises one of 64 HLL registers with an atomic component-wise
+maximum. The first 16 SHA-256-derived unique hashes are retained exactly for
+small-threshold accuracy. Raw tag values are never stored in shared cardinality
+state.
+
+Versioned policy can also define tenant/source series budgets. A budget hashes
+the full series identity (source + event type + sorted non-control tags), so its
+consumption is not the invalid sum of individual label cardinalities.
+
+Budgets are advisory in v1.2.0. Only explicit dimension rules can mutate an
+event.
+
+Replay and cost analysis use isolated local trackers with the same hourly
+windows and never write the production cardinality state.
+
+See:
+
+- `docs/cardinality/distributed-cardinality.md`
+- `docs/cardinality/budgets.md`
 
 ## Evidence Graph
 

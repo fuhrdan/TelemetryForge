@@ -85,6 +85,20 @@ func main() {
 		if err := policyValidate(os.Args[3:]); err != nil {
 			exitErr(err)
 		}
+	case "cardinality":
+		switch os.Args[2] {
+		case "top":
+			if err := cardinalityTop(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "budgets":
+			if err := cardinalityBudgets(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		default:
+			usage()
+			os.Exit(2)
+		}
 	case "schema":
 		switch os.Args[2] {
 		case "inspect":
@@ -391,6 +405,74 @@ func incidentGraph(ctx context.Context, args []string) error {
 	return nil
 }
 
+func cardinalityTop(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("cardinality top", flag.ContinueOnError)
+	mode := set.String("mode", "active", "active or shadow policy state")
+	limit := set.Int("limit", 25, "maximum dimensions to return (1..500)")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if *mode != "active" && *mode != "shadow" {
+		return errors.New("--mode must be active or shadow")
+	}
+	if *limit < 1 || *limit > 500 {
+		return errors.New("--limit must be between 1 and 500")
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	states, err := store.ListDistributedCardinalityStates(ctx, *mode, *limit)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(map[string]any{
+		"tenant": *tenant,
+		"mode":   *mode,
+		"window": "1h",
+		"states": states,
+	}, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func cardinalityBudgets(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("cardinality budgets", flag.ContinueOnError)
+	limit := set.Int("limit", 100, "maximum budget rows to return (1..500)")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if *limit < 1 || *limit > 500 {
+		return errors.New("--limit must be between 1 and 500")
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	budgets, err := store.ListCardinalityBudgetStatus(ctx, *limit)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(map[string]any{
+		"tenant":  *tenant,
+		"budgets": budgets,
+	}, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
 func schemaInspect(ctx context.Context, args []string) error {
 	set := flag.NewFlagSet("schema inspect", flag.ContinueOnError)
 	source := set.String("source", "", "telemetry source")
@@ -503,10 +585,11 @@ func policyValidate(args []string) error {
 	}
 
 	fmt.Printf(
-		"policy %s@%s is valid (%d rules, default threshold %d, default action %s)\n",
+		"policy %s@%s is valid (%d rules, %d budgets, default threshold %d, default action %s)\n",
 		loaded.Name,
 		loaded.Version,
 		len(loaded.Rules),
+		len(loaded.Budgets),
 		loaded.DefaultUniqueThreshold,
 		loaded.DefaultAction,
 	)
@@ -522,6 +605,8 @@ func usage() {
   telemetryctl dlq replay --file dead-letter.json [--topic telemetry.raw]
   telemetryctl dedup prune [--older-than 840h]
   telemetryctl policy validate --file policies/active.json
+  telemetryctl cardinality top [--mode active] [--limit 25] [--tenant default]
+  telemetryctl cardinality budgets [--limit 100] [--tenant default]
   telemetryctl schema inspect --source checkout-api --type request.duration [--tenant default]
   telemetryctl schema diff --source checkout-api --type request.duration --from 1.0 --to 2.0 [--tenant default]
   telemetryctl schema prune [--older-than 840h] [--tenant default]`)

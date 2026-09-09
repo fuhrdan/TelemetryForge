@@ -10,9 +10,9 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current release:** `v1.1.0` — Schema Intelligence, versioned schema history,
-> drift detection, OpenTelemetry semantic-convention awareness, and a dashboard
-> Schema Health workflow built on the v1 security/evidence foundation.
+> **Current development release:** `v1.2.0` — Distributed Cardinality Intelligence,
+> cluster-shared hourly HLL state, tenant/source series budgets, trend
+> forecasting, and top exploding-dimension visibility.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -46,18 +46,33 @@ Schema observation runs after normalization and before policy mutation, and is
 
 Read [Schema Intelligence](docs/schema/schema-intelligence.md).
 
-### Cardinality Firewall
+### Distributed Cardinality Firewall
 
-Uses bounded exact/HLL state to detect dangerous tag growth before it becomes
-downstream series explosion.
+Production workers now merge tenant-aware cardinality state through
+TimescaleDB/PostgreSQL rather than making replica-local decisions.
 
-Policy actions:
+Each hourly state keeps only:
+
+- 64 HLL registers;
+- the first 16 SHA-256-derived unique hashes; and
+- bounded timing/sample metadata.
+
+Policy actions remain explicit:
 
 ```text
 allow
 drop_tag
 quarantine
 ```
+
+Versioned policy can also define **hourly unique-series budgets**. Budgets expose
+`healthy`, `warning`, `critical`, and `exceeded` pressure but never silently
+drop telemetry.
+
+Read:
+
+- [Distributed Cardinality Intelligence](docs/cardinality/distributed-cardinality.md)
+- [Cardinality Budgets](docs/cardinality/budgets.md)
 
 ### Policy-as-Code + Shadow Pipeline
 
@@ -85,30 +100,32 @@ Compares baseline/active/shadow canonical bytes and exact sample-series shape.
 Dollar projections appear only when an operator explicitly provides a reviewed
 pricing model.
 
-### Schema Intelligence
+## Distributed Cardinality Intelligence
 
-Inspect what one producer has actually emitted:
+Production cardinality state is keyed by:
 
-```bash
-go run ./cmd/telemetryctl schema inspect \
-  --source orders-api \
-  --type order.created \
-  --tenant default
+```text
+tenant / active-shadow mode / source / event type / dimension / hour
 ```
 
-Compare two declared versions:
+Worker replicas atomically merge HLL registers in PostgreSQL/TimescaleDB. This
+means a stream split across Kafka partitions sees the same shared estimate
+instead of one partial count per worker.
 
-```bash
-go run ./cmd/telemetryctl schema diff \
-  --source orders-api \
-  --type order.created \
-  --from 1.0 \
-  --to 2.0 \
-  --tenant default
+Current state:
+
+```text
+GET /api/v1/cardinality/state?mode=active
 ```
 
-The canonical envelope now accepts optional OpenTelemetry `schema_url` in
-addition to the required application `schema_version`.
+Budget status:
+
+```text
+GET /api/v1/cardinality/budgets
+```
+
+Replay and cost simulation intentionally keep isolated local hourly trackers so
+historical analysis cannot change production policy state.
 
 ## Evidence Graph
 
@@ -167,7 +184,8 @@ flowchart LR
     F --> N[Normalizer]
     N --> SI[Schema Intelligence]
     SI --> CF[Cardinality Firewall]
-    CF --> DB[(TimescaleDB)]
+    CF --> CS[(Shared Hourly HLL / Budgets)]
+    CS --> DB[(TimescaleDB)]
     CF -. candidate .-> SP[Shadow Policy]
 
     DB --> I[Frozen Incidents]
@@ -245,6 +263,20 @@ That demo establishes `orders-api / order.created` v1, introduces a missing
 required field and type conflict without changing the version, then emits a
 breaking v2 declaration. Refresh the dashboard and inspect **Schema
 Intelligence**.
+
+Exercise distributed cardinality with the existing high-cardinality generator:
+
+```bash
+make demo-cardinality
+```
+
+Then inspect **Distributed Cardinality** and **Series Budgets** in the dashboard
+or run:
+
+```bash
+go run ./cmd/telemetryctl cardinality top --mode active --tenant default
+go run ./cmd/telemetryctl cardinality budgets --tenant default
+```
 
 See [v1 Portfolio Demo](docs/demo/v1-portfolio-demo.md) and
 [Schema Intelligence](docs/schema/schema-intelligence.md).
@@ -437,12 +469,12 @@ internal/evidence/           Evidence Graph
 internal/health/             worker health/readiness
 internal/incident/           automatic incident detection
 internal/observability/      Prometheus/OpenTelemetry
-internal/policy/             Cardinality Firewall + shadow policy
+internal/policy/             Cardinality Firewall, budgets + shadow policy
 internal/reliability/        retries/error classification
 internal/replay/             isolated Incident Replay
 internal/security/           auth, tenant context, redaction
 internal/schema/             schema derivation, semantic conventions, diffs
-internal/storage/            PostgreSQL/TimescaleDB
+internal/storage/            PostgreSQL/TimescaleDB + shared cardinality state
 internal/stream/             Kafka producer/consumer/TLS/SASL/lag
 internal/worker/             bounded processing pipeline
 
@@ -459,7 +491,7 @@ docs/                        human-readable engineering docs
 
 ## Security status
 
-The v1 security boundary remains unchanged in v1.1.0. No repository can make a
+The v1 security boundary remains unchanged in v1.2.0. No repository can make a
 deployment "secure" without the environment around it.
 
 Operators remain responsible for:

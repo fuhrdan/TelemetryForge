@@ -12,12 +12,18 @@ import (
 
 type memoryRecorder struct {
 	findings   []Finding
+	budgets    []BudgetStatus
 	diffs      []Diff
 	quarantine int
 }
 
 func (recorder *memoryRecorder) RecordCardinalityFinding(_ context.Context, finding Finding) error {
 	recorder.findings = append(recorder.findings, finding)
+	return nil
+}
+
+func (recorder *memoryRecorder) RecordCardinalityBudgetStatus(_ context.Context, status BudgetStatus) error {
+	recorder.budgets = append(recorder.budgets, status)
 	return nil
 }
 
@@ -236,5 +242,88 @@ func TestCardinalityStateIsTenantIsolated(t *testing.T) {
 	}
 	if len(tracker.states) != 2 {
 		t.Fatalf("tracked states=%d, want separate state per tenant", len(tracker.states))
+	}
+}
+
+func TestBudgetUsesSeriesIdentityAndDoesNotMutateEvent(t *testing.T) {
+	active := testPolicy(ActionAllow, 1000)
+	active.Budgets = []Budget{{
+		Name: "tenant-series", Source: "*", Type: "*",
+		SeriesLimit: 2, WarningPercent: 50, CriticalPercent: 75,
+	}}
+	recorder := &memoryRecorder{}
+	engine, err := NewEngine(active, nil, recorder, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first := domain.Event{TenantID: "alpha", Source: "checkout", Type: "request.duration", Tags: map[string]string{"region": "us"}}
+	second := first
+	second.Tags = map[string]string{"region": "eu"}
+	if _, err := engine.Evaluate(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	processed, err := engine.Evaluate(context.Background(), second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if processed.Tags["region"] != "eu" {
+		t.Fatal("budget evaluation must not mutate telemetry")
+	}
+	if len(recorder.budgets) == 0 {
+		t.Fatal("expected budget status")
+	}
+	if recorder.budgets[len(recorder.budgets)-1].Status == "healthy" {
+		t.Fatal("expected budget warning/critical/exceeded state")
+	}
+}
+
+func TestBudgetValidationRejectsOverlappingThresholds(t *testing.T) {
+	candidate := testPolicy(ActionAllow, 100)
+	candidate.Budgets = []Budget{{
+		Name: "bad", Source: "*", Type: "*", SeriesLimit: 100,
+		WarningPercent: 90, CriticalPercent: 80,
+	}}
+	if err := candidate.Validate(); err == nil {
+		t.Fatal("expected invalid budget thresholds")
+	}
+}
+
+func TestLocalTrackerUsesHourlyWindows(t *testing.T) {
+	tracker := NewTracker(100)
+	start := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	first, _, _, _, _ := tracker.Observe(
+		"alpha", "checkout", "metric", "request_id", "one", start,
+	)
+	second, _, _, _, _ := tracker.Observe(
+		"alpha", "checkout", "metric", "request_id", "two", start.Add(10*time.Minute),
+	)
+	rolled, _, _, _, _ := tracker.Observe(
+		"alpha", "checkout", "metric", "request_id", "three", start.Add(time.Hour),
+	)
+	if first != 1 || second != 2 || rolled != 1 {
+		t.Fatalf("counts first=%d second=%d rolled=%d, want 1/2/1", first, second, rolled)
+	}
+}
+
+func TestBudgetValidationRejectsInvalidGlob(t *testing.T) {
+	policy := testPolicy(ActionAllow, 100)
+	policy.Budgets = []Budget{{
+		Name: "broken", Source: "[", Type: "*",
+		SeriesLimit: 1000, WarningPercent: 70, CriticalPercent: 90,
+	}}
+	if err := policy.Validate(); err == nil {
+		t.Fatal("expected malformed budget glob to fail validation")
+	}
+}
+
+func TestBudgetValidationRejectsUnsignedOverflowRange(t *testing.T) {
+	policy := testPolicy(ActionAllow, 100)
+	policy.Budgets = []Budget{{
+		Name: "too-large", Source: "*", Type: "*",
+		SeriesLimit: 1 << 63, WarningPercent: 70, CriticalPercent: 90,
+	}}
+	if err := policy.Validate(); err == nil {
+		t.Fatal("expected budget beyond PostgreSQL BIGINT range to fail validation")
 	}
 }

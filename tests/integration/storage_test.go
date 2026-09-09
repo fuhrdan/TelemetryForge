@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -589,5 +590,132 @@ func TestSchemaIntelligenceIdempotencyAndBreakingDrift(t *testing.T) {
 	}
 	if diff.Compatibility != "breaking" {
 		t.Fatalf("compatibility=%q", diff.Compatibility)
+	}
+}
+
+func TestDistributedCardinalitySharedAcrossTrackers(t *testing.T) {
+	databaseURL := os.Getenv("TELEMETRYFORGE_INTEGRATION_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TELEMETRYFORGE_INTEGRATION_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	ctx = security.WithTenant(ctx, "cardinality-integration")
+
+	store, err := storage.NewPostgresStore(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	first := storage.NewDistributedCardinalityTracker(store, "active")
+	second := storage.NewDistributedCardinalityTracker(store, "active")
+	now := time.Now().UTC()
+	source := "cardinality-" + now.Format("150405.000000000")
+
+	for index := 0; index < 12; index++ {
+		tracker := first
+		if index%2 == 1 {
+			tracker = second
+		}
+		observation, err := tracker.ObserveCardinality(
+			ctx,
+			"cardinality-integration",
+			source,
+			"request.duration",
+			"request_id",
+			fmt.Sprintf("request-%02d", index),
+			now.Add(time.Duration(index)*time.Second),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if index == 11 && observation.ObservedUnique != 12 {
+			t.Fatalf("shared observed=%d, want exact low-cardinality count 12", observation.ObservedUnique)
+		}
+	}
+
+	states, err := store.ListDistributedCardinalityStates(ctx, "active", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, state := range states {
+		if state.Source == source && state.Dimension == "request_id" {
+			found = true
+			if state.ObservedUnique != 12 {
+				t.Fatalf("listed observed=%d, want 12", state.ObservedUnique)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected shared cardinality state in API query")
+	}
+}
+
+func TestDistributedCardinalityBudgetStatus(t *testing.T) {
+	databaseURL := os.Getenv("TELEMETRYFORGE_INTEGRATION_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TELEMETRYFORGE_INTEGRATION_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	ctx = security.WithTenant(ctx, "cardinality-budget-integration")
+
+	store, err := storage.NewPostgresStore(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	active := policy.Policy{
+		Name: "integration-budget", Version: "1.2.0",
+		DefaultUniqueThreshold: 10000, DefaultAction: policy.ActionAllow,
+		Budgets: []policy.Budget{{
+			Name: "tenant-hourly-series", Source: "*", Type: "*",
+			SeriesLimit: 4, WarningPercent: 50, CriticalPercent: 75,
+		}},
+	}
+	engine, err := policy.NewEngineWithTrackers(
+		active, nil, store,
+		storage.NewDistributedCardinalityTracker(store, "active"),
+		nil, 100,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC()
+	for index := 0; index < 4; index++ {
+		event := domain.Event{
+			ID:       fmt.Sprintf("budget-%d-%d", now.UnixNano(), index),
+			TenantID: "cardinality-budget-integration",
+			Source:   "checkout-api", Type: "request.duration",
+			Timestamp:     now.Add(time.Duration(index) * time.Second),
+			SchemaVersion: "1.0",
+			Tags:          map[string]string{"region": fmt.Sprintf("region-%d", index)},
+		}
+		if _, err := engine.EvaluateAt(ctx, event, event.Timestamp); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	budgets, err := store.ListCardinalityBudgetStatus(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, budget := range budgets {
+		if budget.PolicyName == "integration-budget" && budget.BudgetName == "tenant-hourly-series" {
+			found = true
+			if budget.Status != "exceeded" {
+				t.Fatalf("budget status=%q, want exceeded", budget.Status)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected persisted budget status")
 	}
 }

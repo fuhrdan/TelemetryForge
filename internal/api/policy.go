@@ -65,3 +65,59 @@ func parsePolicyLimit(writer http.ResponseWriter, request *http.Request) (int, b
 	}
 	return limit, true
 }
+
+func (server *Server) handleCardinalityStates(writer http.ResponseWriter, request *http.Request) {
+	reader, ok := server.reader.(storage.PolicyReader)
+	if !ok {
+		writeError(writer, http.StatusNotImplemented, "policy storage is unavailable")
+		return
+	}
+	limit, ok := parsePolicyLimit(writer, request)
+	if !ok {
+		return
+	}
+	mode := request.URL.Query().Get("mode")
+	if mode == "" {
+		mode = "active"
+	}
+	if mode != "active" && mode != "shadow" {
+		writeError(writer, http.StatusBadRequest, "mode must be active or shadow")
+		return
+	}
+
+	states, err := reader.ListDistributedCardinalityStates(request.Context(), mode, limit)
+	if err != nil {
+		server.logger.Error("distributed cardinality query failed", "mode", mode, "error", err)
+		writeError(writer, http.StatusServiceUnavailable, "storage backend unavailable")
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{
+		"count":  len(states),
+		"mode":   mode,
+		"window": "1h",
+		"states": states,
+	})
+}
+
+func (server *Server) handleCardinalityBudgets(writer http.ResponseWriter, request *http.Request) {
+	reader, ok := server.reader.(storage.PolicyReader)
+	if !ok {
+		writeError(writer, http.StatusNotImplemented, "policy storage is unavailable")
+		return
+	}
+	limit, ok := parsePolicyLimit(writer, request)
+	if !ok {
+		return
+	}
+
+	budgets, err := reader.ListCardinalityBudgetStatus(request.Context(), limit)
+	if err != nil {
+		server.logger.Error("cardinality budget query failed", "error", err)
+		writeError(writer, http.StatusServiceUnavailable, "storage backend unavailable")
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{
+		"count":   len(budgets),
+		"budgets": budgets,
+	})
+}

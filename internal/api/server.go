@@ -99,6 +99,8 @@ func (server *Server) routes() {
 		server.mux.HandleFunc("GET /api/v1/live", server.handleLive)
 		if _, ok := server.reader.(storage.PolicyReader); ok {
 			server.mux.HandleFunc("GET /api/v1/cardinality/findings", server.handleCardinalityFindings)
+			server.mux.HandleFunc("GET /api/v1/cardinality/state", server.handleCardinalityStates)
+			server.mux.HandleFunc("GET /api/v1/cardinality/budgets", server.handleCardinalityBudgets)
 			server.mux.HandleFunc("GET /api/v1/policy/shadow-diffs", server.handlePolicyDiffs)
 		}
 		if _, ok := server.reader.(storage.ReplayReader); ok {

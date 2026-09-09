@@ -53,6 +53,9 @@ REQUIRED = [
     ROOT / "docs" / "schema" / "schema-intelligence.md",
     ROOT / "docs" / "schema" / "opentelemetry-semantic-conventions.md",
     ROOT / "docs" / "roadmap" / "v1.1.0.md",
+    ROOT / "docs" / "roadmap" / "v1.2.0.md",
+    ROOT / "docs" / "cardinality" / "distributed-cardinality.md",
+    ROOT / "docs" / "cardinality" / "budgets.md",
 ]
 
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

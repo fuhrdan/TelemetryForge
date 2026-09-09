@@ -157,3 +157,22 @@ producer-controlled field names are still untrusted metadata.
 v1.1.0 therefore caps each accumulated schema version at 2,048 unique field
 paths and caps per-event discovery at 512 paths / five payload levels. This
 prevents dynamic key generation from creating unbounded registry state.
+
+
+## Distributed cardinality privacy
+
+v1.2 shared cardinality state does not persist raw tag values.
+
+It stores:
+
+- fixed HLL register bytes;
+- up to 16 signed 64-bit representations of SHA-256-derived hashes; and
+- aggregate timing/count metadata.
+
+The short finding fingerprint and stored hashes are **not anonymization**. As
+with earlier finding fingerprints, low-entropy values can be dictionary-tested.
+Database access should remain restricted.
+
+Series-budget identities are assembled in process and hashed before shared
+state persistence; the full series string is not stored in the cardinality
+state table.

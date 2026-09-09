@@ -12,8 +12,8 @@
 | v0.8.0 | Released | Kubernetes, Cardinality Firewall, Terraform, policy/shadow pipeline |
 | v0.9.0 | Released | Incident Replay, Cost Simulator, self-observability, real Kafka lag, k6 methodology |
 | v1.0.0 | Released | Evidence Graph, auth/tenant isolation, redaction, Kafka security, production profile/runbooks |
-| **v1.1.0** | **Current release** | **Schema Intelligence, schema history/drift, OpenTelemetry semantic-convention awareness** |
-| v1.2.0 | Planned | Distributed Cardinality Intelligence |
+| v1.1.0 | Delivered development milestone | Schema Intelligence, schema history/drift, OpenTelemetry semantic-convention awareness |
+| **v1.2.0** | **Current development release** | **Distributed Cardinality Intelligence, hourly series budgets, forecasting** |
 | v1.3.0 | Planned | Multi-destination Telemetry Router |
 | v1.4.0 | Planned | Adaptive Sampling & Telemetry Shaping |
 | v1.5.0 | Planned | Portable `.tfincident` incident archives |
@@ -23,48 +23,43 @@
 | v1.9.0 | Planned | Scale, HA, chaos and operational proof |
 | v2.0.0 | Planned | Evidence-first intelligent telemetry control plane |
 
-## v1.1.0 delivered
+## v1.2.0 delivered
 
-### Schema registry
+### Shared cardinality state
 
-- tenant-scoped source/type/version registry
-- optional OpenTelemetry `schema_url`
-- bounded payload field discovery
-- deterministic value-free schema fingerprints
-- event-ID idempotent observations
-- schema history by application-declared version
+- production PostgreSQL/TimescaleDB-backed cardinality tracker
+- atomic HLL register merge across worker replicas
+- exact first-16 hashed uniques
+- tenant/active-shadow/source/type/dimension/hour key
+- seven-day shared-state retention
+- same hourly semantics in isolated replay/cost trackers
 
-### Drift intelligence
+### Cardinality forecasting
 
-- additive field detection
-- same-version JSON type conflicts
-- required-field inference after an observation floor
-- breaking removal of established required fields
-- cross-version compatibility diff
-- sticky per-version health (`healthy`, `warning`, `breaking`)
+- observed unique counts
+- one-hour projected unique counts
+- unique growth/minute
+- top exploding dimensions API/dashboard/CLI
 
-### OpenTelemetry awareness
+### Series budgets
 
-- focused high-value semantic-attribute catalog
-- stable attribute recognition
-- legacy HTTP/deployment/network migration warnings
-- payload JSON semantic type checks
-- separate application `schema_version` from OpenTelemetry `schema_url`
+- versioned policy budgets
+- tenant-wide and source-pattern scopes
+- full series-identity estimation
+- warning / critical / exceeded thresholds
+- active/shadow policy budget visibility
+- non-destructive budget contract
 
 ### Operations
 
-- fail-open schema registration by default
-- `telemetryctl schema inspect`
-- `telemetryctl schema diff`
-- schema registry/history/drift APIs
-- Schema Health dashboard
-- deterministic `make demo-schema`
+- `telemetryctl cardinality top`
+- `telemetryctl cardinality budgets`
+- distributed state/budget APIs
+- dashboard panels
+- integration coverage for shared state across independent tracker instances
+- ADRs 0028-0029
 
-## v1.2.0 next
+## v1.3.0 next
 
-Move Cardinality Firewall estimation from replica-local state toward a shared,
-tenant-aware cluster view with budgets, trend forecasting, and consistent
-decisions across workers.
-
-See the 1.x -> 2.0 roadmap in the repository history for the longer product
-sequence.
+Build a multi-destination Telemetry Router with destination-isolated retry,
+health, DLQ, fan-out, fallback, and shadow routing policy.

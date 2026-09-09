@@ -15,6 +15,7 @@ import (
 // values in findings.
 type Recorder interface {
 	RecordCardinalityFinding(ctx context.Context, finding Finding) error
+	RecordCardinalityBudgetStatus(ctx context.Context, status BudgetStatus) error
 	RecordPolicyDiff(ctx context.Context, diff Diff) error
 	RecordQuarantine(ctx context.Context, event domain.Event, reason string) error
 }
@@ -41,9 +42,9 @@ type Diff struct {
 // can change tracking/threshold behavior without mutating production decisions.
 type Engine struct {
 	active        Policy
-	activeTracker *Tracker
+	activeTracker CardinalityTracker
 	shadow        *Policy
-	shadowTracker *Tracker
+	shadowTracker CardinalityTracker
 	recorder      Recorder
 
 	reportMu         sync.Mutex
@@ -60,30 +61,56 @@ type reportKey struct {
 	action    Action
 }
 
-// NewEngine creates a cardinality-policy engine.
+// NewEngine creates a local cardinality-policy engine.
+//
+// Replay, cost simulation, and unit tests use this constructor deliberately so
+// historical analysis cannot mutate production distributed cardinality state.
 func NewEngine(active Policy, shadow *Policy, recorder Recorder, maxDimensions int) (*Engine, error) {
+	activeTracker := CardinalityTracker(NewTracker(maxDimensions))
+	var shadowTracker CardinalityTracker
+	if shadow != nil {
+		shadowTracker = NewTracker(maxDimensions)
+	}
+	return NewEngineWithTrackers(active, shadow, recorder, activeTracker, shadowTracker, maxDimensions)
+}
+
+// NewEngineWithTrackers creates a policy engine with explicit cardinality
+// state providers. Production v1.2 workers inject shared PostgreSQL-backed
+// trackers for active/shadow policy.
+func NewEngineWithTrackers(
+	active Policy,
+	shadow *Policy,
+	recorder Recorder,
+	activeTracker CardinalityTracker,
+	shadowTracker CardinalityTracker,
+	maxDimensions int,
+) (*Engine, error) {
 	if err := active.Validate(); err != nil {
 		return nil, err
+	}
+	if activeTracker == nil {
+		return nil, fmt.Errorf("active cardinality tracker is required")
 	}
 	if shadow != nil {
 		if err := shadow.Validate(); err != nil {
 			return nil, fmt.Errorf("shadow policy: %w", err)
 		}
+		if shadowTracker == nil {
+			return nil, fmt.Errorf("shadow cardinality tracker is required when shadow policy is configured")
+		}
 	}
 
 	engine := &Engine{
 		active:           active,
-		activeTracker:    NewTracker(maxDimensions),
+		activeTracker:    activeTracker,
 		shadow:           shadow,
+		shadowTracker:    shadowTracker,
 		recorder:         recorder,
 		lastReport:       make(map[reportKey]time.Time),
 		maxReportEntries: maxDimensions * 4,
 	}
 	if engine.maxReportEntries < 100 {
 		engine.maxReportEntries = 100
-	}
-	if shadow != nil {
-		engine.shadowTracker = NewTracker(maxDimensions)
 	}
 	return engine, nil
 }
@@ -110,14 +137,24 @@ func (engine *Engine) EvaluateAt(
 	event domain.Event,
 	now time.Time,
 ) (domain.Event, error) {
-	if len(event.Tags) == 0 {
-		return event, nil
-	}
 	if now.IsZero() {
 		now = time.Now().UTC()
 	} else {
 		now = now.UTC()
 	}
+
+	if err := engine.evaluateBudgets(ctx, engine.active, engine.activeTracker, "active", event, now); err != nil {
+		return domain.Event{}, err
+	}
+	if engine.shadow != nil {
+		if err := engine.evaluateBudgets(ctx, *engine.shadow, engine.shadowTracker, "shadow", event, now); err != nil {
+			return domain.Event{}, err
+		}
+	}
+	if len(event.Tags) == 0 {
+		return event, nil
+	}
+
 	dimensions := make([]string, 0, len(event.Tags))
 	for dimension := range event.Tags {
 		dimensions = append(dimensions, dimension)
@@ -131,7 +168,8 @@ func (engine *Engine) EvaluateAt(
 
 	for _, dimension := range dimensions {
 		value := event.Tags[dimension]
-		activeFinding := engine.evaluate(
+		activeFinding, err := engine.evaluate(
+			ctx,
 			engine.active,
 			engine.activeTracker,
 			"active",
@@ -140,6 +178,9 @@ func (engine *Engine) EvaluateAt(
 			value,
 			now,
 		)
+		if err != nil {
+			return domain.Event{}, err
+		}
 
 		if activeFinding != nil {
 			if engine.recorder != nil && engine.shouldReport(*activeFinding, now) {
@@ -162,7 +203,8 @@ func (engine *Engine) EvaluateAt(
 		}
 
 		if engine.shadow != nil {
-			shadowFinding := engine.evaluate(
+			shadowFinding, err := engine.evaluate(
+				ctx,
 				*engine.shadow,
 				engine.shadowTracker,
 				"shadow",
@@ -171,6 +213,9 @@ func (engine *Engine) EvaluateAt(
 				value,
 				now,
 			)
+			if err != nil {
+				return domain.Event{}, err
+			}
 
 			activeAction := ActionAllow
 			if activeFinding != nil {
@@ -231,22 +276,23 @@ func (engine *Engine) EvaluateAt(
 }
 
 func (engine *Engine) evaluate(
+	ctx context.Context,
 	policy Policy,
-	tracker *Tracker,
+	tracker CardinalityTracker,
 	mode string,
 	event domain.Event,
 	dimension, value string,
 	now time.Time,
-) *Finding {
+) (*Finding, error) {
 	threshold, action, dangerous := policy.Decision(event.Source, event.Type, dimension)
-	observed, projected, firstSeen, lastSeen, fingerprint := tracker.Observe(
-		event.TenantID,
-		event.Source,
-		event.Type,
-		dimension,
-		value,
-		now,
+	observation, err := tracker.ObserveCardinality(
+		ctx, event.TenantID, event.Source, event.Type, dimension, value, now,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("observe cardinality: %w", err)
+	}
+	observed := observation.ObservedUnique
+	projected := observation.ProjectedUnique
 
 	thresholdCrossed := observed >= threshold || projected >= threshold
 	earlyDangerousWarning := dangerous &&
@@ -254,7 +300,7 @@ func (engine *Engine) evaluate(
 		!thresholdCrossed
 
 	if !thresholdCrossed && !earlyDangerousWarning {
-		return nil
+		return nil, nil
 	}
 
 	effectiveAction := action
@@ -290,10 +336,101 @@ func (engine *Engine) evaluate(
 		ProjectedUnique:  projected,
 		Action:           effectiveAction,
 		Reason:           reason,
-		ValueFingerprint: fingerprint,
-		FirstSeen:        firstSeen,
-		LastSeen:         lastSeen,
+		ValueFingerprint: observation.Fingerprint,
+		FirstSeen:        observation.FirstSeen,
+		LastSeen:         observation.LastSeen,
+	}, nil
+}
+
+const budgetSeriesDimension = "__series__"
+
+func (engine *Engine) evaluateBudgets(
+	ctx context.Context,
+	policy Policy,
+	tracker CardinalityTracker,
+	mode string,
+	event domain.Event,
+	now time.Time,
+) error {
+	budgets := policy.MatchingBudgets(event.Source, event.Type)
+	if len(budgets) == 0 {
+		return nil
 	}
+
+	for _, budget := range budgets {
+		// Budget state is keyed by budget name rather than one concrete source.
+		// That lets a tenant-wide `* / *` budget aggregate series across every
+		// matching source/type while a narrower budget aggregates only its scope.
+		observation, err := tracker.ObserveCardinality(
+			ctx, event.TenantID, "__budget__", budget.Name,
+			budgetSeriesDimension, seriesIdentity(event), now,
+		)
+		if err != nil {
+			return fmt.Errorf("observe series budget %q: %w", budget.Name, err)
+		}
+
+		risk := observation.ProjectedUnique
+		if observation.ObservedUnique > risk {
+			risk = observation.ObservedUnique
+		}
+		percent := 100 * float64(risk) / float64(budget.SeriesLimit)
+		status := "healthy"
+		switch {
+		case percent >= 100:
+			status = "exceeded"
+		case percent >= budget.CriticalPercent:
+			status = "critical"
+		case percent >= budget.WarningPercent:
+			status = "warning"
+		}
+
+		budgetStatus := BudgetStatus{
+			TenantID: event.TenantID, PolicyName: policy.Name,
+			PolicyVersion: policy.Version, Mode: mode, BudgetName: budget.Name,
+			Source: budget.Source, EventType: budget.Type,
+			WindowStart: observation.WindowStart, SeriesLimit: budget.SeriesLimit,
+			ObservedUnique:     observation.ObservedUnique,
+			ProjectedUnique:    observation.ProjectedUnique,
+			ConsumptionPercent: percent, Status: status, ObservedAt: now,
+		}
+		if engine.recorder != nil && engine.shouldReportBudget(budgetStatus, now) {
+			if err := engine.recorder.RecordCardinalityBudgetStatus(ctx, budgetStatus); err != nil {
+				return fmt.Errorf("record cardinality budget status: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+func seriesIdentity(event domain.Event) string {
+	keys := make([]string, 0, len(event.Tags))
+	for key := range event.Tags {
+		if strings.HasPrefix(strings.ToLower(key), "telemetryforge.") {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	var builder strings.Builder
+	builder.WriteString(event.Source)
+	builder.WriteByte('|')
+	builder.WriteString(event.Type)
+	for _, key := range keys {
+		builder.WriteByte('|')
+		builder.WriteString(key)
+		builder.WriteByte('=')
+		builder.WriteString(event.Tags[key])
+	}
+	return builder.String()
+}
+
+func (engine *Engine) shouldReportBudget(status BudgetStatus, now time.Time) bool {
+	return engine.reserveReportInterval(reportKey{
+		tenant: status.TenantID, mode: "budget:" + status.Mode,
+		source: status.Source, eventType: status.EventType,
+		dimension: status.BudgetName, action: Action(status.Status),
+	}, now, 10*time.Second)
 }
 
 func cloneTags(tags map[string]string) map[string]string {
@@ -349,19 +486,26 @@ func (engine *Engine) shouldReportDiff(
 }
 
 func (engine *Engine) reserveReport(key reportKey, now time.Time) bool {
+	return engine.reserveReportInterval(key, now, time.Minute)
+}
+
+func (engine *Engine) reserveReportInterval(key reportKey, now time.Time, interval time.Duration) bool {
 	engine.reportMu.Lock()
 	defer engine.reportMu.Unlock()
 
-	const reportInterval = time.Minute
-	if last := engine.lastReport[key]; !last.IsZero() && now.Sub(last) < reportInterval {
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	if last := engine.lastReport[key]; !last.IsZero() && now.Sub(last) < interval {
 		return false
 	}
 
 	// Keep reporting metadata bounded by the same order of magnitude as tracked
 	// dimensions. Old entries can be dropped because they only suppress duplicate
-	// findings; dropping them may emit an extra finding but cannot alter policy.
+	// findings/status snapshots; dropping one may emit an extra record but cannot
+	// alter policy behavior.
 	if len(engine.lastReport) > engine.maxReportEntries {
-		cutoff := now.Add(-reportInterval)
+		cutoff := now.Add(-time.Minute)
 		for existing, timestamp := range engine.lastReport {
 			if timestamp.Before(cutoff) {
 				delete(engine.lastReport, existing)

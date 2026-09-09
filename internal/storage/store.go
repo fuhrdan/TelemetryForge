@@ -12,6 +12,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/costsim"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/evidence"
+	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
 	"github.com/fuhrdan/TelemetryForge/internal/schema"
 )
@@ -41,6 +42,8 @@ type Reader interface {
 type PolicyReader interface {
 	ListCardinalityFindings(ctx context.Context, limit int) ([]CardinalityFinding, error)
 	ListPolicyDiffs(ctx context.Context, limit int) ([]PolicyDiff, error)
+	ListDistributedCardinalityStates(ctx context.Context, mode string, limit int) ([]policy.DistributedState, error)
+	ListCardinalityBudgetStatus(ctx context.Context, limit int) ([]policy.BudgetStatus, error)
 }
 
 // ReplayReader exposes incident replay and cost-simulation history.

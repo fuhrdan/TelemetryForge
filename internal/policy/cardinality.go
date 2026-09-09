@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"math"
@@ -32,13 +33,54 @@ type Finding struct {
 	LastSeen         time.Time `json:"last_seen"`
 }
 
+// Observation is the cluster/local cardinality result returned to policy.
+// Values are hashes/counts only; raw dimension values are never retained here.
+type Observation struct {
+	ObservedUnique  uint64    `json:"observed_unique"`
+	ProjectedUnique uint64    `json:"projected_unique"`
+	FirstSeen       time.Time `json:"first_seen"`
+	LastSeen        time.Time `json:"last_seen"`
+	WindowStart     time.Time `json:"window_start"`
+	Samples         uint64    `json:"samples"`
+	Fingerprint     string    `json:"value_fingerprint"`
+}
+
+// CardinalityTracker is the policy-facing cardinality state contract.
+// Production v1.2 workers use a shared PostgreSQL/TimescaleDB implementation;
+// replay/cost simulation intentionally use the local bounded implementation so
+// historical analysis cannot mutate live production cardinality state.
+type CardinalityTracker interface {
+	ObserveCardinality(
+		ctx context.Context,
+		tenant, source, eventType, dimension, value string,
+		now time.Time,
+	) (Observation, error)
+}
+
+// DistributedState is one API/dashboard view of shared cardinality state.
+type DistributedState struct {
+	TenantID        string    `json:"tenant_id,omitempty"`
+	Mode            string    `json:"mode"`
+	Source          string    `json:"source"`
+	EventType       string    `json:"event_type"`
+	Dimension       string    `json:"dimension"`
+	WindowStart     time.Time `json:"window_start"`
+	ObservedUnique  uint64    `json:"observed_unique"`
+	ProjectedUnique uint64    `json:"projected_unique"`
+	GrowthPerMinute float64   `json:"growth_per_minute"`
+	Samples         uint64    `json:"samples"`
+	FirstSeen       time.Time `json:"first_seen"`
+	LastSeen        time.Time `json:"last_seen"`
+}
+
 // dimensionKey identifies one source/event/tag stream without retaining a raw
 // dimension value.
 type dimensionKey struct {
-	tenant    string
-	source    string
-	eventType string
-	dimension string
+	tenant      string
+	source      string
+	eventType   string
+	dimension   string
+	windowStart time.Time
 }
 
 type cardinalityState struct {
@@ -77,6 +119,23 @@ func NewTracker(maxDimensions int) *Tracker {
 	}
 }
 
+// ObserveCardinality implements CardinalityTracker using bounded in-memory
+// state. It is retained for replay/cost simulation and single-process tests.
+func (tracker *Tracker) ObserveCardinality(
+	_ context.Context,
+	tenant, source, eventType, dimension, value string,
+	now time.Time,
+) (Observation, error) {
+	observed, projected, firstSeen, lastSeen, fingerprint := tracker.Observe(
+		tenant, source, eventType, dimension, value, now,
+	)
+	return Observation{
+		ObservedUnique: observed, ProjectedUnique: projected,
+		FirstSeen: firstSeen, LastSeen: lastSeen, WindowStart: now.UTC().Truncate(time.Hour),
+		Fingerprint: fingerprint,
+	}, nil
+}
+
 // Observe adds one value and returns the approximate unique count, projected
 // one-hour growth, first/last timestamps, and a truncated SHA-256 fingerprint.
 //
@@ -87,8 +146,10 @@ func (tracker *Tracker) Observe(
 	tenant, source, eventType, dimension, value string,
 	now time.Time,
 ) (observed, projected uint64, firstSeen, lastSeen time.Time, fingerprint string) {
+	windowStart := now.UTC().Truncate(time.Hour)
 	key := dimensionKey{
 		tenant: tenant, source: source, eventType: eventType, dimension: dimension,
+		windowStart: windowStart,
 	}
 	hash := hashValue(value)
 
@@ -167,10 +228,56 @@ func (tracker *Tracker) evictOldestLocked() {
 	}
 }
 
+// HashCardinalityValue returns the fixed-width SHA-256-derived hash used by
+// both local and distributed trackers.
+func HashCardinalityValue(value string) uint64 { return hashValue(value) }
+
+// HLLRegister returns the 64-register index/rank for one hashed value.
+func HLLRegister(hash uint64) (int, uint8) {
+	index := int(hash & (registerCount - 1))
+	remaining := hash >> 6
+	rank := uint8(1)
+	for rank < 59 && remaining&1 == 0 {
+		rank++
+		remaining >>= 1
+	}
+	return index, rank
+}
+
+// EstimateState evaluates a persisted shared HLL/exact state.
+func EstimateState(registers []byte, exactCount int, exactOverflow bool) uint64 {
+	if !exactOverflow {
+		return uint64(exactCount)
+	}
+	if len(registers) != registerCount {
+		return 0
+	}
+	estimator := newHyperLogLog()
+	copy(estimator.registers[:], registers)
+	return estimator.Count()
+}
+
+// ProjectOneHour estimates unique growth through the end of a one-hour window.
+// It requires at least ten samples and thirty seconds before projecting.
+func ProjectOneHour(observed uint64, samples uint64, firstSeen, now time.Time) uint64 {
+	projected := observed
+	elapsed := now.Sub(firstSeen)
+	if elapsed >= 30*time.Second && elapsed < time.Hour && samples >= 10 {
+		value := float64(observed) * float64(time.Hour) / float64(elapsed)
+		if value > float64(observed) {
+			projected = uint64(math.Ceil(value))
+		}
+	}
+	return projected
+}
+
 func hashValue(value string) uint64 {
 	digest := sha256.Sum256([]byte(value))
 	return binary.BigEndian.Uint64(digest[:8])
 }
+
+// FingerprintHash returns the short operational fingerprint for a hashed value.
+func FingerprintHash(hash uint64) string { return shortFingerprint(hash) }
 
 func shortFingerprint(hash uint64) string {
 	var raw [8]byte
@@ -186,8 +293,8 @@ func shortFingerprint(hash uint64) string {
 
 // hyperLogLog is a compact 64-register estimator.
 //
-// It intentionally uses a very small implementation because TelemetryForge only
-// needs an operational warning signal in v0.8.0, not billing-grade cardinality.
+// It intentionally uses a very small implementation because TelemetryForge needs
+// an operational policy signal, not billing-grade exact cardinality.
 type hyperLogLog struct {
 	registers [registerCount]uint8
 }

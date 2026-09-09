@@ -29,9 +29,13 @@ Flight Recorder
 normalize
   |
   v
+Schema Intelligence
+  |
+  v
 Cardinality Firewall
-  |                \
-  |                 `--> shadow-policy comparison
+  |        |       \
+  |        |        `--> shadow-policy comparison
+  |        `-----------> shared hourly HLL / series budgets
   v
 TimescaleDB
   |
@@ -57,21 +61,24 @@ Gateway/dashboard replicas scale independently.
 Worker replicas are constrained by Kafka partition ownership. Internal worker
 goroutines are a separate concurrency layer.
 
-Cardinality estimates are currently replica-local and bounded. The design
-intentionally documents that limitation rather than pretending replica-local
-HyperLogLog state is a cluster-global count.
+Production cardinality estimates are no longer replica-local in v1.2.0. Worker
+replicas atomically merge fixed-size hourly HLL state through TimescaleDB. The
+same tenant/mode/source/type/dimension therefore produces materially consistent
+policy decisions regardless of which worker processed the Kafka partition.
+
+Incident Replay and the Cost Simulator intentionally keep local hourly trackers
+so historical analysis cannot mutate production state.
 
 ## Deployment
 
 The same runtime contract is available through:
 
 - local Docker Compose;
-- Kubernetes Kustomize base; and
+- Kubernetes Kustomize base/production overlay; and
 - AWS EKS foundation created by Terraform.
 
 Kafka and TimescaleDB endpoints remain configuration contracts across all three
 deployment modes.
-
 
 ## Schema Intelligence boundary
 

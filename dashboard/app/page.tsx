@@ -49,6 +49,36 @@ type CardinalityFinding = {
   last_seen: string;
 };
 
+type DistributedCardinalityState = {
+  mode: "active" | "shadow";
+  source: string;
+  event_type: string;
+  dimension: string;
+  window_start: string;
+  observed_unique: number;
+  projected_unique: number;
+  growth_per_minute: number;
+  samples: number;
+  first_seen: string;
+  last_seen: string;
+};
+
+type CardinalityBudgetStatus = {
+  policy_name: string;
+  policy_version: string;
+  mode: "active" | "shadow";
+  budget_name: string;
+  source: string;
+  event_type: string;
+  window_start: string;
+  series_limit: number;
+  observed_unique: number;
+  projected_unique: number;
+  consumption_percent: number;
+  status: "healthy" | "warning" | "critical" | "exceeded";
+  observed_at: string;
+};
+
 type PolicyDiff = {
   observed_at: string;
   source: string;
@@ -240,6 +270,8 @@ export default function Dashboard() {
   const [streamState, setStreamState] = useState("connecting");
   const [sourceFilter, setSourceFilter] = useState("");
   const [findings, setFindings] = useState<CardinalityFinding[]>([]);
+  const [cardinalityStates, setCardinalityStates] = useState<DistributedCardinalityState[]>([]);
+  const [cardinalityBudgets, setCardinalityBudgets] = useState<CardinalityBudgetStatus[]>([]);
   const [policyDiffs, setPolicyDiffs] = useState<PolicyDiff[]>([]);
   const [replayRuns, setReplayRuns] = useState<ReplayRun[]>([]);
   const [costSimulations, setCostSimulations] = useState<CostSimulation[]>([]);
@@ -253,6 +285,8 @@ export default function Dashboard() {
       summaryResponse,
       incidentResponse,
       findingResponse,
+      cardinalityStateResponse,
+      cardinalityBudgetResponse,
       diffResponse,
       replayResponse,
       costResponse,
@@ -262,6 +296,8 @@ export default function Dashboard() {
       fetch("/telemetry-api/api/v1/dashboard/summary?window=5m", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/incidents?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/cardinality/findings?limit=30", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/cardinality/state?mode=active&limit=30", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/cardinality/budgets?limit=30", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/policy/shadow-diffs?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/replays?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/cost-simulations?limit=20", { cache: "no-store" }),
@@ -279,6 +315,14 @@ export default function Dashboard() {
     if (findingResponse.ok) {
       const payload = await findingResponse.json();
       setFindings(payload.findings ?? []);
+    }
+    if (cardinalityStateResponse.ok) {
+      const payload = await cardinalityStateResponse.json();
+      setCardinalityStates(payload.states ?? []);
+    }
+    if (cardinalityBudgetResponse.ok) {
+      const payload = await cardinalityBudgetResponse.json();
+      setCardinalityBudgets(payload.budgets ?? []);
     }
     if (diffResponse.ok) {
       const payload = await diffResponse.json();
@@ -635,6 +679,70 @@ export default function Dashboard() {
               </div>
             ))}
             {schemaDrift.length === 0 && <div className="empty schema-empty">No schema drift findings yet.</div>}
+          </div>
+        </article>
+      </section>
+
+      <section className="cardinality-intelligence-grid">
+        <article className="panel cardinality-cluster-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">DISTRIBUTED CARDINALITY</div>
+              <h2>Top exploding dimensions · current hour</h2>
+            </div>
+            <span className="count-badge">{cardinalityStates.length}</span>
+          </div>
+          <div className="cardinality-state-table">
+            <div className="cardinality-state-header">
+              <span>Source / dimension</span><span>Observed</span><span>Projected</span><span>Unique/min</span>
+            </div>
+            {cardinalityStates.slice(0, 14).map((state) => (
+              <div className="cardinality-state-row" key={`${state.source}-${state.event_type}-${state.dimension}`}>
+                <div>
+                  <strong>{state.source} · {state.dimension}</strong>
+                  <span>{state.event_type}</span>
+                </div>
+                <span>{compact(state.observed_unique)}</span>
+                <span className={state.projected_unique > state.observed_unique ? "projection-hot" : ""}>
+                  {compact(state.projected_unique)}
+                </span>
+                <span>{state.growth_per_minute.toFixed(1)}</span>
+              </div>
+            ))}
+            {cardinalityStates.length === 0 && (
+              <div className="empty cardinality-empty">No shared cardinality state in the current hourly window.</div>
+            )}
+          </div>
+        </article>
+
+        <article className="panel budget-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">SERIES BUDGETS</div>
+              <h2>Tenant / source policy consumption</h2>
+            </div>
+            <span className="count-badge">{cardinalityBudgets.length}</span>
+          </div>
+          <div className="budget-list">
+            {cardinalityBudgets.slice(0, 12).map((budget) => (
+              <div className="budget-row" key={`${budget.mode}-${budget.policy_name}-${budget.budget_name}`}>
+                <div className="budget-title">
+                  <strong>{budget.budget_name}</strong>
+                  <span>{budget.source} · {budget.event_type} · {budget.mode}</span>
+                </div>
+                <div className="budget-progress">
+                  <div className={`budget-fill ${budget.status}`} style={{ width: `${Math.min(100, budget.consumption_percent)}%` }} />
+                </div>
+                <div className="budget-values">
+                  <strong>{budget.consumption_percent.toFixed(1)}%</strong>
+                  <span>{compact(budget.observed_unique)} observed · {compact(budget.projected_unique)} projected / {compact(budget.series_limit)}</span>
+                </div>
+                <span className={`budget-status ${budget.status}`}>{budget.status}</span>
+              </div>
+            ))}
+            {cardinalityBudgets.length === 0 && (
+              <div className="empty cardinality-empty">No budget observations yet. Budgets populate as matching telemetry arrives.</div>
+            )}
           </div>
         </article>
       </section>

@@ -1,163 +1,158 @@
-# TelemetryForge v1.1.0 Release Notes
+# TelemetryForge v1.2.0 Release Notes
 
-## Schema Intelligence
+## Distributed Cardinality Intelligence
 
-v1.1.0 adds a versioned, tenant-aware schema registry that learns from real
-telemetry after normalization and before policy mutation.
+v1.2.0 turns the Cardinality Firewall from a replica-local warning mechanism
+into a shared cluster control.
 
-The feature is advisory by design: schema drift is explained and surfaced, not
-used as an automatic ingestion rejection mechanism.
+Production workers now merge cardinality observations through fixed-size hourly
+state in PostgreSQL/TimescaleDB. A dimension therefore sees the same shared
+estimate regardless of which Kafka partition/worker replica observed the value.
 
-## Registry model
+## Shared estimator
 
-Each schema is keyed by:
+The cluster key is:
 
 ```text
 tenant_id
+active/shadow mode
 source
 event_type
-schema_version
+dimension
+hourly window
 ```
 
-The canonical envelope also accepts optional:
+Each row stores:
+
+- 64 HLL registers;
+- up to 16 SHA-256-derived hashes for exact low-cardinality counting;
+- first/last observation timestamps; and
+- sample count.
+
+Raw tag values are never persisted in shared cardinality state.
+
+Each observation atomically raises one HLL register with
+`max(existing,incoming)`, which is the merge operation required to combine
+replica observations safely.
+
+## Hourly policy semantics
+
+Dimension thresholds now apply to the current one-hour UTC window.
+
+Projection still requires at least ten samples and thirty seconds before
+scaling observed unique values to the one-hour horizon.
+
+Incident Replay and the Cost Simulator use local bounded trackers with the same
+hourly window semantics. Historical analysis never writes production
+cardinality state.
+
+## Series budgets
+
+Policy JSON can now define versioned hourly series budgets.
+
+Example:
+
+```json
+{
+  "name": "tenant-hourly-series",
+  "source": "*",
+  "type": "*",
+  "series_limit": 50000,
+  "warning_percent": 70,
+  "critical_percent": 90
+}
+```
+
+Budget identity hashes the full telemetry series:
 
 ```text
-schema_url
+source + event type + sorted non-TelemetryForge tags
 ```
 
-for the OpenTelemetry semantic-convention schema identifier.
+This measures distinct series shapes rather than incorrectly summing individual
+label cardinalities.
 
-Application `schema_version` and OpenTelemetry `schema_url` remain distinct.
-
-## Drift detection
-
-v1.1 records:
-
-- additive fields as `info`;
-- same-version JSON type changes as `breaking`;
-- established required-field disappearance as `breaking`;
-- legacy semantic-convention names as `warning`;
-- changed `schema_url` under the same application version as `warning`;
-- version-to-version field additions/removals/type changes.
-
-A field becomes inferred required only after at least 20 observations and at
-least 95% presence. This avoids treating sparse optional fields as mandatory.
-
-## Bounded inspection
-
-Per event, Schema Intelligence is bounded to:
+Statuses:
 
 ```text
-512 fields
-5 payload nesting levels
+healthy
+warning
+critical
+exceeded
 ```
 
-Oversized shapes create a `schema_truncated` warning and continue through the
-normal telemetry pipeline.
+Budgets are advisory. They do not drop, quarantine, or sample telemetry.
+Explicit dimension policy remains the mutation mechanism.
 
-Accumulated state is separately bounded to 2,048 unique field paths per
-tenant/source/type/version. Additional dynamic paths stop accumulating and
-produce a deduplicated `registry_field_limit` warning rather than growing the
-registry indefinitely.
+## Dashboard
 
-## Retry / failure safety
+Added **Distributed Cardinality** and **Series Budgets** panels showing:
 
-Schema observations use:
-
-```text
-PRIMARY KEY (tenant_id, event_id)
-```
-
-so Kafka retry cannot inflate counts.
-
-The per-event observation ledger can be pruned with
-`telemetryctl schema prune`; the conservative default is 35 days and does not
-delete accumulated registry/drift history.
-
-Registry dependency failures are fail-open by default:
-
-```text
-TELEMETRYFORGE_SCHEMA_FAIL_OPEN=true
-```
-
-An operator may explicitly choose fail-closed behavior.
-
-## OpenTelemetry awareness
-
-The built-in compatibility subset recognizes high-value stable attributes such
-as:
-
-```text
-service.name
-deployment.environment.name
-http.request.method
-http.response.status_code
-network.protocol.version
-server.address
-server.port
-url.scheme
-```
-
-It also warns on common legacy names including `http.method` and
-`http.status_code`.
-
-The focused catalog was aligned with OpenTelemetry Semantic Conventions 1.44.0
-at release-build time; it is intentionally not a bundled copy of the full
-upstream registry.
+- top projected-growth dimensions;
+- observed/projected uniques;
+- unique growth per minute;
+- active hourly window;
+- budget scope;
+- active/shadow policy version;
+- budget consumption percentage; and
+- healthy/warning/critical/exceeded state.
 
 ## API
 
 Added:
 
 ```text
-GET /api/v1/schemas
-GET /api/v1/schema-history?source=...&type=...
-GET /api/v1/schema-drift
-GET /api/v1/schema-diff?source=...&type=...&from=...&to=...
+GET /api/v1/cardinality/state?mode=active&limit=30
+GET /api/v1/cardinality/budgets?limit=100
 ```
 
-All endpoints inherit the v1 authenticated tenant boundary.
+Both remain tenant-scoped through the v1 authentication boundary.
 
 ## CLI
 
 Added:
 
 ```bash
-telemetryctl schema inspect --source orders-api --type order.created
-telemetryctl schema diff --source orders-api --type order.created --from 1.0 --to 2.0
-telemetryctl schema prune --older-than 840h
+telemetryctl cardinality top --mode active --limit 25 --tenant default
+telemetryctl cardinality budgets --tenant default
 ```
 
-## Dashboard
-
-Added a **Schema Intelligence** surface showing:
-
-- current schema health counts;
-- latest source/type/version registry entries;
-- field and inferred-required counts;
-- selectable schema version history; and
-- recent drift findings.
-
-## Demo
-
-```bash
-make demo-schema
-```
-
-creates an established schema, same-version drift, a legacy semantic attribute,
-and a deliberately breaking v2 declaration.
+`telemetryctl policy validate` now reports configured budget count and validates
+budget names/limits/threshold percentages.
 
 ## Database
 
-Migration `008_schema_intelligence.sql` adds:
+Migration `009_distributed_cardinality.sql` adds:
 
-- `schema_observations`
-- `schema_registry`
-- `schema_drift_findings`
+- `cardinality_cluster_state` TimescaleDB hypertable;
+- seven-day shared-state retention; and
+- `cardinality_budget_status` current-status table.
 
-## Security / compatibility
+## Policy defaults
 
-The v1.0 authentication, tenant-isolation, dashboard proxy, redaction, Kafka
-security, and production deployment boundaries remain in place.
+The checked-in active/shadow policies now include:
 
-Schema registry reads and writes are tenant-scoped.
+- a tenant-wide hourly series budget; and
+- a narrower checkout-source hourly series budget.
+
+The shadow policy intentionally uses lower candidate budgets so operators can
+compare pressure before promotion.
+
+## Failure behavior
+
+TelemetryForge does not silently fall back from distributed production state to
+replica-local state during a database outage.
+
+A shared-state write failure is treated as a transient policy dependency
+failure and goes through normal bounded retry/DLQ handling if it does not
+recover.
+
+## Known limitations
+
+- Shared cardinality consistency adds database write pressure: one atomic state
+  update per tracked dimension and matching budget.
+- HLL remains approximate after the first 16 unique hashes.
+- Forecasting is intentionally a simple one-hour linear trend heuristic.
+- Budget status is advisory and not a vendor billing model.
+- Cross-region database latency/partition behavior is not yet the v1.9 HA
+  architecture.

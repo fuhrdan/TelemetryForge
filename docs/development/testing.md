@@ -160,3 +160,21 @@ Additional Schema Intelligence hardening tests cover:
 - accumulated registry field-cap enforcement;
 - deduplicated field-limit warning behavior; and
 - prune-cutoff validation before database mutation.
+
+
+## v1.2.0 Distributed Cardinality coverage
+
+New coverage includes:
+
+- exact low-cardinality merging across two independent shared-tracker instances;
+- tenant-scoped shared state lookup;
+- hourly local tracker rollover for replay/cost semantic parity;
+- series-budget validation and non-destructive behavior;
+- persisted budget status transitions;
+- distributed state API route;
+- budget API route;
+- dashboard Distributed Cardinality / Series Budgets TypeScript compile; and
+- migration/config/documentation structural checks.
+
+The TimescaleDB integration job is the authoritative test that the atomic
+`set_byte(max(...))` HLL update works against real PostgreSQL/TimescaleDB.

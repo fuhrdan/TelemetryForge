@@ -1,7 +1,7 @@
 # TelemetryForge Dashboard
 
-**Package version:** `1.1.0`
-**Release:** `v1.1.0`
+**Package version:** `1.2.0`
+**Release:** `v1.2.0`
 
 The dashboard is intentionally small and readable.
 
@@ -27,13 +27,14 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-The Next.js rewrite proxies `/telemetry-api/*` to `http://localhost:8080` during
-local development.
+The Next.js server-side proxy forwards `/telemetry-api/*` to the configured
+TelemetryForge gateway. Direct development defaults to `http://localhost:8080`;
+Docker Compose uses `http://gateway:8080`.
 
 ## Production container
 
-The dashboard Dockerfile builds Next.js standalone output. Docker Compose sets
-the internal API destination to `http://gateway:8080`.
+The dashboard Dockerfile builds Next.js standalone output. The server-side proxy
+keeps API credentials out of browser JavaScript and preserves authenticated SSE.
 
 ## Data model
 
@@ -102,3 +103,18 @@ The dashboard now includes **Schema Intelligence**:
 - field and inferred-required counts;
 - clickable declared-version history; and
 - recent schema drift findings.
+
+
+## v1.2.0 additions
+
+The dashboard now includes **Distributed Cardinality Intelligence**:
+
+- top projected-growth dimensions from shared cluster state;
+- observed and projected hourly unique values;
+- unique-growth-per-minute trends;
+- active/shadow policy mode visibility;
+- tenant/source series-budget consumption; and
+- healthy/warning/critical/exceeded budget state.
+
+Production worker replicas merge the same hourly HLL state; the dashboard is not
+summing replica-local estimates.
