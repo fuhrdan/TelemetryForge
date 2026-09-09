@@ -10,6 +10,7 @@ import (
 
 const (
 	registerCount        = 64
+	exactHashWindow      = 16
 	defaultMaxDimensions = 20000
 )
 
@@ -43,6 +44,13 @@ type cardinalityState struct {
 	firstSeen time.Time
 	lastSeen  time.Time
 	samples   uint64
+
+	// exactHashes provides deterministic low-cardinality behavior before HLL
+	// estimation is necessary. It stores only fixed-width SHA-256-derived
+	// hashes, never raw dimension values, and cannot grow beyond 16 entries.
+	exactHashes   [exactHashWindow]uint64
+	exactCount    uint8
+	exactOverflow bool
 }
 
 // Tracker maintains bounded approximate-cardinality state.
@@ -96,10 +104,15 @@ func (tracker *Tracker) Observe(
 	}
 
 	state.estimator.AddHash(hash)
+	state.observeExact(hash)
 	state.lastSeen = now
 	state.samples++
 
-	observed = state.estimator.Count()
+	if state.exactOverflow {
+		observed = state.estimator.Count()
+	} else {
+		observed = uint64(state.exactCount)
+	}
 	elapsed := now.Sub(state.firstSeen)
 	projected = observed
 
@@ -114,6 +127,23 @@ func (tracker *Tracker) Observe(
 	}
 
 	return observed, projected, state.firstSeen, state.lastSeen, shortFingerprint(hash)
+}
+
+func (state *cardinalityState) observeExact(hash uint64) {
+	if state.exactOverflow {
+		return
+	}
+	for index := uint8(0); index < state.exactCount; index++ {
+		if state.exactHashes[index] == hash {
+			return
+		}
+	}
+	if int(state.exactCount) >= exactHashWindow {
+		state.exactOverflow = true
+		return
+	}
+	state.exactHashes[state.exactCount] = hash
+	state.exactCount++
 }
 
 func (tracker *Tracker) evictOldestLocked() {

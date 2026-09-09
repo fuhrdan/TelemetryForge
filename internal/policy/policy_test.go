@@ -189,3 +189,32 @@ func TestRepeatedFindingIsRateLimitedButActionStillApplies(t *testing.T) {
 		t.Fatalf("finding records=%d, expected duplicate suppression", len(recorder.findings))
 	}
 }
+
+func TestEvaluateAtUsesExplicitObservationTimeline(t *testing.T) {
+	recorder := &memoryRecorder{}
+	active := testPolicy(ActionAllow, 20)
+	engine, err := NewEngine(active, nil, recorder, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	for index := 0; index < 10; index++ {
+		event := domain.Event{
+			Source: "checkout",
+			Type:   "request.duration",
+			Tags:   map[string]string{"region": string(rune('a' + index))},
+		}
+		if _, err := engine.EvaluateAt(
+			context.Background(),
+			event,
+			start.Add(time.Duration(index)*10*time.Second),
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if len(recorder.findings) == 0 {
+		t.Fatal("expected explicit replay timeline to permit projected-cardinality finding")
+	}
+}

@@ -15,7 +15,16 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/reliability"
 	"github.com/fuhrdan/TelemetryForge/internal/worker"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
+
+// Observer receives broker/consumer operational metrics.
+type Observer interface {
+	SetConsumerLag(topic string, partition int32, lag int64)
+	SetConsumerLagTotal(lag int64)
+	DeadLetter(classification string)
+}
 
 // ConsumerConfig controls Kafka group consumption and dead-letter routing.
 type ConsumerConfig struct {
@@ -24,6 +33,7 @@ type ConsumerConfig struct {
 	GroupID  string
 	Topics   []string
 	DLQTopic string
+	Observer Observer
 }
 
 // KafkaConsumer consumes telemetry using a Kafka consumer group.
@@ -41,6 +51,8 @@ type KafkaConsumer struct {
 	client   *kgo.Client
 	logger   *slog.Logger
 	dlqTopic string
+	groupID  string
+	observer Observer
 	lag      atomic.Int64
 }
 
@@ -83,7 +95,10 @@ func NewKafkaConsumer(config ConsumerConfig, logger *slog.Logger) (*KafkaConsume
 		return nil, fmt.Errorf("create Kafka consumer: %w", err)
 	}
 
-	return &KafkaConsumer{client: client, logger: logger, dlqTopic: dlqTopic}, nil
+	return &KafkaConsumer{
+		client: client, logger: logger, dlqTopic: dlqTopic,
+		groupID: config.GroupID, observer: config.Observer,
+	}, nil
 }
 
 // Run polls Kafka and submits decoded events to the bounded worker pool.
@@ -207,10 +222,17 @@ func (consumer *KafkaConsumer) processBatch(
 			continue
 		}
 
+		carrier := propagation.MapCarrier{}
+		for _, header := range rec.Headers {
+			carrier.Set(header.Key, string(header.Value))
+		}
+		eventCtx := otel.GetTextMapPropagator().Extract(runCtx, carrier)
+
 		jobs.Add(1)
 		job := worker.Job{
-			Event: event,
-			Done:  jobs.Done,
+			Context: eventCtx,
+			Event:   event,
+			Done:    jobs.Done,
 			Ack: func(ackCtx context.Context) error {
 				return acknowledgements.Ack(ackCtx, rec)
 			},
@@ -286,6 +308,9 @@ func (consumer *KafkaConsumer) publishDeadLetter(ctx context.Context, dead domai
 		"offset", dead.Offset,
 		"attempts", dead.Attempts,
 		"classification", dead.FailureClass)
+	if consumer.observer != nil {
+		consumer.observer.DeadLetter(dead.FailureClass)
+	}
 	return nil
 }
 

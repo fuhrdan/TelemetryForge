@@ -3,9 +3,13 @@ package worker
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/reliability"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // EventWriter is the storage behavior required by the processing layer.
@@ -60,12 +64,22 @@ func NewChain(processors ...Processor) (*Chain, error) {
 
 // Process runs the event through every configured processor.
 func (chain *Chain) Process(ctx context.Context, event domain.Event) (domain.Event, error) {
-	var err error
+	tracer := otel.Tracer("github.com/fuhrdan/TelemetryForge/worker/pipeline")
+
 	for _, processor := range chain.processors {
-		event, err = processor.Process(ctx, event)
+		processorName := fmt.Sprintf("%T", processor)
+		stageCtx, span := tracer.Start(ctx, "worker.stage")
+		span.SetAttributes(attribute.String("telemetryforge.processor", processorName))
+
+		processed, err := processor.Process(stageCtx, event)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "processor failed")
+			span.End()
 			return domain.Event{}, err
 		}
+		span.End()
+		event = processed
 	}
 	return event, nil
 }

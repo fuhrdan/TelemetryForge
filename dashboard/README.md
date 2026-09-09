@@ -1,7 +1,7 @@
 # TelemetryForge Dashboard
 
-**Package version:** `0.8.0`
-**Release:** `v0.8.0`
+**Package version:** `0.9.0`
+**Release:** `v0.9.0`
 
 The dashboard is intentionally small and readable.
 
@@ -60,3 +60,18 @@ The dashboard now also renders:
 - observed/projected unique values
 - policy action
 - candidate-policy disagreements
+
+
+## v0.9.0 additions
+
+The dashboard now also renders:
+
+- Incident Replay history
+- changed/dropped/quarantined replay counts
+- Telemetry Cost Simulator history
+- projected monthly volume
+- sample-series reduction
+- explicit pricing-model output when configured
+
+Deep runtime metrics/traces live in the provisioned Grafana dashboard on
+`http://localhost:3001`.

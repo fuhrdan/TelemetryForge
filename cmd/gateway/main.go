@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/api"
 	"github.com/fuhrdan/TelemetryForge/internal/config"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
+	"github.com/fuhrdan/TelemetryForge/internal/observability"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
 )
@@ -19,6 +21,22 @@ import (
 func main() {
 	logger := logging.New()
 	cfg := config.Load()
+	metrics := observability.NewMetrics("gateway")
+	traceShutdown, err := observability.InitTracing(
+		context.Background(),
+		"telemetryforge-gateway",
+		"0.9.0",
+		os.Getenv("TELEMETRYFORGE_OTLP_TRACES_ENDPOINT"),
+	)
+	if err != nil {
+		logger.Error("OpenTelemetry initialization failed", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = traceShutdown(shutdownCtx)
+	}()
 
 	publisher, err := stream.NewKafkaPublisher(stream.KafkaConfig{
 		Brokers:        cfg.KafkaBrokers,
@@ -38,14 +56,17 @@ func main() {
 	}
 	defer store.Close()
 
-	handler := api.NewServer(logger, publisher, api.Topics{
+	apiHandler := api.NewServerWithObserver(logger, publisher, api.Topics{
 		Raw:    cfg.KafkaRawTopic,
 		Metric: cfg.KafkaMetricTopic,
-	}, store)
+	}, store, metrics)
+	root := http.NewServeMux()
+	root.Handle("GET /metrics", metrics.Handler())
+	root.Handle("/", apiHandler)
 
 	httpServer := &http.Server{
 		Addr:         cfg.Address,
-		Handler:      handler,
+		Handler:      metrics.Middleware(root),
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
 	}

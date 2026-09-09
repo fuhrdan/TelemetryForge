@@ -61,3 +61,44 @@ telemetryctl policy validate --file policies/active.json
 This performs strict JSON/schema validation without starting a worker.
 
 Use it for both active and shadow files before deployment.
+
+
+## Replay a frozen incident
+
+Analysis-only:
+
+```bash
+telemetryctl incident replay \
+  --id INC-2026-0042 \
+  --policy policies/active.json \
+  --shadow-policy policies/shadow.json
+```
+
+Optional isolated output:
+
+```bash
+telemetryctl incident replay \
+  --id INC-2026-0042 \
+  --publish-topic telemetry.replay.candidate-policy
+```
+
+Production topics are rejected.
+
+## Simulate telemetry cost/shape
+
+Without pricing:
+
+```bash
+telemetryctl cost simulate \
+  --incident INC-2026-0042
+```
+
+With explicit pricing:
+
+```bash
+telemetryctl cost simulate \
+  --incident INC-2026-0042 \
+  --pricing pricing/my-reviewed-model.json
+```
+
+No pricing file means no dollar estimate.

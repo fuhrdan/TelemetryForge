@@ -78,9 +78,11 @@ services:
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic telemetry.raw --partitions 6 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic telemetry.metrics --partitions 6 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic telemetry.dlq --partitions 6 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic telemetry.replay --partitions 6 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --describe --topic telemetry.raw
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --describe --topic telemetry.metrics
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --describe --topic telemetry.dlq
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --describe --topic telemetry.replay
 
   gateway:
     build:
@@ -93,6 +95,7 @@ services:
       TELEMETRYFORGE_KAFKA_RAW_TOPIC: "telemetry.raw"
       TELEMETRYFORGE_KAFKA_METRIC_TOPIC: "telemetry.metrics"
       TELEMETRYFORGE_DATABASE_URL: "postgres://telemetryforge:telemetryforge@timescaledb:5432/telemetryforge?sslmode=disable"
+      TELEMETRYFORGE_OTLP_TRACES_ENDPOINT: "http://otel-collector:4318/v1/traces"
     ports:
       - "8080:8080"
     healthcheck:
@@ -131,6 +134,7 @@ services:
       TELEMETRYFORGE_INCIDENT_LATENCY_MS: "1000"
       TELEMETRYFORGE_INCIDENT_ERROR_COUNT: "5"
       TELEMETRYFORGE_DATABASE_URL: "postgres://telemetryforge:telemetryforge@timescaledb:5432/telemetryforge?sslmode=disable"
+      TELEMETRYFORGE_OTLP_TRACES_ENDPOINT: "http://otel-collector:4318/v1/traces"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8081/ready"]
       interval: 5s
@@ -160,5 +164,66 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.160.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./deployments/observability/otel/collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:3.0.2
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    user: "0"
+    volumes:
+      - ./deployments/observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - telemetryforge-tempo:/var/tempo
+    ports:
+      - "3200:3200"
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.13.3
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+    volumes:
+      - ./deployments/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - telemetryforge-prometheus:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      gateway:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.2.1
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: telemetryforge
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./deployments/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deployments/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - telemetryforge-grafana:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+      - tempo
+    restart: unless-stopped
+
 volumes:
   telemetryforge-db:
+  telemetryforge-prometheus:
+  telemetryforge-grafana:
+  telemetryforge-tempo:

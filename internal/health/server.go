@@ -22,7 +22,7 @@ type Server struct {
 }
 
 // New creates a worker health server.
-func New(address string, logger *slog.Logger, checks map[string]Checker) *Server {
+func New(address string, logger *slog.Logger, checks map[string]Checker, metricsHandlers ...http.Handler) *Server {
 	mux := http.NewServeMux()
 	server := &Server{
 		http: &http.Server{
@@ -35,6 +35,9 @@ func New(address string, logger *slog.Logger, checks map[string]Checker) *Server
 	}
 	mux.HandleFunc("GET /health", server.health)
 	mux.HandleFunc("GET /ready", server.ready)
+	if len(metricsHandlers) > 0 && metricsHandlers[0] != nil {
+		mux.Handle("GET /metrics", metricsHandlers[0])
+	}
 	return server
 }
 

@@ -13,8 +13,8 @@ would itself become vulnerable to the cardinality problem it is meant to detect.
 
 ## Decision
 
-Use a small 64-register HyperLogLog estimator for each tracked
-source/type/dimension combination.
+Use a fixed 16-hash exact window followed by a small 64-register
+HyperLogLog estimator for each tracked source/type/dimension combination.
 
 Also:
 

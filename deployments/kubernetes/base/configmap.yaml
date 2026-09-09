@@ -21,3 +21,4 @@ data:
   TELEMETRYFORGE_POLICY_FILE: "/etc/telemetryforge/policies/active.json"
   TELEMETRYFORGE_SHADOW_POLICY_FILE: "/etc/telemetryforge/policies/shadow.json"
   TELEMETRYFORGE_CARDINALITY_MAX_DIMENSIONS: "20000"
+  TELEMETRYFORGE_OTLP_TRACES_ENDPOINT: ""

@@ -9,7 +9,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/fuhrdan/TelemetryForge/internal/costsim"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/replay"
 )
 
 // Query describes a bounded telemetry lookup.
@@ -36,4 +38,10 @@ type Reader interface {
 type PolicyReader interface {
 	ListCardinalityFindings(ctx context.Context, limit int) ([]CardinalityFinding, error)
 	ListPolicyDiffs(ctx context.Context, limit int) ([]PolicyDiff, error)
+}
+
+// ReplayReader exposes incident replay and cost-simulation history.
+type ReplayReader interface {
+	ListReplayRuns(ctx context.Context, limit int) ([]replay.Run, error)
+	ListCostSimulations(ctx context.Context, limit int) ([]costsim.Result, error)
 }

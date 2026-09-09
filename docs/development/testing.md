@@ -76,3 +76,39 @@ The release adds/targets tests for:
 Do not place throughput or latency numbers in the README unless they come from a
 checked-in reproducible load-test methodology and results file. k6 benchmarking
 is scheduled for the v0.9.0 performance milestone.
+
+
+## v0.9.0 coverage
+
+New unit/integration checks cover:
+
+- replay analysis effects
+- replay production-topic rejection
+- explicit replay namespace publication
+- event-time policy evaluation
+- cost simulation byte/series effects
+- explicit pricing behavior
+- pricing currency validation
+- replay/cost database history
+- replay/cost history API routes
+- Prometheus route-pattern cardinality
+- invalid negative Kafka lag suppression
+
+CI also validates:
+
+- Prometheus configuration
+- OpenTelemetry Collector configuration
+- Tempo configuration
+- provisioned Grafana JSON
+- all three k6 scenarios with `k6 inspect`
+
+## Benchmark tests are not CI throughput gates
+
+The checked-in k6 scripts are methodology and regression tools.
+
+CI inspects their syntax/options but does not run a full distributed performance
+benchmark on arbitrary shared GitHub-hosted runners and publish the number as a
+product claim.
+
+A published benchmark must use the procedure in
+`docs/performance/benchmark-methodology.md`.

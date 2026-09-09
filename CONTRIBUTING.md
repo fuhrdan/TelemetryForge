@@ -109,6 +109,52 @@ make terraform-check
 
 Do not commit real Kubernetes secrets, Terraform state, or cloud credentials.
 
+### Replay / cost changes
+
+Replay safety is a release invariant.
+
+A change that can publish replay output must keep the library-level topic
+restriction to `telemetry.replay*`; a CLI-only safety check is insufficient.
+
+Cost-simulation changes must document assumptions and must not add default
+dollar pricing.
+
+### Observability changes
+
+Before adding a Prometheus label, verify it is bounded.
+
+Do not use:
+
+```text
+event ID
+incident ID
+correlation ID
+raw URL
+arbitrary source
+arbitrary telemetry tag/value
+error message
+```
+
+as metric labels.
+
+Trace attributes have a different cardinality model but still require privacy
+review.
+
+Validate observability config with CI or:
+
+```bash
+make observability-check
+```
+
+### Load-test changes
+
+Keep k6 scenarios deterministic/reviewable and pinned.
+
+A benchmark result needs the environment metadata described in
+`docs/performance/benchmark-methodology.md`.
+
+Do not add unsupported throughput claims to README/release notes.
+
 ## Documentation standards
 
 Human-readable documentation is a project requirement.

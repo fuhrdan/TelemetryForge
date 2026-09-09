@@ -63,6 +63,58 @@ type PolicyDiff = {
   reason: string;
 };
 
+type ReplayRun = {
+  run_id: string;
+  incident_id: string;
+  mode: string;
+  status: string;
+  active_policy: string;
+  active_version: string;
+  shadow_policy?: string;
+  shadow_version?: string;
+  output_topic?: string;
+  started_at: string;
+  completed_at?: string;
+  event_count: number;
+  changed_event_count: number;
+  dropped_tag_count: number;
+  quarantined_count: number;
+  finding_count: number;
+  shadow_diff_count: number;
+  published_count: number;
+  error?: string;
+};
+
+type CostProfile = {
+  bytes: number;
+  series: number;
+  changed_events: number;
+};
+
+type CostSimulation = {
+  simulation_id: string;
+  incident_id: string;
+  active_policy: string;
+  active_version: string;
+  shadow_policy?: string;
+  shadow_version?: string;
+  pricing_model?: string;
+  currency?: string;
+  started_at: string;
+  completed_at: string;
+  event_count: number;
+  baseline: CostProfile;
+  active: CostProfile;
+  shadow: CostProfile;
+  projected_monthly_baseline_gb: number;
+  projected_monthly_active_gb: number;
+  projected_monthly_shadow_gb: number;
+  projected_monthly_baseline_cost?: number;
+  projected_monthly_active_cost?: number;
+  projected_monthly_shadow_cost?: number;
+  error?: string;
+};
+
 const emptySummary: Summary = {
   window_seconds: 300,
   events: 0,
@@ -82,6 +134,32 @@ function clock(value: string) {
   return Number.isNaN(date.valueOf()) ? value : date.toLocaleTimeString();
 }
 
+function compact(value: number) {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
+}
+
+function reduction(baseline: number, candidate: number) {
+  if (baseline <= 0) {
+    return "0%";
+  }
+  return `${Math.max(0, ((baseline - candidate) / baseline) * 100).toFixed(1)}%`;
+}
+
+function money(value: number | undefined, currency?: string) {
+  if (value === undefined) {
+    return "volume only";
+  }
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency || "USD",
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return `${currency || ""} ${value.toFixed(2)}`.trim();
+  }
+}
+
 export default function Dashboard() {
   const [summary, setSummary] = useState<Summary>(emptySummary);
   const [live, setLive] = useState<TelemetryEvent[]>([]);
@@ -92,13 +170,24 @@ export default function Dashboard() {
   const [sourceFilter, setSourceFilter] = useState("");
   const [findings, setFindings] = useState<CardinalityFinding[]>([]);
   const [policyDiffs, setPolicyDiffs] = useState<PolicyDiff[]>([]);
+  const [replayRuns, setReplayRuns] = useState<ReplayRun[]>([]);
+  const [costSimulations, setCostSimulations] = useState<CostSimulation[]>([]);
 
   const refresh = useCallback(async () => {
-    const [summaryResponse, incidentResponse, findingResponse, diffResponse] = await Promise.all([
+    const [
+      summaryResponse,
+      incidentResponse,
+      findingResponse,
+      diffResponse,
+      replayResponse,
+      costResponse,
+    ] = await Promise.all([
       fetch("/telemetry-api/api/v1/dashboard/summary?window=5m", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/incidents?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/cardinality/findings?limit=30", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/policy/shadow-diffs?limit=20", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/replays?limit=20", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/cost-simulations?limit=20", { cache: "no-store" }),
     ]);
 
     if (summaryResponse.ok) {
@@ -115,6 +204,14 @@ export default function Dashboard() {
     if (diffResponse.ok) {
       const payload = await diffResponse.json();
       setPolicyDiffs(payload.diffs ?? []);
+    }
+    if (replayResponse.ok) {
+      const payload = await replayResponse.json();
+      setReplayRuns(payload.runs ?? []);
+    }
+    if (costResponse.ok) {
+      const payload = await costResponse.json();
+      setCostSimulations(payload.simulations ?? []);
     }
   }, []);
 
@@ -332,6 +429,80 @@ export default function Dashboard() {
               </div>
             ))}
             {policyDiffs.length === 0 && <div className="empty policy-empty">Active and shadow policies currently agree.</div>}
+          </div>
+        </article>
+      </section>
+
+      <section className="evidence-grid">
+        <article className="panel replay-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">INCIDENT REPLAY</div>
+              <h2>Policy replay history</h2>
+            </div>
+            <span className="count-badge">{replayRuns.length}</span>
+          </div>
+          <div className="replay-list">
+            {replayRuns.slice(0, 10).map((run) => (
+              <div className="replay-row" key={run.run_id}>
+                <div>
+                  <strong>{run.incident_id}</strong>
+                  <span>{run.active_policy}@{run.active_version} · {run.mode}</span>
+                </div>
+                <div className="replay-metrics">
+                  <span>{run.event_count} events</span>
+                  <span>{run.changed_event_count} changed</span>
+                  <span>{run.dropped_tag_count} tags dropped</span>
+                  <span>{run.quarantined_count} quarantined</span>
+                </div>
+                <div className={`run-status ${run.status}`}>{run.status}</div>
+              </div>
+            ))}
+            {replayRuns.length === 0 && (
+              <div className="empty evidence-empty">
+                No replay runs yet. Use telemetryctl incident replay on a frozen incident.
+              </div>
+            )}
+          </div>
+        </article>
+
+        <article className="panel cost-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">TELEMETRY COST SIMULATOR</div>
+              <h2>Policy impact projections</h2>
+            </div>
+            <span className="count-badge">{costSimulations.length}</span>
+          </div>
+          <div className="cost-list">
+            {costSimulations.slice(0, 8).map((simulation) => (
+              <div className="cost-row" key={simulation.simulation_id}>
+                <div className="cost-title">
+                  <strong>{simulation.incident_id}</strong>
+                  <span>{simulation.active_policy}@{simulation.active_version}</span>
+                </div>
+                <div className="cost-stat">
+                  <span>Monthly volume</span>
+                  <strong>{compact(simulation.projected_monthly_active_gb)} GB</strong>
+                  <small>{reduction(simulation.projected_monthly_baseline_gb, simulation.projected_monthly_active_gb)} lower</small>
+                </div>
+                <div className="cost-stat">
+                  <span>Sample series</span>
+                  <strong>{compact(simulation.active.series)}</strong>
+                  <small>{reduction(simulation.baseline.series, simulation.active.series)} lower</small>
+                </div>
+                <div className="cost-stat">
+                  <span>Projected cost</span>
+                  <strong>{money(simulation.projected_monthly_active_cost, simulation.currency)}</strong>
+                  <small>{simulation.pricing_model || "no pricing model"}</small>
+                </div>
+              </div>
+            ))}
+            {costSimulations.length === 0 && (
+              <div className="empty evidence-empty">
+                No cost simulations yet. Dollar estimates appear only with explicit pricing inputs.
+              </div>
+            )}
           </div>
         </article>
       </section>

@@ -78,3 +78,57 @@ The Kustomize base supplies non-secret values through
 Terraform configuration is independent of application environment variables.
 See `infra/terraform/aws/variables.tf` for AWS-region, EKS version, and node
 scaling inputs.
+
+
+## Self-observability
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TELEMETRYFORGE_OTLP_TRACES_ENDPOINT` | empty | Full OTLP/HTTP traces URL; empty disables application trace export |
+
+Docker Compose sets:
+
+```text
+http://otel-collector:4318/v1/traces
+```
+
+for the gateway and worker.
+
+Prometheus endpoints do not require an environment variable:
+
+```text
+Gateway: GET :8080/metrics
+Worker:  GET :8081/metrics
+```
+
+The checked-in local stack exposes:
+
+```text
+Prometheus  :9090
+Grafana     :3001
+Tempo       :3200
+OTLP gRPC   :4317
+OTLP HTTP   :4318
+```
+
+These endpoints are development defaults, not a production authentication
+model.
+
+## Incident Replay / Cost Simulator
+
+The CLI reuses:
+
+```text
+TELEMETRYFORGE_DATABASE_URL
+TELEMETRYFORGE_KAFKA_BROKERS
+```
+
+Replay publication is optional and must target:
+
+```text
+telemetry.replay
+telemetry.replay.<suffix>
+```
+
+The cost simulator accepts pricing only from an explicit `--pricing` JSON file.
+There is no environment-default dollar model.

@@ -13,7 +13,7 @@ to reconstruct every decision from implementation details.
 - [Testing strategy](development/testing.md)
 - [Troubleshooting](operations/troubleshooting.md)
 - [Project roadmap](../ROADMAP.md)
-- [v0.9.0 development plan](roadmap/v0.9.0.md)
+- [v0.9.0 release plan / delivered scope](roadmap/v0.9.0.md)
 
 ## Architecture
 
@@ -42,6 +42,19 @@ to reconstruct every decision from implementation details.
 - [Deduplication lifecycle](reliability/dedup-lifecycle.md)
 - [Incident Flight Recorder](reliability/flight-recorder.md)
 - [Automatic incident capture](incidents/automatic-capture.md)
+
+
+## Replay and cost
+
+- [Incident Replay](incidents/replay.md)
+- [Telemetry Cost Simulator](cost/cost-simulator.md)
+
+## Self-observability
+
+- [Self-observability](observability/self-observability.md)
+- [Prometheus metrics catalog](observability/metrics.md)
+- [OpenTelemetry tracing](observability/tracing.md)
+- [Benchmark methodology](performance/benchmark-methodology.md)
 
 ## Policy and cardinality
 

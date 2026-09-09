@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "v0.8.0"]
+    branches: ["main", "v0.9.0"]
   pull_request:
     branches: ["main"]
 
@@ -125,6 +125,51 @@ jobs:
       - name: Terraform validate
         run: terraform -chdir=infra/terraform/aws validate
 
+
+
+  observability-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate Prometheus configuration
+        run: |
+          docker run --rm \
+            --entrypoint /bin/promtool \
+            -v "$PWD/deployments/observability/prometheus:/etc/prometheus:ro" \
+            prom/prometheus:v3.13.3 \
+            check config /etc/prometheus/prometheus.yml
+      - name: Validate OpenTelemetry Collector configuration
+        run: |
+          docker run --rm \
+            -v "$PWD/deployments/observability/otel/collector.yaml:/etc/otelcol/config.yaml:ro" \
+            otel/opentelemetry-collector:0.160.0 \
+            validate --config=/etc/otelcol/config.yaml
+      - name: Validate Tempo configuration
+        run: |
+          docker run --rm \
+            -v "$PWD/deployments/observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro" \
+            grafana/tempo:3.0.2 \
+            -config.file=/etc/tempo/tempo.yaml -config.verify
+      - name: Validate Grafana dashboard JSON
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          for path in Path("deployments/observability/grafana/dashboards").glob("*.json"):
+              json.loads(path.read_text())
+              print(f"validated {path}")
+          PY
+
+  load-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Inspect k6 smoke scenario
+        run: docker run --rm -v "$PWD/load/k6:/scripts:ro" grafana/k6:2.2.0 inspect /scripts/ingest-smoke.js
+      - name: Inspect k6 sustained scenario
+        run: docker run --rm -v "$PWD/load/k6:/scripts:ro" grafana/k6:2.2.0 inspect /scripts/ingest-sustained.js
+      - name: Inspect k6 backpressure scenario
+        run: docker run --rm -v "$PWD/load/k6:/scripts:ro" grafana/k6:2.2.0 inspect /scripts/backpressure.js
 
   containers:
     runs-on: ubuntu-latest

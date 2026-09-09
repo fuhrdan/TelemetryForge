@@ -1,0 +1,7 @@
+{
+  "name": "example-zero-dollar-model",
+  "currency": "USD",
+  "ingest_per_gb": 0,
+  "active_series_per_1000_month": 0,
+  "notes": "Replace zero values with a reviewed vendor/internal pricing model before interpreting dollar estimates. Volume and series projections work without pricing."
+}

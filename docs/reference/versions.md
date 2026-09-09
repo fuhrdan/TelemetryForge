@@ -1,54 +1,66 @@
 # Technology Version Baseline
 
-Verified for the v0.8.0 release on **2026-09-09**.
+Verified for the v0.9.0 release work on **2026-09-09**.
 
 | Component | Project baseline | Rationale |
 |---|---:|---|
-| [Go](https://go.dev/doc/devel/release) | 1.27.1 | Current supported Go patch release |
+| [Go](https://go.dev/doc/devel/release) | 1.27.1 | Current supported Go patch baseline |
 | [Kubernetes](https://kubernetes.io/releases/) | 1.37.0 upstream / 1.36 EKS | Upstream stable plus current Amazon EKS standard-support boundary |
-| [Terraform](https://github.com/hashicorp/terraform/releases) | 1.16.2 | Current stable Terraform release |
-| [AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest) | 6.62.0 | Current AWS provider baseline |
-| [Apache Kafka](https://kafka.apache.org/community/downloads/) | 4.3.1 | Current supported Apache Kafka release |
-| [franz-go](https://pkg.go.dev/github.com/twmb/franz-go) | 1.21.6 | Pinned Kafka client used by the current tested code path |
-| [pgx](https://github.com/jackc/pgx/blob/master/CHANGELOG.md) | 5.10.0 | Current project PostgreSQL client baseline |
-| [TimescaleDB](https://github.com/timescale/timescaledb/releases) | 2.30.0 / PostgreSQL 17 image | Current TimescaleDB release |
-| [Node.js](https://nodejs.org/en/download) | 24.21.0 LTS | LTS runtime for the dashboard |
-| [Next.js](https://nextjs.org/docs) | 16.3.4 | Current Next.js release |
-| [React / React DOM](https://www.npmjs.com/package/react) | 19.2.8 | Current npm stable packages |
-| [TypeScript](https://www.npmjs.com/package/typescript) | 5.9.3 | Deliberately held below 7.0 because stable Next.js still relies on the legacy JavaScript compiler API |
-| [Alpine Linux](https://www.alpinelinux.org/) | 3.24.1 | Current stable Alpine 3.24 patch release |
-| GitHub Actions | checkout/setup-go/setup-node v7; setup-kubectl v5; setup-terraform v4 | Current action generation used by CI |
-
+| [Terraform](https://github.com/hashicorp/terraform/releases) | 1.16.2 | Current Terraform project baseline |
+| [AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest) | 6.62.0 | Current project AWS provider baseline |
+| [Apache Kafka](https://kafka.apache.org/community/downloads/) | 4.3.1 | Current project Kafka baseline |
+| [franz-go](https://pkg.go.dev/github.com/twmb/franz-go) | 1.21.6 | Kafka producer/consumer baseline |
+| [franz-go kadm](https://pkg.go.dev/github.com/twmb/franz-go/pkg/kadm) | 1.18.0 | Broker-derived consumer-group lag queries |
+| [pgx](https://github.com/jackc/pgx/blob/master/CHANGELOG.md) | 5.10.0 | PostgreSQL client baseline |
+| [TimescaleDB](https://github.com/timescale/timescaledb/releases) | 2.30.0 / PostgreSQL 17 | Durable telemetry/time-series store |
+| [OpenTelemetry Go](https://pkg.go.dev/go.opentelemetry.io/otel) | 1.46.0 | Current trace API/SDK baseline |
+| [Prometheus Go client](https://pkg.go.dev/github.com/prometheus/client_golang) | 1.24.1 | Process/application metrics |
+| [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) | 0.160.0 | Local OTLP receive/batch/export |
+| [Prometheus](https://prometheus.io/) | 3.13.3 | Local metrics store/query |
+| [Grafana](https://grafana.com/grafana/) | 13.2.1 | Current stable local visualization baseline |
+| [Tempo](https://grafana.com/oss/tempo/) | 3.0.2 | Local trace store/query |
+| [k6](https://grafana.com/oss/k6/) | 2.2.0 | Reproducible load-test harness |
+| [Node.js](https://nodejs.org/en/download) | 24.21.0 LTS | Dashboard development/CI runtime |
+| [Next.js](https://nextjs.org/docs) | 16.3.4 | Dashboard framework |
+| [React / React DOM](https://www.npmjs.com/package/react) | 19.2.8 | Dashboard UI runtime |
+| [TypeScript](https://www.npmjs.com/package/typescript) | 5.9.3 | Compatibility pin for the selected stable Next.js build path |
+| [Alpine Linux](https://www.alpinelinux.org/) | 3.24.1 | Backend runtime image |
+| GitHub Actions | checkout/setup-go/setup-node v7; setup-kubectl v5; setup-terraform v4 | CI action baseline |
 
 ## Dashboard container note
 
-Node.js 24.21.0 is the current LTS used by CI and recommended for direct
-development. During this audit, Docker Hub's latest **verified exact** Node 24
-Alpine 3.24 tag was still `node:24.20.0-alpine3.24`.
+Node.js 24.21.0 LTS is the direct-development/CI target.
 
-The dashboard container therefore stays on that known-good exact tag instead of
-referencing an unverified `24.21.0` image. Once Docker Hub publishes/verifies the
-matching exact tag, update the Dockerfile in a normal dependency pull request.
+The dashboard runtime Dockerfile remains pinned to the latest exact Node 24
+Alpine image that was previously verified for the repository rather than
+floating on `node:24-alpine`.
+
+## TypeScript compatibility pin
+
+TypeScript 7 is a materially different native compiler distribution. The
+selected stable Next.js build path still expects the legacy JavaScript compiler
+API, so the dashboard remains intentionally pinned to TypeScript 5.9.3.
+
+This is a compatibility decision, not a claim that 5.9.3 is the newest
+TypeScript release.
 
 ## Dependency policy
 
-Core runtime versions are pinned deliberately rather than floating on `latest`.
-Minor/patch upgrades should be made through reviewed pull requests, preferably
-with Dependabot, and should pass unit, integration, dashboard, and container
-CI before merge.
+Runtime/container versions are pinned instead of using `latest`.
 
-TypeScript 7.0.2 is the current stable TypeScript release, but it is a native
-Go-based compiler package and no longer exposes the legacy
-`typescript/lib/typescript.js` JavaScript Compiler API that stable Next.js
-builds still expect. The project therefore keeps the dashboard on TypeScript
-5.9.3 for a predictable `next build` path during v0.8.0 development.
+Upgrades should be reviewed through CI with:
 
-This is an explicit compatibility pin, not an assumption that 5.9.3 is current.
-It should be revisited once the project's selected stable Next.js release can
-run its normal production build against TypeScript 7 without an experimental
-compatibility path.
+- unit/race/vet/build checks
+- Kafka and TimescaleDB integration tests
+- dashboard type/build checks
+- observability configuration validation
+- Kubernetes/Terraform validation
+- k6 scenario inspection
+- container builds
 
-The npm dashboard currently uses exact direct dependency versions. A generated
-`package-lock.json` should be committed from the first successful registry-backed
-`npm install` on the v0.8.0 release branch so transitive dependencies are reproducible as
-well.
+The dashboard still needs a registry-generated `package-lock.json` from a
+successful npm-backed install so transitive npm dependencies are reproducible.
+
+The Go module file now includes v0.9 observability dependencies. A real
+registry-backed `go mod download`/test run in CI is authoritative for module
+checksums that cannot be fetched inside restricted build sandboxes.

@@ -86,18 +86,36 @@ func NewEngine(active Policy, shadow *Policy, recorder Recorder, maxDimensions i
 	return engine, nil
 }
 
-// Evaluate applies the active policy and records shadow differences.
+// Evaluate applies policy using the worker's current wall-clock observation
+// time.
+func (engine *Engine) Evaluate(ctx context.Context, event domain.Event) (domain.Event, error) {
+	return engine.EvaluateAt(ctx, event, time.Now().UTC())
+}
+
+// EvaluateAt applies the active policy and records shadow differences using an
+// explicit observation time.
+//
+// Production calls Evaluate. Incident replay/cost simulation call EvaluateAt
+// with the frozen event timestamp so cardinality windows represent the incident
+// timeline rather than replay execution speed.
 //
 // The Flight Recorder has already stored the incoming full-fidelity event before
 // this stage, so active `drop_tag` can safely remove a dangerous dimension from
 // the normal persisted/forwarded representation without destroying incident
 // evidence.
-func (engine *Engine) Evaluate(ctx context.Context, event domain.Event) (domain.Event, error) {
+func (engine *Engine) EvaluateAt(
+	ctx context.Context,
+	event domain.Event,
+	now time.Time,
+) (domain.Event, error) {
 	if len(event.Tags) == 0 {
 		return event, nil
 	}
-
-	now := time.Now().UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
 	dimensions := make([]string, 0, len(event.Tags))
 	for dimension := range event.Tags {
 		dimensions = append(dimensions, dimension)

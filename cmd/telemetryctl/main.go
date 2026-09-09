@@ -1,7 +1,8 @@
 // Command telemetryctl provides small operational tools for TelemetryForge.
 //
 // Commands are intentionally narrow and auditable: incident freezing, DLQ
-// replay, deduplication maintenance, and policy validation.
+// replay, incident analysis replay, cost simulation, deduplication maintenance,
+// and policy validation.
 package main
 
 import (
@@ -14,9 +15,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fuhrdan/TelemetryForge/internal/costsim"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
+	"github.com/fuhrdan/TelemetryForge/internal/replay"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
 )
@@ -30,12 +33,18 @@ func main() {
 	ctx := context.Background()
 	switch os.Args[1] {
 	case "incident":
-		if os.Args[2] != "freeze" {
+		switch os.Args[2] {
+		case "freeze":
+			if err := incidentFreeze(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "replay":
+			if err := incidentReplay(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		default:
 			usage()
 			os.Exit(2)
-		}
-		if err := incidentFreeze(ctx, os.Args[3:]); err != nil {
-			exitErr(err)
 		}
 	case "dlq":
 		if os.Args[2] != "replay" {
@@ -51,6 +60,14 @@ func main() {
 			os.Exit(2)
 		}
 		if err := dedupPrune(ctx, os.Args[3:]); err != nil {
+			exitErr(err)
+		}
+	case "cost":
+		if os.Args[2] != "simulate" {
+			usage()
+			os.Exit(2)
+		}
+		if err := costSimulate(ctx, os.Args[3:]); err != nil {
 			exitErr(err)
 		}
 	case "policy":
@@ -175,6 +192,123 @@ func dedupPrune(ctx context.Context, args []string) error {
 	return nil
 }
 
+func incidentReplay(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("incident replay", flag.ContinueOnError)
+	incidentID := set.String("id", "", "frozen incident identifier")
+	activeFile := set.String("policy", "policies/active.json", "active policy JSON")
+	shadowFile := set.String("shadow-policy", "policies/shadow.json", "optional shadow policy JSON; use disabled to turn off")
+	publishTopic := set.String("publish-topic", "", "optional isolated topic; must begin telemetry.replay")
+	maxEvents := set.Int("max-events", 10000, "maximum frozen events to replay")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	brokersRaw := set.String("brokers", env("TELEMETRYFORGE_KAFKA_BROKERS", "localhost:9092"), "Kafka brokers used only with --publish-topic")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*incidentID) == "" {
+		return errors.New("--id is required")
+	}
+
+	active, err := policy.Load(*activeFile)
+	if err != nil {
+		return err
+	}
+	var shadow *policy.Policy
+	if !strings.EqualFold(strings.TrimSpace(*shadowFile), "disabled") && strings.TrimSpace(*shadowFile) != "" {
+		loaded, err := policy.Load(*shadowFile)
+		if err != nil {
+			return err
+		}
+		shadow = &loaded
+	}
+
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	var publisher *stream.KafkaPublisher
+	if strings.TrimSpace(*publishTopic) != "" {
+		replayTopic := strings.TrimSpace(*publishTopic)
+		if replayTopic != "telemetry.replay" && !strings.HasPrefix(replayTopic, "telemetry.replay.") {
+			return errors.New("--publish-topic must be telemetry.replay or begin telemetry.replay.; production ingest topics are intentionally rejected")
+		}
+		publisher, err = stream.NewKafkaPublisher(stream.KafkaConfig{
+			Brokers: splitCSV(*brokersRaw), ClientID: "telemetryctl-incident-replay",
+		}, logging.New())
+		if err != nil {
+			return err
+		}
+		defer publisher.Close()
+	}
+
+	runner := replay.NewRunner(store)
+	run, err := runner.Run(ctx, replay.Options{
+		IncidentID: *incidentID, ActivePolicy: active, ShadowPolicy: shadow,
+		MaxEvents: *maxEvents, MaxDimensions: 20000,
+		PublishTopic: strings.TrimSpace(*publishTopic), Publisher: publisher,
+	})
+	if err != nil {
+		return err
+	}
+
+	payload, _ := json.MarshalIndent(run, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func costSimulate(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("cost simulate", flag.ContinueOnError)
+	incidentID := set.String("incident", "", "frozen incident identifier")
+	activeFile := set.String("policy", "policies/active.json", "active policy JSON")
+	shadowFile := set.String("shadow-policy", "policies/shadow.json", "optional candidate policy JSON; use disabled to turn off")
+	pricingFile := set.String("pricing", "", "optional pricing JSON; omit for volume/series-only simulation")
+	maxEvents := set.Int("max-events", 10000, "maximum frozen events to simulate")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*incidentID) == "" {
+		return errors.New("--incident is required")
+	}
+
+	active, err := policy.Load(*activeFile)
+	if err != nil {
+		return err
+	}
+	var shadow *policy.Policy
+	if !strings.EqualFold(strings.TrimSpace(*shadowFile), "disabled") && strings.TrimSpace(*shadowFile) != "" {
+		loaded, err := policy.Load(*shadowFile)
+		if err != nil {
+			return err
+		}
+		shadow = &loaded
+	}
+
+	var pricing *costsim.Pricing
+	if strings.TrimSpace(*pricingFile) != "" {
+		loaded, err := costsim.LoadPricing(*pricingFile)
+		if err != nil {
+			return err
+		}
+		pricing = &loaded
+	}
+
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	result, err := costsim.New(store).Simulate(ctx, *incidentID, active, shadow, pricing, *maxEvents)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(result, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
 func policyValidate(args []string) error {
 	set := flag.NewFlagSet("policy validate", flag.ContinueOnError)
 	file := set.String("file", "", "policy JSON file")
@@ -204,6 +338,8 @@ func policyValidate(args []string) error {
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   telemetryctl incident freeze --id INC-42 --title "Checkout latency" --from <RFC3339> --to <RFC3339>
+  telemetryctl incident replay --id INC-42 [--policy policies/active.json] [--shadow-policy policies/shadow.json]
+  telemetryctl cost simulate --incident INC-42 [--pricing pricing/vendor.json]
   telemetryctl dlq replay --file dead-letter.json [--topic telemetry.raw]
   telemetryctl dedup prune [--older-than 840h]
   telemetryctl policy validate --file policies/active.json`)

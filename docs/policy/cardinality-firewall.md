@@ -50,8 +50,14 @@ without destroying the original incident evidence.
 
 ## Estimator
 
-v0.8.0 uses a small 64-register HyperLogLog estimator per tracked
-`source / event type / dimension`.
+TelemetryForge uses a hybrid bounded estimator per tracked
+`source / event type / dimension`:
+
+- the first 16 distinct SHA-256-derived hashes are counted exactly; then
+- a small 64-register HyperLogLog estimate takes over.
+
+The fixed exact window avoids small-threshold approximation surprises without
+keeping raw values or an unbounded set.
 
 Benefits:
 

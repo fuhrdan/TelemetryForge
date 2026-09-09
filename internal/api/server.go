@@ -28,6 +28,13 @@ type Topics struct {
 	Metric string
 }
 
+// Observer receives semantic gateway events without coupling the API package to
+// a particular metrics implementation.
+type Observer interface {
+	Accepted(kind, topic string)
+	PublishFailure(topic string)
+}
+
 // Server owns the HTTP routes for the TelemetryForge gateway.
 type Server struct {
 	logger    *slog.Logger
@@ -35,20 +42,24 @@ type Server struct {
 	publisher stream.Publisher
 	topics    Topics
 	reader    storage.Reader
+	observer  Observer
 }
 
 // NewServer creates a configured HTTP server handler.
 func NewServer(logger *slog.Logger, publisher stream.Publisher, topics Topics, readers ...storage.Reader) *Server {
-	server := &Server{
-		logger:    logger,
-		mux:       http.NewServeMux(),
-		publisher: publisher,
-		topics:    topics,
-	}
+	var reader storage.Reader
 	if len(readers) > 0 {
-		server.reader = readers[0]
+		reader = readers[0]
 	}
+	return NewServerWithObserver(logger, publisher, topics, reader, nil)
+}
 
+// NewServerWithObserver creates a gateway with semantic observability hooks.
+func NewServerWithObserver(logger *slog.Logger, publisher stream.Publisher, topics Topics, reader storage.Reader, observer Observer) *Server {
+	server := &Server{
+		logger: logger, mux: http.NewServeMux(), publisher: publisher,
+		topics: topics, reader: reader, observer: observer,
+	}
 	server.routes()
 	return server
 }
@@ -73,6 +84,10 @@ func (server *Server) routes() {
 		if _, ok := server.reader.(storage.PolicyReader); ok {
 			server.mux.HandleFunc("GET /api/v1/cardinality/findings", server.handleCardinalityFindings)
 			server.mux.HandleFunc("GET /api/v1/policy/shadow-diffs", server.handlePolicyDiffs)
+		}
+		if _, ok := server.reader.(storage.ReplayReader); ok {
+			server.mux.HandleFunc("GET /api/v1/replays", server.handleReplayRuns)
+			server.mux.HandleFunc("GET /api/v1/cost-simulations", server.handleCostSimulations)
 		}
 	}
 }
@@ -127,11 +142,17 @@ func (server *Server) handleEvent(writer http.ResponseWriter, request *http.Requ
 	}
 
 	if err := server.publisher.Publish(request.Context(), server.topics.Raw, event); err != nil {
+		if server.observer != nil {
+			server.observer.PublishFailure(server.topics.Raw)
+		}
 		server.logger.Error("event publish failed", "event_id", event.ID, "topic", server.topics.Raw, "error", err)
 		writeError(writer, http.StatusServiceUnavailable, "streaming backend unavailable")
 		return
 	}
 
+	if server.observer != nil {
+		server.observer.Accepted("event", server.topics.Raw)
+	}
 	server.logger.Info(
 		"telemetry event accepted",
 		"event_id", event.ID,
@@ -164,11 +185,17 @@ func (server *Server) handleMetric(writer http.ResponseWriter, request *http.Req
 	}
 
 	if err := server.publisher.Publish(request.Context(), server.topics.Metric, event); err != nil {
+		if server.observer != nil {
+			server.observer.PublishFailure(server.topics.Metric)
+		}
 		server.logger.Error("metric publish failed", "event_id", event.ID, "topic", server.topics.Metric, "error", err)
 		writeError(writer, http.StatusServiceUnavailable, "streaming backend unavailable")
 		return
 	}
 
+	if server.observer != nil {
+		server.observer.Accepted("metric", server.topics.Metric)
+	}
 	server.logger.Info(
 		"metric accepted",
 		"event_id", event.ID,

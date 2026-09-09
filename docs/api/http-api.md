@@ -167,3 +167,44 @@ limit=1..500
 
 The shadow pipeline never changes the active event path. This endpoint shows
 what the candidate policy would have done differently.
+
+
+## Replay history
+
+### `GET /api/v1/replays`
+
+Returns newest-first Incident Replay history.
+
+Optional:
+
+```text
+limit=1..200
+```
+
+The API exposes aggregate replay effects and status; it does not return another
+copy of the frozen telemetry payload.
+
+## Cost simulation history
+
+### `GET /api/v1/cost-simulations`
+
+Returns newest-first cost simulation history.
+
+Optional:
+
+```text
+limit=1..200
+```
+
+Dollar fields are absent when no pricing model was supplied.
+
+## Self-observability
+
+### `GET /metrics`
+
+Gateway Prometheus metrics.
+
+The worker exposes its own `GET /metrics` on the admin listener (default
+`:8081`).
+
+Prometheus labels intentionally avoid raw request paths and telemetry IDs.

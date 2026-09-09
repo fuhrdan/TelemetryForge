@@ -6,8 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fuhrdan/TelemetryForge/internal/costsim"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
+	"github.com/fuhrdan/TelemetryForge/internal/replay"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 )
 
@@ -245,5 +247,106 @@ func TestPolicyEvidencePersistence(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected persisted shadow-policy diff")
+	}
+}
+
+func TestReplayAndCostHistoryPersistence(t *testing.T) {
+	databaseURL := os.Getenv("TELEMETRYFORGE_INTEGRATION_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TELEMETRYFORGE_INTEGRATION_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	store, err := storage.NewPostgresStore(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Now().UTC()
+	completed := now.Add(time.Second)
+	run := replay.Run{
+		ID:            "integration-replay-" + now.Format("20060102T150405.000000000"),
+		IncidentID:    "integration-incident",
+		Mode:          "analysis",
+		Status:        "running",
+		ActivePolicy:  "integration-active",
+		ActiveVersion: "1",
+		StartedAt:     now,
+	}
+	if err := store.StartReplay(ctx, run); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordReplayEvent(ctx, replay.EventResult{
+		RunID:           run.ID,
+		EventID:         "integration-event",
+		Changed:         true,
+		DroppedTagCount: 1,
+		FindingCount:    1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	run.Status = "completed"
+	run.CompletedAt = &completed
+	run.EventCount = 1
+	run.ChangedEventCount = 1
+	run.DroppedTagCount = 1
+	run.FindingCount = 1
+	if err := store.CompleteReplay(ctx, run); err != nil {
+		t.Fatal(err)
+	}
+
+	runs, err := store.ListReplayRuns(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundRun := false
+	for _, item := range runs {
+		if item.ID == run.ID && item.Status == "completed" {
+			foundRun = true
+			break
+		}
+	}
+	if !foundRun {
+		t.Fatal("expected completed replay run in history")
+	}
+
+	simulation := costsim.Result{
+		ID:                "integration-cost-" + now.Format("20060102T150405.000000000"),
+		IncidentID:        "integration-incident",
+		ActivePolicy:      "integration-active",
+		ActiveVersion:     "1",
+		StartedAt:         now,
+		CompletedAt:       completed,
+		WindowSeconds:     60,
+		EventCount:        10,
+		Baseline:          costsim.Profile{Bytes: 1000, Series: 10},
+		Active:            costsim.Profile{Bytes: 750, Series: 5, ChangedEvents: 5},
+		Shadow:            costsim.Profile{Bytes: 700, Series: 4, ChangedEvents: 6},
+		MonthlyBaselineGB: 1.0,
+		MonthlyActiveGB:   0.75,
+		MonthlyShadowGB:   0.70,
+		Assumptions:       map[string]any{"integration": true},
+	}
+	if err := store.SaveCostSimulation(ctx, simulation); err != nil {
+		t.Fatal(err)
+	}
+
+	simulations, err := store.ListCostSimulations(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundSimulation := false
+	for _, item := range simulations {
+		if item.ID == simulation.ID && item.Active.Series == 5 {
+			foundSimulation = true
+			break
+		}
+	}
+	if !foundSimulation {
+		t.Fatal("expected cost simulation in history")
 	}
 }

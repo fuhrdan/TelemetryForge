@@ -118,3 +118,73 @@ make k8s-render
 ```bash
 make terraform-check
 ```
+
+
+## v0.9.0 observability stack
+
+The full Compose stack also starts:
+
+```text
+Prometheus        http://localhost:9090
+Grafana           http://localhost:3001
+Tempo             http://localhost:3200
+OTLP gRPC         localhost:4317
+OTLP HTTP         localhost:4318
+```
+
+Local Grafana credentials:
+
+```text
+admin / telemetryforge
+```
+
+The gateway and worker export sampled traces to the local OpenTelemetry
+Collector through:
+
+```text
+TELEMETRYFORGE_OTLP_TRACES_ENDPOINT=http://otel-collector:4318/v1/traces
+```
+
+Direct `go run` development leaves the variable empty by default, so tracing
+does not require a Collector unless explicitly enabled.
+
+## Replay / cost workflow
+
+1. Generate traffic.
+2. Freeze or automatically capture an incident.
+3. Run:
+
+```bash
+go run ./cmd/telemetryctl incident replay \
+  --id <INCIDENT_ID>
+```
+
+4. Compare telemetry shape:
+
+```bash
+go run ./cmd/telemetryctl cost simulate \
+  --incident <INCIDENT_ID>
+```
+
+5. Refresh the dashboard to see replay/cost history.
+
+## Load scenarios
+
+```bash
+make load-smoke
+make load-sustained
+make load-backpressure
+```
+
+The Make targets use the pinned `grafana/k6:2.2.0` image.
+
+For sustained/backpressure tests:
+
+```bash
+RATE=250 DURATION=5m make load-sustained
+```
+
+Watch Grafana while the test runs. The backpressure scenario is expected to make
+Kafka lag visible when input exceeds a modest local worker/database capacity.
+
+Do not turn that one local result into a universal throughput claim.

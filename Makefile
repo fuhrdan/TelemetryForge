@@ -1,4 +1,4 @@
-.PHONY: build run run-worker telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail
+.PHONY: build run run-worker telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check
 
 build:
 	go build ./...
@@ -81,3 +81,34 @@ demo-incident:
 
 demo-cardinality:
 	python3 scripts/demo-traffic.py --cardinality --count 160 --interval 0.05
+
+observability-check:
+	docker run --rm --entrypoint /bin/promtool \
+		-v "$(CURDIR)/deployments/observability/prometheus:/etc/prometheus:ro" \
+		prom/prometheus:v3.13.3 check config /etc/prometheus/prometheus.yml
+	docker run --rm \
+		-v "$(CURDIR)/deployments/observability/otel/collector.yaml:/etc/otelcol/config.yaml:ro" \
+		otel/opentelemetry-collector:0.160.0 \
+		validate --config=/etc/otelcol/config.yaml
+	docker run --rm \
+		-v "$(CURDIR)/deployments/observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro" \
+		grafana/tempo:3.0.2 \
+		-config.file=/etc/tempo/tempo.yaml -config.verify
+	python3 -c 'import json, pathlib; [json.loads(p.read_text()) for p in pathlib.Path("deployments/observability/grafana/dashboards").glob("*.json")]'
+
+load-smoke:
+	docker run --rm --add-host host.docker.internal:host-gateway \
+		-v "$(CURDIR)/load/k6:/scripts:ro" \
+		grafana/k6:2.2.0 run /scripts/ingest-smoke.js
+
+load-sustained:
+	docker run --rm --add-host host.docker.internal:host-gateway \
+		$(if $(RATE),-e RATE="$(RATE)") $(if $(DURATION),-e DURATION="$(DURATION)") \
+		-v "$(CURDIR)/load/k6:/scripts:ro" \
+		grafana/k6:2.2.0 run /scripts/ingest-sustained.js
+
+load-backpressure:
+	docker run --rm --add-host host.docker.internal:host-gateway \
+		$(if $(RATE),-e RATE="$(RATE)") $(if $(DURATION),-e DURATION="$(DURATION)") \
+		-v "$(CURDIR)/load/k6:/scripts:ro" \
+		grafana/k6:2.2.0 run /scripts/backpressure.js

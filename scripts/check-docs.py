@@ -35,6 +35,12 @@ REQUIRED = [
     ROOT / "docs" / "policy" / "shadow-pipeline.md",
     ROOT / "docs" / "deployment" / "kubernetes.md",
     ROOT / "docs" / "deployment" / "terraform.md",
+    ROOT / "docs" / "incidents" / "replay.md",
+    ROOT / "docs" / "cost" / "cost-simulator.md",
+    ROOT / "docs" / "observability" / "self-observability.md",
+    ROOT / "docs" / "observability" / "metrics.md",
+    ROOT / "docs" / "observability" / "tracing.md",
+    ROOT / "docs" / "performance" / "benchmark-methodology.md",
 ]
 
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

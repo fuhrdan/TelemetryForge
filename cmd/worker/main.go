@@ -13,6 +13,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/health"
 	"github.com/fuhrdan/TelemetryForge/internal/incident"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
+	"github.com/fuhrdan/TelemetryForge/internal/observability"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
@@ -23,6 +24,22 @@ func main() {
 	logger := logging.New()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	metrics := observability.NewMetrics("worker")
+	traceShutdown, err := observability.InitTracing(
+		ctx,
+		"telemetryforge-worker",
+		"0.9.0",
+		os.Getenv("TELEMETRYFORGE_OTLP_TRACES_ENDPOINT"),
+	)
+	if err != nil {
+		logger.Error("OpenTelemetry initialization failed", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = traceShutdown(shutdownCtx)
+	}()
 
 	brokers := splitCSV(env("TELEMETRYFORGE_KAFKA_BROKERS", "localhost:9092"))
 	topics := splitCSV(env("TELEMETRYFORGE_WORKER_TOPICS", "telemetry.raw,telemetry.metrics"))
@@ -107,6 +124,7 @@ func main() {
 		GroupID:  env("TELEMETRYFORGE_WORKER_GROUP_ID", "telemetryforge-processors"),
 		Topics:   topics,
 		DLQTopic: env("TELEMETRYFORGE_WORKER_DLQ_TOPIC", "telemetry.dlq"),
+		Observer: metrics,
 	}, logger)
 	if err != nil {
 		logger.Error("create Kafka consumer", "error", err)
@@ -118,7 +136,7 @@ func main() {
 	healthServer := health.New(adminAddress, logger, map[string]health.Checker{
 		"kafka":    consumer,
 		"database": store,
-	})
+	}, metrics.Handler())
 	go func() {
 		if err := healthServer.Start(); err != nil {
 			logger.Error("worker health server stopped", "error", err)
@@ -131,7 +149,9 @@ func main() {
 		_ = healthServer.Shutdown(shutdownCtx)
 	}()
 
-	pool, err := worker.NewPool(workers, queueCapacity, pipeline, logger)
+	go consumer.RunLagMonitor(ctx, 15*time.Second)
+
+	pool, err := worker.NewPoolWithObserver(workers, queueCapacity, pipeline, logger, metrics)
 	if err != nil {
 		logger.Error("create worker pool", "error", err)
 		os.Exit(1)

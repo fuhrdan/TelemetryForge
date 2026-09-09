@@ -11,6 +11,10 @@ import (
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 const defaultProduceTimeout = 5 * time.Second
@@ -78,7 +82,15 @@ func (publisher *KafkaPublisher) Publish(ctx context.Context, topic string, even
 		return fmt.Errorf("encode event: %w", err)
 	}
 
-	publishContext, cancel := context.WithTimeout(ctx, publisher.produceTimeout)
+	tracer := otel.Tracer("github.com/fuhrdan/TelemetryForge/kafka")
+	spanContext, span := tracer.Start(ctx, "kafka.produce")
+	span.SetAttributes(
+		attribute.String("messaging.system", "kafka"),
+		attribute.String("messaging.destination.name", topic),
+	)
+	defer span.End()
+
+	publishContext, cancel := context.WithTimeout(spanContext, publisher.produceTimeout)
 	defer cancel()
 
 	record := &kgo.Record{
@@ -91,10 +103,23 @@ func (publisher *KafkaPublisher) Publish(ctx context.Context, topic string, even
 			{Key: "telemetryforge-correlation-id", Value: []byte(event.CorrelationID)},
 		},
 	}
+	carrier := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(spanContext, carrier)
+	for key, value := range carrier {
+		record.Headers = append(record.Headers, kgo.RecordHeader{Key: key, Value: []byte(value)})
+	}
 
 	result := publisher.client.ProduceSync(publishContext, record)
 	if err := result.FirstErr(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Kafka publish failed")
 		return fmt.Errorf("publish to topic %q: %w", topic, err)
+	}
+	if len(result) > 0 && result[0].Record != nil {
+		span.SetAttributes(
+			attribute.Int("messaging.kafka.destination.partition", int(result[0].Record.Partition)),
+			attribute.Int64("messaging.kafka.message.offset", result[0].Record.Offset),
+		)
 	}
 
 	publisher.logger.Debug(

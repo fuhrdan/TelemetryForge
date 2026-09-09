@@ -4,6 +4,48 @@
 
 _No changes yet._
 
+## [0.9.0] - 2026-09-09
+
+### Incident Replay
+- Added isolated replay of frozen incident evidence through normalization and active/shadow policy.
+- Added event-time policy evaluation so replay reflects the captured incident timeline.
+- Added compact replay run/event-result persistence and dashboard/API history.
+- Added optional output restricted to the `telemetry.replay` namespace.
+- Added replay topic-isolation tests at the library boundary.
+
+### Telemetry Cost Simulator
+- Added baseline/active/shadow byte and exact sample-series comparison.
+- Added linear 30-day canonical-volume projection.
+- Added explicit optional pricing-model input; no dollar output without supplied prices.
+- Added stored simulation assumptions and dashboard/API history.
+
+### Cardinality
+- Added a fixed 16-hash exact counting window before the bounded 64-register HyperLogLog estimator.
+- Preserved SHA-256-derived, bounded state without storing raw cardinality values.
+
+### Self-observability
+- Added Prometheus gateway/worker metrics with bounded label sets.
+- Added sampled OpenTelemetry traces for HTTP, Kafka publish, worker processing, and worker pipeline stages.
+- Added W3C Trace Context/Baggage propagation through Kafka headers.
+- Added broker-derived Kafka consumer lag via franz-go admin APIs.
+- Added worker/gateway `/metrics` endpoints and Kubernetes scrape annotations.
+
+### Local observability stack
+- Added pinned OpenTelemetry Collector, Prometheus, Grafana, and Tempo services.
+- Added provisioned Prometheus/Tempo Grafana datasources.
+- Added a TelemetryForge self-observability dashboard.
+
+### Load testing
+- Added pinned k6 smoke, sustained-ingestion, and backpressure scenarios.
+- Added benchmark methodology and explicit rules against unsupported throughput claims.
+
+### Documentation / CI
+- Added replay, cost, tracing, metrics, self-observability, and benchmark guides.
+- Added ADRs 0017-0020.
+- Added observability configuration and k6 scenario validation to CI.
+- Updated the dashboard with replay and cost-analysis history.
+
+
 ## [0.8.0] - 2026-09-09
 
 
