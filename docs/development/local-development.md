@@ -2,10 +2,12 @@
 
 ## Requirements
 
-- Docker with Docker Compose, or
-- Go 1.25+ plus a reachable Kafka broker.
+The easiest path requires Docker with Docker Compose.
 
-## Easiest path
+Direct service development uses Go 1.25+ plus reachable Kafka and
+PostgreSQL/TimescaleDB instances.
+
+## Start the full stack
 
 ```bash
 docker compose up --build
@@ -13,48 +15,44 @@ docker compose up --build
 
 Compose starts:
 
-1. Kafka in KRaft mode.
-2. `kafka-init`, which creates the telemetry topics.
-3. the HTTP gateway.
-4. the v0.3.0 processing worker.
+1. TimescaleDB/PostgreSQL.
+2. the idempotent `db-migrate` service.
+3. Kafka in KRaft mode.
+4. Kafka topic initialization (`telemetry.raw`, `telemetry.metrics`,
+   `telemetry.dlq`).
+5. the Go gateway.
+6. the Go processing worker.
 
-The gateway is available on `http://localhost:8080`.
+The gateway listens on `http://localhost:8080`.
 
-## Run services directly
+## Why is there a migration service?
 
-With Kafka already running:
+PostgreSQL's init directory runs only when the database volume is empty.
+`db-migrate` reruns the idempotent SQL migrations on startup so an existing
+local volume can move forward between TelemetryForge releases.
 
-```bash
-go run ./cmd/gateway
-```
-
-In another terminal:
-
-```bash
-go run ./cmd/worker
-```
-
-## Watch the consumer group
+## Useful commands
 
 ```bash
 make kafka-groups
+make db-events
+make dlq-tail
 ```
 
-Kafka reports partitions, current offsets, log-end offsets, and lag. Lag is an
-important v0.3.0 operational signal because the worker queue is deliberately
-bounded.
-
-## Tune the worker
+Run services directly:
 
 ```bash
-TELEMETRYFORGE_WORKER_COUNT=8 \
-TELEMETRYFORGE_WORKER_QUEUE_CAPACITY=512 \
+go run ./cmd/gateway
 go run ./cmd/worker
 ```
 
-Increase worker count when processing is CPU-bound or safely parallelizable.
-Increase queue capacity only to absorb short bursts; Kafka should remain the
-durable place for sustained backlog.
+Use operations tooling:
+
+```bash
+go run ./cmd/telemetryctl incident freeze --help
+go run ./cmd/telemetryctl dlq replay --help
+go run ./cmd/telemetryctl dedup prune --help
+```
 
 ## Verification
 
@@ -62,8 +60,10 @@ durable place for sustained backlog.
 make check
 ```
 
-With Kafka running:
+With Kafka/TimescaleDB running:
 
 ```bash
 make integration-test
 ```
+
+GitHub Actions additionally runs Kafka and storage integration jobs.

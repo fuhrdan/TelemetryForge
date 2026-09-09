@@ -1,52 +1,67 @@
-# TelemetryForge Architecture — v0.3.0
+# TelemetryForge Architecture — v0.5.0
 
-TelemetryForge is split into two independently scalable runtime services.
+TelemetryForge currently has two independently scalable runtime services plus
+two durable infrastructure systems.
+
+```text
+                    +----------------------+
+HTTP / webhooks --->| Go ingestion gateway |
+                    +----------+-----------+
+                               |
+                               v
+                         Apache Kafka
+                               |
+                               v
+                    telemetryforge-processors
+                               |
+                               v
+                       bounded worker pool
+                               |
+                +--------------+--------------+
+                |                             |
+                v                             v
+        Flight Recorder                 processing chain
+        rolling buffer                       |
+                |                             v
+                |                        TimescaleDB
+                |                             |
+                +--> frozen incidents         +--> Query API
+
+terminal failures -----------------------> telemetry.dlq
+```
 
 ## Ingestion tier
 
-The Go gateway validates the canonical event envelope and publishes accepted
-events to Kafka. It stays stateless so additional gateway instances can be
-placed behind a load balancer.
+The gateway validates the canonical event envelope and waits for Kafka
+acknowledgement before returning HTTP `202 Accepted`.
 
 ## Processing tier
 
-The Go worker joins the `telemetryforge-processors` Kafka consumer group.
-Records are decoded and submitted to a bounded worker pool. Workers run
-processors and acknowledge records only after successful processing.
+The worker uses consumer groups, a bounded queue, classified retries, the
+Flight Recorder, normalization, and idempotent persistence.
 
-```text
-HTTP clients
-    |
-    v
-Gateway replicas
-    |
-    v
-Apache Kafka
-    |
-    v
-telemetryforge-processors consumer group
-    |
-    v
-bounded worker queues
-    |
-    v
-processors
-```
+A source offset is committed only after either:
 
-## Why split the services?
+- normal persistence succeeds; or
+- a terminal failure is durably published to `telemetry.dlq`.
 
-Traffic does not arrive and process at identical rates. Kafka provides a
-durable boundary between the two. Gateways can scale for HTTP concurrency while
-workers scale for processing throughput.
+## Storage tier
 
-## Current processing stage
+PostgreSQL/TimescaleDB provides:
 
-The first processor normalizes source and event-type whitespace. The behavior
-is deliberately modest; v0.3.0 proves the concurrency, acknowledgement, and
-backpressure architecture before persistence is introduced.
+- time-series telemetry storage
+- event-ID deduplication
+- short-lived Flight Recorder storage
+- durable frozen incident windows
 
-## What comes next?
+## Why separate Kafka from storage?
 
-v0.4.0 adds PostgreSQL/TimescaleDB persistence. Because v0.3.0 already commits
-Kafka offsets after successful processing, persistence can be inserted into the
-processor path without changing the ingestion API.
+Kafka absorbs bursty producer traffic and decouples ingestion availability from
+database processing speed. TimescaleDB provides queryable analytical storage.
+Each system does the job it is designed for instead of using application memory
+as the buffer between them.
+
+## Where the project goes next
+
+v0.6.0 can now build a real-time dashboard and automatic incident capture on a
+reliable ingest/process/store foundation.

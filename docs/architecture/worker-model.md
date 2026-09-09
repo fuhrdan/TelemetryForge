@@ -1,66 +1,62 @@
 # Worker Model
 
-## v0.4.0 processing path
+## v0.5.0 processing path
 
-The gateway writes accepted telemetry to Kafka. A separate `worker` process
-joins the `telemetryforge-processors` consumer group and persists records into
-PostgreSQL/TimescaleDB.
+The worker is now responsible for three distinct guarantees:
+
+1. keep memory bounded;
+2. preserve short-lived full-fidelity incident evidence;
+3. either persist an event successfully or move it to a durable DLQ.
 
 ```text
-Kafka
-  |
-  v
-Consumer group
-  |
-  v
-Bounded in-memory queue
-  |
-  +---- Worker 1
-  +---- Worker 2
-  +---- Worker N
-          |
-          v
-     Normalizer
-          |
-          v
-      Persister
-          |
-          v
- PostgreSQL/TimescaleDB
-          |
-          v
-   Kafka offset commit
+Kafka source record
+       |
+       v
+bounded worker queue
+       |
+       v
+Flight Recorder
+       |
+       v
+Normalizer
+       |
+       v
+TimescaleDB persistence
+       |
+       +---- success -----------------> commit source offset
+       |
+       `---- failure
+               |
+               +-- transient --> bounded retry
+               |                   |
+               |                   `-- exhausted
+               |
+               `-- permanent
+                       |
+                       v
+                 telemetry.dlq
+                       |
+                       v
+                commit source offset
 ```
 
-## Why a bounded queue?
+## Why record before normalization?
 
-The queue is deliberately finite. If persistence slows, an unlimited Go
-channel would hide the problem until the process exhausted memory. A full
-bounded queue instead slows consumption so backlog stays in Kafka, the durable
-system designed to hold it.
+The Flight Recorder exists to preserve evidence. It should contain what the
+pipeline received, not only what later processing decided to keep or change.
 
-## Why persist before committing the Kafka offset?
+## Why retry inside a worker slot?
 
-If the worker acknowledged Kafka first and then the database write failed,
-telemetry could be lost permanently.
+A retry remains attached to the worker that owns the job. That keeps retry
+concurrency bounded by worker count. TelemetryForge does not launch a new
+goroutine or allocate a new queue for every failed attempt.
 
-v0.4.0 therefore acknowledges the Kafka record only after the database
-transaction succeeds. This gives at-least-once processing.
+## Why does DLQ success count as completion?
 
-## What about duplicates?
+Once Kafka durably contains a detailed dead-letter replacement, the poison
+record no longer needs to block the source partition. The DLQ preserves the
+event, source location, failure reason, and attempt count for investigation and
+replay.
 
-At-least-once processing means a record can be processed twice after a crash or
-rebalance. The persistence layer makes that retry safe by reserving each
-canonical event ID in a globally unique PostgreSQL table before inserting the
-time-series row.
-
-## Processor pipeline
-
-Processors remain independent of Kafka transport. v0.4.0 composes:
-
-1. `Normalizer`
-2. `Persister`
-
-That separation is intentional. Future schema validation, enrichment,
-Cardinality Firewall rules, incident capture, and replay can be inserted into
-the pipeline without rewriting the consumer.
+If publishing that replacement fails, the original source offset remains
+uncommitted.

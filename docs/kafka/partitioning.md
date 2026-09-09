@@ -20,4 +20,4 @@ This provides two useful properties:
 
 The useful concurrency of a future consumer group is bounded by the number of partitions. With six partitions, at most six consumers in the same group can actively own partitions for a topic at one time.
 
-v0.3.0 will build consumer-group workers around this constraint and document how partition count, worker concurrency, and backpressure interact.
+Consumer-group workers now use this partitioning model. Partition count bounds useful group-level concurrency, while the bounded worker queue controls in-process concurrency and backpressure.

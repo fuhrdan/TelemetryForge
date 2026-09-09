@@ -1,40 +1,51 @@
-# Failure Handling in v0.4.0
+# Failure Handling in v0.5.0
 
-v0.4.0 extends the at-least-once processing contract through durable storage.
+v0.5.0 makes retries and dead-letter behavior explicit.
 
-## Kafka publish failure
+## Gateway publish failure
 
-The gateway returns `503 Service Unavailable`. It does not claim that an event
-was accepted when Kafka did not acknowledge it.
+The gateway returns `503 Service Unavailable` and does not claim durable
+acceptance unless Kafka acknowledges the ingest record.
 
-## Processing failure
+## Processing failure classes
 
-If normalization or another processor fails, the worker does not commit the
-Kafka record.
+A processing error is either:
 
-## Database failure
+- **transient** — retrying may succeed; or
+- **permanent** — the same input is not expected to improve.
 
-The worker transaction fails and the Kafka record remains uncommitted. The
-record can be delivered again after recovery.
+Unknown errors default to permanent.
 
-## Duplicate delivery
+## Transient failure
 
-The database transaction first inserts the event ID into `event_dedup` using
-`ON CONFLICT DO NOTHING`. If that ID already exists, persistence returns
-success without creating a second time-series row.
+The worker retries with bounded exponential backoff and jitter. Four total
+attempts are allowed by default.
 
-This is the key bridge between Kafka's at-least-once behavior and safe durable
-storage.
+If all attempts fail, the event moves to `telemetry.dlq`.
 
-## Malformed Kafka record
+## Permanent failure
 
-Malformed JSON is logged with topic, partition, and offset. Automated
-dead-letter handling is intentionally deferred to v0.5.0 so retry classification,
-retry ceilings, DLQ metadata, and replay semantics are implemented as one
-coherent reliability feature.
+The worker skips local retry and sends the event directly to the DLQ.
+
+## DLQ failure
+
+The original Kafka record is committed only after Kafka acknowledges the DLQ
+record. If DLQ publication fails, the original offset remains uncommitted.
+
+## Malformed Kafka data
+
+Records that cannot be decoded preserve their original bytes in the DLQ using
+base64 JSON encoding, along with topic, partition, offset, and decode error.
+
+## Database / Flight Recorder failure
+
+Both are classified as transient dependency failures. If they remain
+unavailable through the retry ceiling, the source event enters the DLQ.
 
 ## Shutdown
 
-SIGINT/SIGTERM stops polling for new work. Jobs already in the bounded queue
-finish, successful database transactions are acknowledged, and then Kafka and
-database connections close.
+Cancellation stops polling for new work. In-flight work either completes or
+remains uncommitted if the shutdown context prevents persistence/DLQ
+acknowledgement.
+
+This preserves recoverability over falsely claiming completion.

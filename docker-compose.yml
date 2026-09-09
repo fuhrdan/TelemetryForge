@@ -11,13 +11,33 @@ services:
       - "5432:5432"
     volumes:
       - telemetryforge-db:/var/lib/postgresql/data
-      - ./migrations/001_timescaledb.sql:/docker-entrypoint-initdb.d/001_timescaledb.sql:ro
+      - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U telemetryforge -d telemetryforge"]
       interval: 5s
       timeout: 5s
       retries: 20
       start_period: 10s
+
+
+  db-migrate:
+    image: timescale/timescaledb:2.30.0-pg17
+    environment:
+      PGPASSWORD: telemetryforge
+    volumes:
+      - ./migrations:/migrations:ro
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        for migration in /migrations/*.sql; do
+          echo "Applying $${migration}"
+          psql -h timescaledb -U telemetryforge -d telemetryforge -v ON_ERROR_STOP=1 -f "$${migration}"
+        done
 
   kafka:
     image: apache/kafka:4.3.1
@@ -57,8 +77,10 @@ services:
       - |
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic telemetry.raw --partitions 6 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic telemetry.metrics --partitions 6 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic telemetry.dlq --partitions 6 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --describe --topic telemetry.raw
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --describe --topic telemetry.metrics
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --describe --topic telemetry.dlq
 
   gateway:
     build:
@@ -78,6 +100,8 @@ services:
         condition: service_completed_successfully
       timescaledb:
         condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 
@@ -93,12 +117,15 @@ services:
       TELEMETRYFORGE_WORKER_TOPICS: "telemetry.raw,telemetry.metrics"
       TELEMETRYFORGE_WORKER_COUNT: "4"
       TELEMETRYFORGE_WORKER_QUEUE_CAPACITY: "256"
+      TELEMETRYFORGE_WORKER_DLQ_TOPIC: "telemetry.dlq"
       TELEMETRYFORGE_DATABASE_URL: "postgres://telemetryforge:telemetryforge@timescaledb:5432/telemetryforge?sslmode=disable"
     depends_on:
       kafka-init:
         condition: service_completed_successfully
       timescaledb:
         condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:

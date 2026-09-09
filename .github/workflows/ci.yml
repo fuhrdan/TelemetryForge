@@ -57,6 +57,8 @@ jobs:
           cache: true
       - name: Start TimescaleDB
         run: docker compose up -d --wait timescaledb
+      - name: Apply database migrations
+        run: docker compose run --rm db-migrate
       - name: Run storage integration test
         env:
           TELEMETRYFORGE_INTEGRATION_DATABASE_URL: postgres://telemetryforge:telemetryforge@localhost:5432/telemetryforge?sslmode=disable

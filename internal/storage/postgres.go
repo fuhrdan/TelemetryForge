@@ -158,6 +158,22 @@ func (store *PostgresStore) QueryEvents(ctx context.Context, query Query) ([]dom
 	return events, nil
 }
 
+// PruneDedupBefore removes idempotency reservations older than the supplied
+// cutoff. Operators should keep this horizon longer than raw telemetry
+// retention and any Kafka/replay window so an old replay cannot recreate data
+// that should still be considered already processed.
+func (store *PostgresStore) PruneDedupBefore(ctx context.Context, before time.Time) (int64, error) {
+	if before.IsZero() {
+		return 0, errors.New("deduplication cutoff is required")
+	}
+	result, err := store.pool.Exec(ctx,
+		`DELETE FROM event_dedup WHERE first_seen_at < $1`, before.UTC())
+	if err != nil {
+		return 0, fmt.Errorf("prune event deduplication rows: %w", err)
+	}
+	return result.RowsAffected(), nil
+}
+
 // Ready verifies that the database can answer a lightweight request.
 func (store *PostgresStore) Ready(ctx context.Context) error {
 	return store.pool.Ping(ctx)

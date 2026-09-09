@@ -1,4 +1,4 @@
-.PHONY: build run run-worker test integration-test fmt vet check docker-up docker-down kafka-topics kafka-groups db-shell db-events
+.PHONY: build run run-worker telemetryctl test integration-test fmt vet check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail
 
 build:
 	go build ./...
@@ -8,6 +8,9 @@ run:
 
 run-worker:
 	go run ./cmd/worker
+
+telemetryctl:
+	go run ./cmd/telemetryctl
 
 test:
 	go test ./...
@@ -40,3 +43,6 @@ db-shell:
 
 db-events:
 	docker compose exec timescaledb psql -U telemetryforge -d telemetryforge -c "SELECT event_id, source, event_type, event_time FROM telemetry_events ORDER BY event_time DESC LIMIT 20;"
+
+dlq-tail:
+	docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic telemetry.dlq --from-beginning

@@ -3,9 +3,9 @@ package worker
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/reliability"
 )
 
 // EventWriter is the storage behavior required by the processing layer.
@@ -32,7 +32,7 @@ func NewPersister(writer EventWriter) (*Persister, error) {
 // therefore leaves the Kafka record uncommitted for later retry.
 func (persister *Persister) Process(ctx context.Context, event domain.Event) (domain.Event, error) {
 	if err := persister.writer.WriteEvent(ctx, event); err != nil {
-		return domain.Event{}, fmt.Errorf("persist event: %w", err)
+		return domain.Event{}, reliability.New(reliability.Transient, "persist event", err)
 	}
 	return event, nil
 }

@@ -34,13 +34,21 @@ func main() {
 	}
 	defer store.Close()
 
+	recorder, err := worker.NewFlightRecorder(store)
+	if err != nil {
+		logger.Error("create flight recorder", "error", err)
+		os.Exit(1)
+	}
+
 	persister, err := worker.NewPersister(store)
 	if err != nil {
 		logger.Error("create persistence processor", "error", err)
 		os.Exit(1)
 	}
 
-	pipeline, err := worker.NewChain(worker.Normalizer{}, persister)
+	// Preserve the incoming envelope before normalization. That ordering is
+	// deliberate: incident captures should show what the pipeline actually saw.
+	pipeline, err := worker.NewChain(recorder, worker.Normalizer{}, persister)
 	if err != nil {
 		logger.Error("create processing pipeline", "error", err)
 		os.Exit(1)
@@ -51,6 +59,7 @@ func main() {
 		ClientID: env("TELEMETRYFORGE_WORKER_CLIENT_ID", "telemetryforge-worker"),
 		GroupID:  env("TELEMETRYFORGE_WORKER_GROUP_ID", "telemetryforge-processors"),
 		Topics:   topics,
+		DLQTopic: env("TELEMETRYFORGE_WORKER_DLQ_TOPIC", "telemetry.dlq"),
 	}, logger)
 	if err != nil {
 		logger.Error("create Kafka consumer", "error", err)
@@ -70,7 +79,9 @@ func main() {
 		"queue_capacity", queueCapacity,
 		"group_id", env("TELEMETRYFORGE_WORKER_GROUP_ID", "telemetryforge-processors"),
 		"topics", strings.Join(topics, ","),
-		"persistence", "postgresql/timescaledb")
+		"dlq_topic", env("TELEMETRYFORGE_WORKER_DLQ_TOPIC", "telemetry.dlq"),
+		"persistence", "postgresql/timescaledb",
+		"flight_recorder", "enabled")
 
 	if err := consumer.Run(ctx, pool); err != nil {
 		logger.Error("consumer stopped with error", "error", err)

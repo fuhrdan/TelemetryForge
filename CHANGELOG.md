@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.5.0] - 2026-09-09
+
+### Added
+- Transient/permanent processing failure classification.
+- Bounded exponential retry with jitter.
+- Kafka `telemetry.dlq` dead-letter topic.
+- Detailed DLQ envelope preserving original source metadata.
+- Dead-letter handling for malformed Kafka payloads.
+- `telemetryctl` operations CLI.
+- Dead-letter event replay.
+- 30-minute rolling Incident Flight Recorder.
+- Durable incident freeze storage.
+- Deduplication pruning lifecycle and CLI.
+- Explicit idempotent migration service for existing database volumes.
+- Retry, terminal-failure, and Flight Recorder tests.
+- Human-readable reliability documentation.
+- ADR 0009 for classified retries and DLQ handling.
+- ADR 0010 for the Flight Recorder buffer.
+
+### Changed
+- Worker pipeline now records full-fidelity telemetry before normalization.
+- Terminal failures are acknowledged only after Kafka accepts their DLQ record.
+- Local database migrations now run for both clean installations and upgrades.
+
+### Reliability
+- Transient dependency failures retry locally with bounded exponential backoff.
+- Permanent failures skip wasteful retries.
+- Exhausted failures no longer wedge a Kafka partition indefinitely.
+- Deduplication cleanup is explicit and guarded by a minimum retention horizon.
+
 ## [0.4.0] - 2026-09-09
 
 ### Added

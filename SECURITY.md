@@ -1,26 +1,42 @@
 # Security Policy
 
-## v0.3.0 security posture
+## v0.5.0 security posture
 
-TelemetryForge is still a development/portfolio release. The gateway and worker
-pipeline demonstrate distributed processing behavior, not a finished public
-multi-tenant security boundary.
+TelemetryForge v0.5.0 is a development/portfolio release. Its reliability model
+is substantially stronger, but it is **not yet a safe public multi-tenant
+service**.
 
 Not yet implemented:
 
 - ingestion authentication
 - tenant isolation and authorization
+- application TLS termination
+- Kafka TLS/SASL
 - rate limiting
-- TLS termination in the application
-- Kafka TLS/SASL configuration
 - secrets management
-- payload-level PII classification/redaction
+- PII classification/redaction
+- per-tenant retention policy
 
-**Do not expose v0.3.0 directly to an untrusted network or the public Internet.**
+## DLQ and Flight Recorder sensitivity
 
-The worker consumes whatever records its Kafka credentials can access.
-Production deployments must therefore apply least-privilege topic ACLs and
-encrypted/authenticated broker connections.
+The new reliability features intentionally preserve failed/full-fidelity data.
 
-Security controls will be introduced as the project reaches persistence,
-policy-as-code, and production deployment milestones.
+That means:
+
+- `telemetry.dlq` can contain original event bodies;
+- malformed payload bytes are preserved;
+- `flight_recorder_events` stores pre-normalized envelopes;
+- frozen `incident_events` can outlive the rolling buffer.
+
+Operators must treat these locations with the same or greater sensitivity as
+the primary telemetry datastore.
+
+A future policy layer will redact or quarantine sensitive fields before
+crossing trust boundaries. v0.5.0 does not provide that guarantee.
+
+## Local credentials
+
+Credentials in `docker-compose.yml` are deliberately obvious local-development
+credentials. They must never be reused in a real deployment.
+
+**Do not expose v0.5.0 directly to an untrusted network or the public Internet.**

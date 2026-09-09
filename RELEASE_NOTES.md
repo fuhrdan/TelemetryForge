@@ -1,51 +1,82 @@
-# TelemetryForge v0.4.0 Release Notes
+# TelemetryForge v0.5.0 Release Notes
 
-## Durable Time-Series Persistence
+## Reliability, DLQ & Incident Flight Recorder
 
-v0.4.0 converts the processing pipeline into a durable observability data path.
+v0.5.0 turns failure handling into a first-class part of the architecture and
+introduces the first TelemetryForge-specific incident feature.
 
 ### Added
 
-- PostgreSQL/TimescaleDB persistence.
-- TimescaleDB hypertable for telemetry events.
-- PostgreSQL global event-ID deduplication table.
-- Transactional idempotent storage.
-- pgx connection pooling.
-- JSONB tags and payloads.
-- source/time, type/time, correlation/time, and tag indexes.
-- 30-day development retention policy.
-- `GET /api/v1/events`.
-- `GET /api/v1/metrics`.
-- bounded RFC3339 time-range queries.
-- persistence processor and processor chain.
-- TimescaleDB Compose service.
-- human-readable storage schema, retention, and query documentation.
-- ADRs for TimescaleDB and deduplication design.
+- transient/permanent processing-error classification
+- bounded exponential retries with 20% jitter
+- four total attempts by default
+- Kafka `telemetry.dlq` topic
+- detailed dead-letter envelope
+- malformed-payload dead-letter preservation
+- original Kafka topic/partition/offset metadata
+- source-offset acknowledgement after successful DLQ publication
+- `telemetryctl` operations CLI
+- DLQ replay from a dead-letter JSON record
+- rolling 30-minute Incident Flight Recorder
+- durable incident freezing
+- deduplication pruning command
+- explicit database migration service for existing volumes
+- retry and terminal-failure tests
+- Flight Recorder tests
+- reliability documentation and ADRs
 
-### Reliability contract
+### Incident Flight Recorder
 
-A worker now follows this sequence:
+The worker now records the incoming canonical envelope before normalization.
 
-1. consume Kafka record;
-2. normalize event;
-3. begin PostgreSQL transaction;
-4. reserve canonical event ID;
-5. insert time-series event if new;
-6. commit PostgreSQL transaction;
-7. commit Kafka offset.
+The rolling TimescaleDB buffer keeps 30 minutes by default. Operators can freeze
+a selected capture window into durable incident storage:
 
-Database failure therefore prevents Kafka acknowledgement.
+```bash
+telemetryctl incident freeze \
+  --id INC-2026-0042 \
+  --title "Checkout latency spike" \
+  --from 2026-09-09T16:00:00Z \
+  --to 2026-09-09T16:20:00Z
+```
 
-A repeated event ID is treated as successful, already-completed work, making
-Kafka retry behavior idempotent at the persistence boundary.
+This creates the persistence model needed by later Incident Replay and Evidence
+Graph releases.
+
+### Retry semantics
+
+Transient errors retry with bounded exponential backoff. Permanent failures do
+not waste repeated attempts.
+
+After four total failed attempts, transient work moves to the DLQ.
+
+Unknown/unclassified errors default to permanent to avoid accidental infinite
+retry behavior.
+
+### DLQ acknowledgement semantics
+
+The original Kafka record is not committed until Kafka acknowledges the
+dead-letter record.
+
+If DLQ publication fails, the original record remains available to the consumer
+group.
+
+### Upgrade behavior
+
+v0.5.0 adds an explicit `db-migrate` service. This fixes an important local
+upgrade concern: PostgreSQL init scripts only execute on an empty database
+volume, while the migration service applies idempotent migrations to existing
+v0.4.0 volumes as well.
 
 ### Known limitations
 
-- Query API does not yet paginate with cursors.
-- Aggregated/downsampled query endpoints are not implemented.
-- Deduplication metadata retention is not yet automated.
-- DLQ/retry ceilings arrive in v0.5.0.
-- No authentication or tenant authorization exists yet.
-- Local Compose credentials are development-only.
-
-These limitations are documented intentionally.
+- DLQ browsing UI is not implemented yet.
+- Replay currently operates on an exported dead-letter JSON record.
+- Flight Recorder freezing is manual; automatic anomaly-triggered freezing
+  arrives later.
+- Flight Recorder uses the same TimescaleDB instance in this development
+  architecture; a cheaper/local buffer may replace it at larger scale.
+- retry classification is intentionally small and will become richer as more
+  downstream dependencies are introduced.
+- authentication, authorization, tenant isolation, and PII redaction remain
+  future milestones.

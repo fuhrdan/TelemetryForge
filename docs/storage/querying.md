@@ -1,6 +1,6 @@
 # Querying Stored Telemetry
 
-v0.4.0 adds read endpoints backed by TimescaleDB.
+v0.4.0 introduced read endpoints backed by TimescaleDB; v0.5.0 retains that query contract.
 
 ## Events
 

@@ -64,3 +64,45 @@ func TestTimescalePersistenceIsIdempotent(t *testing.T) {
 		t.Fatalf("found %d stored rows for duplicate event, want 1", count)
 	}
 }
+
+func TestFlightRecorderFreeze(t *testing.T) {
+	databaseURL := os.Getenv("TELEMETRYFORGE_INTEGRATION_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TELEMETRYFORGE_INTEGRATION_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	store, err := storage.NewPostgresStore(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Now().UTC()
+	event := domain.Event{
+		ID:            "integration-flight-event",
+		Source:        "integration-test",
+		Type:          "incident.sample",
+		Timestamp:     now,
+		SchemaVersion: "1.0",
+	}
+	if err := store.WriteFlightEvent(ctx, event); err != nil {
+		t.Fatal(err)
+	}
+
+	count, err := store.FreezeIncident(
+		ctx,
+		"integration-incident",
+		"Integration Flight Recorder test",
+		now.Add(-time.Minute),
+		now.Add(time.Minute),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count < 1 {
+		t.Fatalf("froze %d events, want at least 1", count)
+	}
+}

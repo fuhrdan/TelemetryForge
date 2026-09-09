@@ -1,0 +1,197 @@
+// Command telemetryctl provides small operational tools for TelemetryForge.
+//
+// v0.5.0 intentionally starts with narrow, auditable commands for incident
+// freezing, DLQ replay, and deduplication maintenance.
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/logging"
+	"github.com/fuhrdan/TelemetryForge/internal/storage"
+	"github.com/fuhrdan/TelemetryForge/internal/stream"
+)
+
+func main() {
+	if len(os.Args) < 3 {
+		usage()
+		os.Exit(2)
+	}
+
+	ctx := context.Background()
+	switch os.Args[1] {
+	case "incident":
+		if os.Args[2] != "freeze" {
+			usage()
+			os.Exit(2)
+		}
+		if err := incidentFreeze(ctx, os.Args[3:]); err != nil {
+			exitErr(err)
+		}
+	case "dlq":
+		if os.Args[2] != "replay" {
+			usage()
+			os.Exit(2)
+		}
+		if err := dlqReplay(ctx, os.Args[3:]); err != nil {
+			exitErr(err)
+		}
+	case "dedup":
+		if os.Args[2] != "prune" {
+			usage()
+			os.Exit(2)
+		}
+		if err := dedupPrune(ctx, os.Args[3:]); err != nil {
+			exitErr(err)
+		}
+	default:
+		usage()
+		os.Exit(2)
+	}
+}
+
+func incidentFreeze(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("incident freeze", flag.ContinueOnError)
+	id := set.String("id", "", "incident identifier")
+	title := set.String("title", "", "human-readable incident title")
+	fromRaw := set.String("from", "", "RFC3339 capture-window start")
+	toRaw := set.String("to", "", "RFC3339 capture-window end")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+
+	from, err := time.Parse(time.RFC3339, *fromRaw)
+	if err != nil {
+		return errors.New("--from must be RFC3339")
+	}
+	to, err := time.Parse(time.RFC3339, *toRaw)
+	if err != nil {
+		return errors.New("--to must be RFC3339")
+	}
+
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	count, err := store.FreezeIncident(ctx, *id, *title, from, to)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("froze %d flight-recorder events into incident %s\n", count, *id)
+	return nil
+}
+
+func dlqReplay(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("dlq replay", flag.ContinueOnError)
+	file := set.String("file", "", "dead-letter JSON file")
+	topic := set.String("topic", "", "optional destination topic override")
+	brokersRaw := set.String("brokers", env("TELEMETRYFORGE_KAFKA_BROKERS", "localhost:9092"), "comma-separated Kafka brokers")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*file) == "" {
+		return errors.New("--file is required")
+	}
+
+	payload, err := os.ReadFile(*file)
+	if err != nil {
+		return fmt.Errorf("read dead-letter file: %w", err)
+	}
+
+	var dead domain.DeadLetter
+	if err := json.Unmarshal(payload, &dead); err != nil {
+		return fmt.Errorf("decode dead-letter file: %w", err)
+	}
+	if dead.Event == nil {
+		return errors.New("dead letter contains raw malformed payload and cannot be safely replayed as an event")
+	}
+
+	destination := dead.OriginalTopic
+	if strings.TrimSpace(*topic) != "" {
+		destination = strings.TrimSpace(*topic)
+	}
+	if destination == "" {
+		return errors.New("replay destination topic is empty")
+	}
+
+	publisher, err := stream.NewKafkaPublisher(stream.KafkaConfig{
+		Brokers:  splitCSV(*brokersRaw),
+		ClientID: "telemetryctl-replay",
+	}, logging.New())
+	if err != nil {
+		return err
+	}
+	defer publisher.Close()
+
+	if err := publisher.Publish(ctx, destination, *dead.Event); err != nil {
+		return err
+	}
+	fmt.Printf("replayed event %s to %s\n", dead.Event.ID, destination)
+	return nil
+}
+
+func dedupPrune(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("dedup prune", flag.ContinueOnError)
+	olderThan := set.Duration("older-than", 35*24*time.Hour, "minimum age to remove")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if *olderThan < 30*24*time.Hour {
+		return errors.New("--older-than must be at least 30 days in v0.5.0")
+	}
+
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	count, err := store.PruneDedupBefore(ctx, time.Now().UTC().Add(-*olderThan))
+	if err != nil {
+		return err
+	}
+	fmt.Printf("pruned %d deduplication rows older than %s\n", count, olderThan.String())
+	return nil
+}
+
+func usage() {
+	fmt.Fprintln(os.Stderr, `usage:
+  telemetryctl incident freeze --id INC-42 --title "Checkout latency" --from <RFC3339> --to <RFC3339>
+  telemetryctl dlq replay --file dead-letter.json [--topic telemetry.raw]
+  telemetryctl dedup prune [--older-than 840h]`)
+}
+
+func exitErr(err error) {
+	fmt.Fprintln(os.Stderr, "error:", err)
+	os.Exit(1)
+}
+
+func env(name, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part = strings.TrimSpace(part); part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
+}

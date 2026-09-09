@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/reliability"
 )
 
 type countingProcessor struct{ count atomic.Int32 }
@@ -94,5 +95,91 @@ func TestNormalizerTrimsSourceAndType(t *testing.T) {
 	}
 	if event.Source != "checkout" || event.Type != "request.duration" {
 		t.Fatalf("unexpected normalized event: %#v", event)
+	}
+}
+
+type transientThenSuccessProcessor struct {
+	attempts atomic.Int32
+}
+
+func (processor *transientThenSuccessProcessor) Process(_ context.Context, event domain.Event) (domain.Event, error) {
+	attempt := processor.attempts.Add(1)
+	if attempt < 3 {
+		return domain.Event{}, reliability.New(reliability.Transient, "test", errors.New("temporary"))
+	}
+	return event, nil
+}
+
+func TestPoolRetriesTransientFailure(t *testing.T) {
+	processor := &transientThenSuccessProcessor{}
+	policy := reliability.RetryPolicy{
+		MaxAttempts: 4,
+		BaseDelay:   time.Millisecond,
+		MaxDelay:    time.Millisecond,
+		Jitter:      0,
+	}
+	pool, err := NewPoolWithRetry(1, 1, processor, testLogger(), policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool.Start(context.Background())
+
+	acknowledged := make(chan struct{}, 1)
+	if err := pool.Submit(context.Background(), Job{
+		Event: domain.Event{ID: "retry-me", Source: "api", Type: "request"},
+		Ack: func(context.Context) error {
+			acknowledged <- struct{}{}
+			return nil
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pool.Close()
+
+	if processor.attempts.Load() != 3 {
+		t.Fatalf("attempts=%d, want 3", processor.attempts.Load())
+	}
+	select {
+	case <-acknowledged:
+	default:
+		t.Fatal("expected successful acknowledgement after retry")
+	}
+}
+
+func TestPoolRoutesPermanentFailureToFailureHandler(t *testing.T) {
+	pool, err := NewPoolWithRetry(1, 1, failingProcessor{}, testLogger(), reliability.RetryPolicy{
+		MaxAttempts: 4,
+		BaseDelay:   time.Millisecond,
+		MaxDelay:    time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool.Start(context.Background())
+
+	failed := make(chan int, 1)
+	acked := make(chan struct{}, 1)
+	if err := pool.Submit(context.Background(), Job{
+		Event: domain.Event{ID: "poison", Source: "api", Type: "request"},
+		Failure: func(_ context.Context, _ domain.Event, _ error, attempts int) error {
+			failed <- attempts
+			return nil
+		},
+		Ack: func(context.Context) error {
+			acked <- struct{}{}
+			return nil
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pool.Close()
+
+	if attempts := <-failed; attempts != 1 {
+		t.Fatalf("permanent failure attempted %d times, want 1", attempts)
+	}
+	select {
+	case <-acked:
+	default:
+		t.Fatal("expected original record acknowledgement after DLQ handling")
 	}
 }

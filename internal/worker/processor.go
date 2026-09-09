@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/reliability"
 )
 
 // Processor transforms or enriches one canonical telemetry event.
@@ -21,8 +22,8 @@ type Processor interface {
 
 // Normalizer performs the first intentionally small processing step.
 //
-// v0.3.0 normalizes source and type whitespace. Future releases can compose
-// additional processors without coupling those rules to Kafka consumption.
+// Normalizer trims source and type whitespace as the first canonicalization
+// step. It remains deliberately small so later processors stay composable.
 type Normalizer struct{}
 
 // Process trims fields whose accidental whitespace would otherwise create
@@ -31,7 +32,7 @@ func (Normalizer) Process(_ context.Context, event domain.Event) (domain.Event, 
 	event.Source = strings.TrimSpace(event.Source)
 	event.Type = strings.TrimSpace(event.Type)
 	if event.Source == "" || event.Type == "" {
-		return domain.Event{}, errors.New("normalized event has empty source or type")
+		return domain.Event{}, reliability.New(reliability.Permanent, "normalize", errors.New("normalized event has empty source or type"))
 	}
 	return event, nil
 }
