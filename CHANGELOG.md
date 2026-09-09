@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.4.0] - 2026-09-09
+
+### Added
+- PostgreSQL/TimescaleDB storage layer.
+- TimescaleDB telemetry hypertable and SQL migration.
+- Transactional event-ID deduplication.
+- pgx connection pooling.
+- Persistence processor chained after normalization.
+- Bounded stored-event query endpoints.
+- Source/type/correlation/time and JSONB tag indexes.
+- 30-day development retention policy.
+- Human-readable storage schema, retention, and query documentation.
+- ADR 0007: PostgreSQL with TimescaleDB.
+- ADR 0008: dedicated event-ID deduplication table.
+
+### Changed
+- Kafka offsets are now committed after durable database persistence succeeds.
+- Gateway now exposes read APIs backed by stored telemetry.
+- Docker Compose now provisions Kafka and TimescaleDB.
+
+### Reliability
+- Duplicate event IDs are safe no-ops at the persistence boundary.
+- Database failures leave Kafka records uncommitted for retry.
+
 ## [0.3.0] - 2026-09-09
 
 ### Added

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
 )
 
@@ -33,15 +34,19 @@ type Server struct {
 	mux       *http.ServeMux
 	publisher stream.Publisher
 	topics    Topics
+	reader    storage.Reader
 }
 
 // NewServer creates a configured HTTP server handler.
-func NewServer(logger *slog.Logger, publisher stream.Publisher, topics Topics) *Server {
+func NewServer(logger *slog.Logger, publisher stream.Publisher, topics Topics, readers ...storage.Reader) *Server {
 	server := &Server{
 		logger:    logger,
 		mux:       http.NewServeMux(),
 		publisher: publisher,
 		topics:    topics,
+	}
+	if len(readers) > 0 {
+		server.reader = readers[0]
 	}
 
 	server.routes()
@@ -58,6 +63,10 @@ func (server *Server) routes() {
 	server.mux.HandleFunc("GET /ready", server.handleReady)
 	server.mux.HandleFunc("POST /api/v1/events", server.handleEvent)
 	server.mux.HandleFunc("POST /api/v1/metrics", server.handleMetric)
+	if server.reader != nil {
+		server.mux.HandleFunc("GET /api/v1/events", server.handleQueryEvents)
+		server.mux.HandleFunc("GET /api/v1/metrics", server.handleQueryMetrics)
+	}
 }
 
 func (server *Server) handleHealth(writer http.ResponseWriter, _ *http.Request) {

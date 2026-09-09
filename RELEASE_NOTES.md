@@ -1,47 +1,51 @@
-# TelemetryForge v0.3.0 Release Notes
+# TelemetryForge v0.4.0 Release Notes
 
-## Consumer Groups, Worker Pools & Backpressure
+## Durable Time-Series Persistence
 
-v0.3.0 turns the durable Kafka stream introduced in v0.2.0 into a real
-processing pipeline.
+v0.4.0 converts the processing pipeline into a durable observability data path.
 
-### Highlights
+### Added
 
-- Added a standalone Go worker service.
-- Added Kafka consumer group `telemetryforge-processors`.
-- Added a configurable, bounded worker pool.
-- Disabled Kafka auto-commit and commit records after successful processing.
-- Added cooperative group balancing for friendlier horizontal scaling.
-- Added the first processor: a small source/type normalizer.
-- Added explicit failure behavior and groundwork for poison-event handling.
-- Added worker service to Docker Compose.
-- Added `make run-worker` and `make kafka-groups`.
-- Added human-readable worker, backpressure, and failure documentation.
-- Added ADRs for bounded queues and post-processing offset commits.
+- PostgreSQL/TimescaleDB persistence.
+- TimescaleDB hypertable for telemetry events.
+- PostgreSQL global event-ID deduplication table.
+- Transactional idempotent storage.
+- pgx connection pooling.
+- JSONB tags and payloads.
+- source/time, type/time, correlation/time, and tag indexes.
+- 30-day development retention policy.
+- `GET /api/v1/events`.
+- `GET /api/v1/metrics`.
+- bounded RFC3339 time-range queries.
+- persistence processor and processor chain.
+- TimescaleDB Compose service.
+- human-readable storage schema, retention, and query documentation.
+- ADRs for TimescaleDB and deduplication design.
 
-### Why this release matters
+### Reliability contract
 
-Kafka is now more than a producer destination. It is the durable buffer between
-independently scalable ingestion and processing tiers.
+A worker now follows this sequence:
 
-When processing slows, the bounded queue stops unlimited memory growth and
-allows backlog to remain in Kafka. This creates a measurable scaling signal:
-consumer lag.
+1. consume Kafka record;
+2. normalize event;
+3. begin PostgreSQL transaction;
+4. reserve canonical event ID;
+5. insert time-series event if new;
+6. commit PostgreSQL transaction;
+7. commit Kafka offset.
 
-### Delivery semantics
+Database failure therefore prevents Kafka acknowledgement.
 
-Processing is at least once. A successfully processed record is explicitly
-committed. Failed work remains uncommitted and can be retried. Future
-persistence will use event IDs to make side effects idempotent.
+A repeated event ID is treated as successful, already-completed work, making
+Kafka retry behavior idempotent at the persistence boundary.
 
 ### Known limitations
 
-- Poison records do not yet have a dead-letter queue.
-- Retry ceilings and exponential backoff arrive in the reliability milestone.
-- The lag value in code is a local estimate; broker-derived lag metrics arrive
-  with full observability instrumentation.
-- No durable processed-event database exists yet.
-- Authentication and tenant isolation are not implemented.
+- Query API does not yet paginate with cursors.
+- Aggregated/downsampled query endpoints are not implemented.
+- Deduplication metadata retention is not yet automated.
+- DLQ/retry ceilings arrive in v0.5.0.
+- No authentication or tenant authorization exists yet.
+- Local Compose credentials are development-only.
 
-These limitations are documented intentionally rather than hidden behind a
-"production ready" claim.
+These limitations are documented intentionally.

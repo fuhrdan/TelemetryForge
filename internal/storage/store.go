@@ -1,0 +1,33 @@
+// Package storage owns durable TelemetryForge persistence.
+//
+// PostgreSQL stores relational/idempotency metadata while TimescaleDB stores
+// the time-series event stream. Interfaces in this package keep SQL concerns
+// out of HTTP and Kafka transport code.
+package storage
+
+import (
+	"context"
+	"time"
+
+	"github.com/fuhrdan/TelemetryForge/internal/domain"
+)
+
+// Query describes a bounded telemetry lookup.
+type Query struct {
+	Source      string
+	Type        string
+	From        time.Time
+	To          time.Time
+	Limit       int
+	MetricsOnly bool
+}
+
+// Writer persists canonical telemetry events.
+type Writer interface {
+	WriteEvent(ctx context.Context, event domain.Event) error
+}
+
+// Reader retrieves canonical telemetry events.
+type Reader interface {
+	QueryEvents(ctx context.Context, query Query) ([]domain.Event, error)
+}

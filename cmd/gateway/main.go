@@ -12,6 +12,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/api"
 	"github.com/fuhrdan/TelemetryForge/internal/config"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
+	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
 )
 
@@ -30,10 +31,17 @@ func main() {
 	}
 	defer publisher.Close()
 
+	store, err := storage.NewPostgresStore(context.Background(), cfg.DatabaseURL)
+	if err != nil {
+		logger.Error("PostgreSQL store initialization failed", "error", err)
+		os.Exit(1)
+	}
+	defer store.Close()
+
 	handler := api.NewServer(logger, publisher, api.Topics{
 		Raw:    cfg.KafkaRawTopic,
 		Metric: cfg.KafkaMetricTopic,
-	})
+	}, store)
 
 	httpServer := &http.Server{
 		Addr:         cfg.Address,

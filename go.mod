@@ -2,7 +2,10 @@ module github.com/fuhrdan/TelemetryForge
 
 go 1.25.0
 
-require github.com/twmb/franz-go v1.21.6
+require (
+	github.com/jackc/pgx/v5 v5.10.0
+	github.com/twmb/franz-go v1.21.6
+)
 
 require (
 	github.com/klauspost/compress v1.18.7 // indirect

@@ -1,63 +1,66 @@
 # Worker Model
 
-## What changed in v0.3.0?
+## v0.4.0 processing path
 
-The gateway still accepts telemetry and writes it to Kafka. A separate `worker`
-process now joins the `telemetryforge-processors` consumer group and processes
-those records.
-
-This separation matters because HTTP ingestion and stream processing have
-different scaling pressures. A burst of incoming requests can be absorbed by
-Kafka without forcing the processing tier to grow at exactly the same rate.
-
-## Data flow
+The gateway writes accepted telemetry to Kafka. A separate `worker` process
+joins the `telemetryforge-processors` consumer group and persists records into
+PostgreSQL/TimescaleDB.
 
 ```text
-Client
+Kafka
   |
   v
-Gateway
-  |
-  v
-Kafka: telemetry.raw / telemetry.metrics
-  |
-  v
-Consumer group: telemetryforge-processors
+Consumer group
   |
   v
 Bounded in-memory queue
   |
   +---- Worker 1
   +---- Worker 2
-  +---- Worker 3
-  `---- Worker N
+  +---- Worker N
+          |
+          v
+     Normalizer
+          |
+          v
+      Persister
+          |
+          v
+ PostgreSQL/TimescaleDB
+          |
+          v
+   Kafka offset commit
 ```
 
 ## Why a bounded queue?
 
-The queue is deliberately finite.
+The queue is deliberately finite. If persistence slows, an unlimited Go
+channel would hide the problem until the process exhausted memory. A full
+bounded queue instead slows consumption so backlog stays in Kafka, the durable
+system designed to hold it.
 
-If the database or a future enrichment service becomes slow, an unlimited Go
-channel would simply keep accepting records until the process ran out of
-memory. TelemetryForge instead stops pulling work into memory when the queue is
-full. Kafka remains the durable backlog.
+## Why persist before committing the Kafka offset?
 
-This is backpressure rather than failure.
+If the worker acknowledged Kafka first and then the database write failed,
+telemetry could be lost permanently.
 
-## When is an offset committed?
+v0.4.0 therefore acknowledges the Kafka record only after the database
+transaction succeeds. This gives at-least-once processing.
 
-Kafka auto-commit is disabled. A worker commits a record after processing
-succeeds. If processing fails, the record is left uncommitted so it can be
-retried after a restart or rebalance.
+## What about duplicates?
 
-This gives v0.3.0 **at-least-once processing**, not exactly-once processing.
-Processors therefore need to become idempotent as persistence is added.
+At-least-once processing means a record can be processed twice after a crash or
+rebalance. The persistence layer makes that retry safe by reserving each
+canonical event ID in a globally unique PostgreSQL table before inserting the
+time-series row.
 
-## What does the processor do today?
+## Processor pipeline
 
-The v0.3.0 `Normalizer` intentionally does very little: it trims accidental
-whitespace from source and event type. The important part of this release is
-the processing architecture, not a large collection of arbitrary transforms.
+Processors remain independent of Kafka transport. v0.4.0 composes:
 
-Future processors will add schema validation, enrichment, aggregation,
-persistence, retry classification, and the Incident Flight Recorder.
+1. `Normalizer`
+2. `Persister`
+
+That separation is intentional. Future schema validation, enrichment,
+Cardinality Firewall rules, incident capture, and replay can be inserted into
+the pipeline without rewriting the consumer.

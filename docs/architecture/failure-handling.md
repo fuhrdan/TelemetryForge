@@ -1,27 +1,40 @@
-# Failure Handling in v0.3.0
+# Failure Handling in v0.4.0
 
-v0.3.0 establishes the rules that later retry and dead-letter features build on.
+v0.4.0 extends the at-least-once processing contract through durable storage.
+
+## Kafka publish failure
+
+The gateway returns `503 Service Unavailable`. It does not claim that an event
+was accepted when Kafka did not acknowledge it.
 
 ## Processing failure
 
-If a processor returns an error, the worker logs the failure and does not
-commit the Kafka record. This protects against silently losing a record.
+If normalization or another processor fails, the worker does not commit the
+Kafka record.
 
-## Invalid JSON from Kafka
+## Database failure
 
-A malformed record is logged with its topic, partition, and offset. v0.3.0 does
-not yet move poison records to a dead-letter topic. That is deliberate: DLQ
-metadata, retry ceilings, and replay semantics will be implemented together so
-they form one coherent reliability contract.
+The worker transaction fails and the Kafka record remains uncommitted. The
+record can be delivered again after recovery.
 
-## Process shutdown
+## Duplicate delivery
 
-SIGINT and SIGTERM cancel polling. The worker stops taking new Kafka work,
-finishes jobs already placed in the bounded queue, and then closes its Kafka
-client.
+The database transaction first inserts the event ID into `event_dedup` using
+`ON CONFLICT DO NOTHING`. If that ID already exists, persistence returns
+success without creating a second time-series row.
 
-## Delivery guarantee
+This is the key bridge between Kafka's at-least-once behavior and safe durable
+storage.
 
-The current contract is at-least-once. A worker can finish a side effect and
-crash before committing the offset, causing the record to be processed again.
-Future persistence code must use event IDs as idempotency keys.
+## Malformed Kafka record
+
+Malformed JSON is logged with topic, partition, and offset. Automated
+dead-letter handling is intentionally deferred to v0.5.0 so retry classification,
+retry ceilings, DLQ metadata, and replay semantics are implemented as one
+coherent reliability feature.
+
+## Shutdown
+
+SIGINT/SIGTERM stops polling for new work. Jobs already in the bounded queue
+finish, successful database transactions are acknowledged, and then Kafka and
+database connections close.

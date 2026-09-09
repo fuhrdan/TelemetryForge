@@ -18,6 +18,7 @@ type Config struct {
 	KafkaRawTopic    string
 	KafkaMetricTopic string
 	KafkaTimeout     time.Duration
+	DatabaseURL      string
 }
 
 // Load reads gateway configuration from environment variables and applies
@@ -33,6 +34,7 @@ func Load() Config {
 		KafkaRawTopic:    envOrDefault("TELEMETRYFORGE_KAFKA_RAW_TOPIC", "telemetry.raw"),
 		KafkaMetricTopic: envOrDefault("TELEMETRYFORGE_KAFKA_METRIC_TOPIC", "telemetry.metrics"),
 		KafkaTimeout:     5 * time.Second,
+		DatabaseURL:      envOrDefault("TELEMETRYFORGE_DATABASE_URL", "postgres://telemetryforge:telemetryforge@localhost:5432/telemetryforge?sslmode=disable"),
 	}
 }
 

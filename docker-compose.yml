@@ -1,4 +1,24 @@
 services:
+  timescaledb:
+    image: timescale/timescaledb:2.30.0-pg17
+    hostname: timescaledb
+    container_name: telemetryforge-timescaledb
+    environment:
+      POSTGRES_DB: telemetryforge
+      POSTGRES_USER: telemetryforge
+      POSTGRES_PASSWORD: telemetryforge
+    ports:
+      - "5432:5432"
+    volumes:
+      - telemetryforge-db:/var/lib/postgresql/data
+      - ./migrations/001_timescaledb.sql:/docker-entrypoint-initdb.d/001_timescaledb.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U telemetryforge -d telemetryforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
   kafka:
     image: apache/kafka:4.3.1
     hostname: kafka
@@ -50,11 +70,14 @@ services:
       TELEMETRYFORGE_KAFKA_CLIENT_ID: "telemetryforge-gateway"
       TELEMETRYFORGE_KAFKA_RAW_TOPIC: "telemetry.raw"
       TELEMETRYFORGE_KAFKA_METRIC_TOPIC: "telemetry.metrics"
+      TELEMETRYFORGE_DATABASE_URL: "postgres://telemetryforge:telemetryforge@timescaledb:5432/telemetryforge?sslmode=disable"
     ports:
       - "8080:8080"
     depends_on:
       kafka-init:
         condition: service_completed_successfully
+      timescaledb:
+        condition: service_healthy
     restart: unless-stopped
 
 
@@ -70,7 +93,13 @@ services:
       TELEMETRYFORGE_WORKER_TOPICS: "telemetry.raw,telemetry.metrics"
       TELEMETRYFORGE_WORKER_COUNT: "4"
       TELEMETRYFORGE_WORKER_QUEUE_CAPACITY: "256"
+      TELEMETRYFORGE_DATABASE_URL: "postgres://telemetryforge:telemetryforge@timescaledb:5432/telemetryforge?sslmode=disable"
     depends_on:
       kafka-init:
         condition: service_completed_successfully
+      timescaledb:
+        condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  telemetryforge-db:

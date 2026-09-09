@@ -47,6 +47,25 @@ jobs:
         if: failure()
         run: docker compose logs kafka
 
+  storage-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+      - name: Start TimescaleDB
+        run: docker compose up -d --wait timescaledb
+      - name: Run storage integration test
+        env:
+          TELEMETRYFORGE_INTEGRATION_DATABASE_URL: postgres://telemetryforge:telemetryforge@localhost:5432/telemetryforge?sslmode=disable
+        run: go test -count=1 ./tests/integration
+      - name: Show TimescaleDB logs on failure
+        if: failure()
+        run: docker compose logs timescaledb
+
+
   container:
     runs-on: ubuntu-latest
     steps:
