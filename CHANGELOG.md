@@ -1,5 +1,32 @@
 # Changelog
 
+## [Unreleased]
+
+### Documentation / repository readiness
+- Added root architecture and roadmap documents.
+- Added a documentation index, configuration reference, troubleshooting guide, testing guide, release process, and GitHub repository conventions.
+- Added automated documentation/link/ADR hygiene checks.
+- Added structured GitHub bug/feature forms and a pull-request template.
+- Added Dependabot configuration for Go, npm, GitHub Actions, and Docker.
+
+### Reliability audit
+- Fixed same-partition out-of-order Kafka commit risk by coordinating commits through the contiguous completed prefix.
+- Blocked consumer-group rebalances while bounded polled batches are still processing.
+- Added worker batch-completion callbacks and rebalance-safe consumer shutdown.
+- Replaced stale v0.2-era Kafka documentation with current delivery/DLQ/partition semantics.
+- Added ADR 0013 for concurrent acknowledgement and rebalance coordination.
+- Added an ingestion-time index for SSE polling and a deduplication-maintenance index.
+- Bounded automatic-incident detector state and release failed freeze cooldown reservations.
+- Deduplicated canonical event IDs when freezing/reading incident timelines.
+
+### Development baseline
+- Started the untagged v0.7.0 development branch from the immutable v0.6.0 release.
+- Updated Go to 1.27.1 and the backend image to Alpine 3.24.
+- Updated the dashboard runtime to Node.js 24.21 LTS and React 19.2.8.
+- Refreshed GitHub Actions to the current v7 action generation.
+- Kept TypeScript pinned to 5.9.3 because TypeScript 7.0.2's native package is not yet a drop-in replacement for the JavaScript compiler API used by the stable Next.js build path.
+
+
 ## [0.6.0] - 2026-09-09
 
 ### Added

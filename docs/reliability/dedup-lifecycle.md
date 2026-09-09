@@ -19,7 +19,7 @@ telemetryctl dedup prune
 The extra five days provide a safety margin beyond the raw telemetry retention
 window.
 
-v0.5.0 refuses a dedup prune horizon shorter than 30 days.
+The current CLI refuses a dedup prune horizon shorter than 30 days.
 
 ## Why not delete dedup IDs immediately with telemetry?
 

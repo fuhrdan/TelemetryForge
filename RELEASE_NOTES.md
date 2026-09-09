@@ -1,5 +1,7 @@
 # TelemetryForge v0.6.0 Release Notes
 
+> These notes describe the immutable `v0.6.0` tag. Development changes for v0.7.0 are tracked under **Unreleased** in `CHANGELOG.md` and in `docs/roadmap/v0.7.0.md`.
+
 ## Real-Time Dashboard & Automatic Incident Capture
 
 v0.6.0 is the first visual TelemetryForge release.

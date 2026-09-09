@@ -26,6 +26,7 @@ type Error struct {
 	Err   error
 }
 
+// Error returns the operation-aware failure message.
 func (err *Error) Error() string {
 	if err.Op == "" {
 		return err.Err.Error()
@@ -33,6 +34,7 @@ func (err *Error) Error() string {
 	return fmt.Sprintf("%s: %v", err.Op, err.Err)
 }
 
+// Unwrap exposes the underlying error for errors.Is/errors.As traversal.
 func (err *Error) Unwrap() error { return err.Err }
 
 // New creates a classified processing error.

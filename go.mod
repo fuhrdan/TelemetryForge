@@ -1,6 +1,6 @@
 module github.com/fuhrdan/TelemetryForge
 
-go 1.25.0
+go 1.27.1
 
 require (
 	github.com/jackc/pgx/v5 v5.10.0

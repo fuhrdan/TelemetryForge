@@ -1,6 +1,6 @@
 # Automatic Incident Capture
 
-v0.6.0 can automatically freeze the rolling Incident Flight Recorder when
+TelemetryForge can automatically freeze the rolling Incident Flight Recorder when
 simple operational thresholds are crossed.
 
 ## Current rules
@@ -52,7 +52,7 @@ TELEMETRYFORGE_INCIDENT_LATENCY_MS=1000
 TELEMETRYFORGE_INCIDENT_ERROR_COUNT=5
 ```
 
-The error window, cooldown, and lookback are code-level defaults in v0.6.0.
+The error window, cooldown, and lookback are currently code-level defaults.
 They become policy-as-code in a later release.
 
 ## Failure behavior
@@ -63,3 +63,26 @@ already-persisted telemetry event.
 
 That distinction prevents an auxiliary incident feature from corrupting normal
 telemetry processing semantics.
+
+
+## Bounded detector state
+
+Source names are telemetry input and may themselves have high cardinality.
+
+The in-memory automatic-incident detector therefore caps tracked source state at
+10,000 sources by default. If the cap is reached, the oldest error-window or
+cooldown state is evicted rather than allowing arbitrary source names to grow
+memory without bound.
+
+This is separate from the v0.7.0 Cardinality Firewall, which protects metric/tag
+dimensions before downstream forwarding.
+
+## Failed freeze behavior
+
+A cooldown reservation is created before storage I/O to suppress concurrent
+duplicate freezes from the same source/reason category.
+
+If the freeze itself fails, that reservation is released immediately so the
+next qualifying event can retry capture. If the incident was frozen but only
+its annotation fails, the cooldown remains because useful evidence already
+exists.

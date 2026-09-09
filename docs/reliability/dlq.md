@@ -50,7 +50,7 @@ durably accepted its dead-letter replacement.
 
 ## Replay
 
-v0.5.0 introduces the first `telemetryctl` replay path:
+The `telemetryctl` replay path is:
 
 ```bash
 telemetryctl dlq replay --file dead-letter.json

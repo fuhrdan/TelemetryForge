@@ -1,4 +1,4 @@
-.PHONY: build run run-worker telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident test integration-test fmt vet check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail
+.PHONY: build run run-worker telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident test integration-test fmt vet check docs-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail
 
 build:
 	go build ./...
@@ -13,16 +13,18 @@ telemetryctl:
 	go run ./cmd/telemetryctl
 
 dashboard-dev:
-	cd dashboard && npm install && npm run dev
+	cd dashboard && npm install --no-audit --no-fund && npm run dev
 
 dashboard-build:
-	cd dashboard && npm install && npm run build
+	cd dashboard && npm install --no-audit --no-fund && npm run lint && npm run build
 
 test:
 	go test ./...
 
 integration-test:
-	TELEMETRYFORGE_INTEGRATION_KAFKA_BROKERS=localhost:9092 go test -count=1 ./tests/integration
+	TELEMETRYFORGE_INTEGRATION_KAFKA_BROKERS=localhost:9092 \
+	TELEMETRYFORGE_INTEGRATION_DATABASE_URL=postgres://telemetryforge:telemetryforge@localhost:5432/telemetryforge?sslmode=disable \
+	go test -count=1 ./tests/integration
 
 fmt:
 	gofmt -w cmd internal tests
@@ -31,6 +33,11 @@ vet:
 	go vet ./...
 
 check: fmt vet test build
+
+docs-check:
+	python3 scripts/check-docs.py
+	git diff --check
+	docker compose config --quiet
 
 docker-up:
 	docker compose up --build

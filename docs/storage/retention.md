@@ -3,7 +3,7 @@
 Telemetry volume grows continuously. Retention is therefore part of the data
 model, not a cleanup task to think about later.
 
-## v0.4.0 default
+## Current development default
 
 The local TimescaleDB migration installs a **30-day retention policy** for
 `telemetry_events`.

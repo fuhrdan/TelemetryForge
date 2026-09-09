@@ -90,6 +90,22 @@ func (server *Server) handleReady(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 
+	// The gateway serves stored queries, incidents, dashboard summaries, and SSE
+	// when a database-backed reader is configured. Kubernetes readiness must
+	// therefore include that dependency rather than checking Kafka alone.
+	if checker, ok := server.reader.(interface {
+		Ready(context.Context) error
+	}); ok {
+		if err := checker.Ready(ctx); err != nil {
+			server.logger.Warn("gateway not ready", "dependency", "database", "error", err)
+			writeJSON(writer, http.StatusServiceUnavailable, map[string]string{
+				"status":     "not_ready",
+				"dependency": "database",
+			})
+			return
+		}
+	}
+
 	writeJSON(writer, http.StatusOK, map[string]string{"status": "ready"})
 }
 

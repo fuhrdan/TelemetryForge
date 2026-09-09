@@ -1,0 +1,65 @@
+name: Bug report
+description: Report reproducible TelemetryForge behavior that appears incorrect.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please use synthetic data and remove credentials/private telemetry from logs.
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: v0.6.0 or commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Gateway / API
+        - Kafka / streaming
+        - Worker / reliability
+        - PostgreSQL / TimescaleDB
+        - Flight Recorder / incidents
+        - Dashboard / SSE
+        - telemetryctl
+        - Docker Compose / CI
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include sanitized error output when useful.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Commands, request bodies, and setup needed to reproduce with synthetic data.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Docker, Go, Node, and browser versions as relevant.
+  - type: checkboxes
+    id: security
+    attributes:
+      label: Security check
+      options:
+        - label: This report does not contain secrets, credentials, private telemetry, or exploit details that should be reported privately.
+          required: true

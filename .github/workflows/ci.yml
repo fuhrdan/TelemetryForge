@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "v0.7.0-dev"]
   pull_request:
     branches: ["main"]
 
@@ -10,16 +10,29 @@ permissions:
   contents: read
 
 jobs:
+  repository-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check documentation and repository references
+        run: python3 scripts/check-docs.py
+      - name: Check whitespace
+        run: git diff --check
+      - name: Validate Docker Compose configuration
+        run: docker compose config --quiet
+
   go:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.25.x"
+          go-version: "1.27.1"
           cache: true
       - name: Download dependencies
         run: go mod download
+      - name: Verify dependencies
+        run: go mod verify
       - name: Format check
         run: test -z "$(gofmt -l cmd internal tests)"
       - name: Vet
@@ -32,41 +45,40 @@ jobs:
   kafka-integration:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.25.x"
+          go-version: "1.27.1"
           cache: true
       - name: Start Kafka
-        run: docker compose up -d kafka kafka-init
-      - name: Run Kafka integration test
+        run: docker compose up -d --wait kafka kafka-init
+      - name: Run Kafka integration tests
         env:
           TELEMETRYFORGE_INTEGRATION_KAFKA_BROKERS: localhost:9092
         run: go test -count=1 ./tests/integration
       - name: Show Kafka logs on failure
         if: failure()
-        run: docker compose logs kafka
+        run: docker compose logs kafka kafka-init
 
   storage-integration:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.25.x"
+          go-version: "1.27.1"
           cache: true
       - name: Start TimescaleDB
         run: docker compose up -d --wait timescaledb
       - name: Apply database migrations
         run: docker compose run --rm db-migrate
-      - name: Run storage integration test
+      - name: Run storage integration tests
         env:
           TELEMETRYFORGE_INTEGRATION_DATABASE_URL: postgres://telemetryforge:telemetryforge@localhost:5432/telemetryforge?sslmode=disable
         run: go test -count=1 ./tests/integration
       - name: Show TimescaleDB logs on failure
         if: failure()
-        run: docker compose logs timescaledb
-
+        run: docker compose logs timescaledb db-migrate
 
   dashboard:
     runs-on: ubuntu-latest
@@ -74,10 +86,11 @@ jobs:
       run:
         working-directory: dashboard
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "24.21.0"
+          package-manager-cache: false
       - name: Install dashboard dependencies
         run: npm install --no-audit --no-fund
       - name: Type check
@@ -87,11 +100,10 @@ jobs:
           TELEMETRYFORGE_API_BASE: http://gateway:8080
         run: npm run build
 
-
-  container:
+  containers:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build backend container
         run: docker build -t telemetryforge:${{ github.sha }} .
       - name: Build dashboard container

@@ -106,3 +106,60 @@ func TestFlightRecorderFreeze(t *testing.T) {
 		t.Fatalf("froze %d events, want at least 1", count)
 	}
 }
+
+func TestFlightRecorderFreezeDeduplicatesRetries(t *testing.T) {
+	databaseURL := os.Getenv("TELEMETRYFORGE_INTEGRATION_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TELEMETRYFORGE_INTEGRATION_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	store, err := storage.NewPostgresStore(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Now().UTC()
+	event := domain.Event{
+		ID:            "integration-flight-retry-event",
+		Source:        "integration-test",
+		Type:          "incident.retry",
+		Timestamp:     now,
+		SchemaVersion: "1.0",
+	}
+
+	// The rolling recorder may see the same canonical event on an at-least-once
+	// processing retry. The durable incident timeline should still contain one
+	// canonical event, not two processing attempts.
+	if err := store.WriteFlightEvent(ctx, event); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteFlightEvent(ctx, event); err != nil {
+		t.Fatal(err)
+	}
+
+	count, err := store.FreezeIncident(
+		ctx,
+		"integration-incident-dedup",
+		"Integration Flight Recorder retry dedup test",
+		now.Add(-time.Minute),
+		now.Add(time.Minute),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("froze %d canonical events, want 1", count)
+	}
+
+	events, err := store.IncidentEvents(ctx, "integration-incident-dedup", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].ID != event.ID {
+		t.Fatalf("unexpected incident events: %#v", events)
+	}
+}

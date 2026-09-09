@@ -1,12 +1,15 @@
 # TelemetryForge Dashboard
 
-The v0.6.0 dashboard is intentionally small and readable.
+**Development package version:** `0.7.0-dev`
+**Stable released UI feature set:** `v0.6.0`
+
+The dashboard is intentionally small and readable.
 
 ## Stack
 
 - Next.js 16.3.4
-- React 19.2.7
-- TypeScript
+- React 19.2.8
+- TypeScript 5.9.3
 - native browser `EventSource`
 - handwritten SVG chart
 - plain CSS
@@ -40,7 +43,7 @@ will be preferable.
 
 ## Why native SVG?
 
-v0.6.0 only needs one lightweight live signal chart. Adding a large chart
+The current UI only needs one lightweight live signal chart. Adding a large chart
 library at this point would increase dependency/security surface without solving
 a real need.
 

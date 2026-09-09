@@ -1,6 +1,6 @@
 # Server-Sent Events
 
-The v0.6.0 dashboard receives live telemetry through:
+The dashboard receives live telemetry through:
 
 ```text
 GET /api/v1/live
@@ -25,7 +25,7 @@ It would be tempting to keep an in-memory list of newly accepted events inside
 the gateway. That breaks as soon as there are multiple gateway or worker
 replicas because a browser would only see data known to one process.
 
-v0.6.0 instead polls the durable telemetry store once per second per connected
+The current implementation polls the durable telemetry store once per second per connected
 SSE client. That is deliberately simple and horizontally correct.
 
 The trade-off is query cost. Later releases can replace the polling source with

@@ -18,3 +18,12 @@ Thumbs.db
 # Runtime
 *.log
 /tmp/
+
+# Dashboard
+/dashboard/node_modules/
+/dashboard/.next/
+/dashboard/npm-debug.log*
+
+# Python helpers
+__pycache__/
+*.pyc

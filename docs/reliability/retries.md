@@ -1,6 +1,6 @@
 # Retry Policy
 
-v0.5.0 introduces explicit retry classification instead of retrying every error
+TelemetryForge uses explicit retry classification instead of retrying every error
 the same way.
 
 ## Failure classes

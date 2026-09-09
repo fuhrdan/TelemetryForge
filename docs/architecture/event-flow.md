@@ -1,4 +1,4 @@
-# Event Flow — v0.6.0
+# Event Flow
 
 ## Normal telemetry
 
@@ -11,7 +11,11 @@
 7. Normalizer canonicalizes source/type.
 8. TimescaleDB persistence commits idempotently.
 9. Automatic incident rules evaluate the durable event.
-10. Kafka source offset commits.
+10. Worker completion marks the source record handled.
+11. The acknowledgement coordinator advances the partition only through its
+    contiguous completed prefix.
+12. After every submitted job from the bounded poll batch finishes, the
+    consumer allows a group rebalance.
 
 ## Live dashboard
 

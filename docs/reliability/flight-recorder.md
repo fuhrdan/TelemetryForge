@@ -2,7 +2,7 @@
 
 The Incident Flight Recorder is one of TelemetryForge's signature features.
 
-v0.5.0 introduces its storage foundation.
+Its storage foundation is implemented today.
 
 ## The problem
 
@@ -12,7 +12,7 @@ out to be the one record needed to explain an outage.
 The Flight Recorder keeps a short rolling copy of the full incoming telemetry
 envelope before normal processing changes it.
 
-## v0.5.0 behavior
+## Current behavior
 
 Every decoded event passes through:
 
@@ -71,7 +71,7 @@ The frozen incident model is the foundation for:
 - training scenarios
 
 
-## v0.6.0 automatic freezing
+## Automatic freezing
 
 The Flight Recorder can now be frozen automatically when the worker sees:
 
@@ -83,3 +83,14 @@ trigger reason in the incident metadata.
 
 Manual `telemetryctl incident freeze` remains available for operator-selected
 windows.
+
+
+## Retry duplicates
+
+The rolling Flight Recorder records processing attempts before normalization.
+An at-least-once retry can therefore place more than one short-lived capture
+row with the same canonical event ID into the rolling buffer.
+
+When an incident window is frozen, TelemetryForge selects the earliest capture
+for each canonical event ID. The durable incident timeline and incident event
+counts therefore represent events rather than repeated processing attempts.

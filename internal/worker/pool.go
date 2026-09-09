@@ -20,6 +20,12 @@ type Job struct {
 	Ack     func(context.Context) error
 	Nack    func(error)
 	Failure func(context.Context, domain.Event, error, int) error
+
+	// Done is called exactly once after the worker has finished all handling
+	// for this job, including acknowledgement or terminal-failure routing.
+	// Kafka consumers use this callback to know when a polled batch is safe to
+	// release for a consumer-group rebalance.
+	Done func()
 }
 
 // Pool is a bounded worker pool with bounded retry behavior.
@@ -93,38 +99,46 @@ func (pool *Pool) run(ctx context.Context, workerID int) {
 	defer pool.wg.Done()
 
 	for job := range pool.jobs {
-		processed, attempts, err := pool.processWithRetry(ctx, workerID, job.Event)
-		if err != nil {
-			if job.Failure != nil {
-				if failureErr := job.Failure(ctx, job.Event, err, attempts); failureErr == nil {
-					if pool.ack(ctx, job, job.Event.ID, workerID) {
-						continue
-					}
-				} else {
-					err = errors.Join(err, failureErr)
-				}
-			}
-
-			if job.Nack != nil {
-				job.Nack(err)
-			}
-			pool.logger.Error("telemetry processing failed",
-				"worker", workerID,
-				"event_id", job.Event.ID,
-				"attempts", attempts,
-				"classification", reliability.Classification(err),
-				"error", err)
-			continue
-		}
-
-		if !pool.ack(ctx, job, processed.ID, workerID) {
-			continue
-		}
-
-		pool.logger.Debug("telemetry event processed",
-			"worker", workerID, "event_id", processed.ID,
-			"source", processed.Source, "attempts", attempts)
+		pool.handleJob(ctx, workerID, job)
 	}
+}
+
+func (pool *Pool) handleJob(ctx context.Context, workerID int, job Job) {
+	if job.Done != nil {
+		defer job.Done()
+	}
+
+	processed, attempts, err := pool.processWithRetry(ctx, workerID, job.Event)
+	if err != nil {
+		if job.Failure != nil {
+			if failureErr := job.Failure(ctx, job.Event, err, attempts); failureErr == nil {
+				if pool.ack(ctx, job, job.Event.ID, workerID) {
+					return
+				}
+			} else {
+				err = errors.Join(err, failureErr)
+			}
+		}
+
+		if job.Nack != nil {
+			job.Nack(err)
+		}
+		pool.logger.Error("telemetry processing failed",
+			"worker", workerID,
+			"event_id", job.Event.ID,
+			"attempts", attempts,
+			"classification", reliability.Classification(err),
+			"error", err)
+		return
+	}
+
+	if !pool.ack(ctx, job, processed.ID, workerID) {
+		return
+	}
+
+	pool.logger.Debug("telemetry event processed",
+		"worker", workerID, "event_id", processed.ID,
+		"source", processed.Source, "attempts", attempts)
 }
 
 func (pool *Pool) processWithRetry(ctx context.Context, workerID int, event domain.Event) (domain.Event, int, error) {

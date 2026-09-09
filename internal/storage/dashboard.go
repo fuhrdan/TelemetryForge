@@ -115,7 +115,7 @@ func (store *PostgresStore) ListIncidents(ctx context.Context, limit int) ([]Inc
 		       i.frozen_from,
 		       i.frozen_to,
 		       i.detected_at,
-		       COUNT(e.event_id)::bigint
+		       COUNT(DISTINCT e.event_id)::bigint
 		  FROM incidents i
 		  LEFT JOIN incident_events e ON e.incident_id = i.incident_id
 		 GROUP BY i.incident_id, i.title, i.status, i.trigger_reason,
@@ -172,9 +172,14 @@ func (store *PostgresStore) IncidentEvents(ctx context.Context, incidentID strin
 
 	rows, err := store.pool.Query(ctx, `
 		SELECT envelope
-		  FROM incident_events
-		 WHERE incident_id = $1
-		 ORDER BY event_time ASC
+		  FROM (
+			SELECT DISTINCT ON (event_id)
+			       event_id, event_time, captured_at, envelope
+			  FROM incident_events
+			 WHERE incident_id = $1
+			 ORDER BY event_id, captured_at ASC
+		  ) AS captured
+		 ORDER BY event_time ASC, event_id ASC
 		 LIMIT $2`,
 		incidentID, limit)
 	if err != nil {

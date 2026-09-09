@@ -1,6 +1,6 @@
 # Storage Schema
 
-v0.4.0 introduces durable telemetry storage using PostgreSQL plus TimescaleDB.
+TelemetryForge uses PostgreSQL plus TimescaleDB for durable telemetry storage.
 
 ## Why both?
 
@@ -69,7 +69,7 @@ Only after that transaction succeeds does the worker commit the Kafka offset.
 
 ## Indexes
 
-v0.4.0 creates indexes for the expected first dashboard/query patterns:
+The schema creates indexes for the current dashboard/query patterns:
 
 - `(source, event_time DESC)`
 - `(event_type, event_time DESC)`
@@ -78,3 +78,15 @@ v0.4.0 creates indexes for the expected first dashboard/query patterns:
 
 Indexes should be added from measured query behavior rather than creating an
 index for every possible field.
+
+
+### Operational indexes
+
+The repository also indexes operational maintenance/live paths:
+
+- `(ingested_at, event_id)` supports the durable SSE cursor.
+- `event_dedup(first_seen_at)` supports bounded deduplication pruning.
+
+The SSE index is separate from the event-time indexes because live delivery is
+ordered by server ingestion time. Source event timestamps can arrive late or
+out of order.

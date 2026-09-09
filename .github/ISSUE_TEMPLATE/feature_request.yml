@@ -1,0 +1,28 @@
+name: Feature request
+description: Propose a concrete capability or engineering improvement.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the operational or engineering problem before proposing technology.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include simpler approaches or reasons the current behavior is insufficient.
+  - type: textarea
+    id: impact
+    attributes:
+      label: Reliability / security / cost impact
+      description: Note changes to delivery guarantees, storage, cardinality, secrets, or deployment if relevant.

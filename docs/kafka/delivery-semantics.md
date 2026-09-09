@@ -1,39 +1,116 @@
-# Producer Delivery Semantics
+# Kafka Delivery Semantics
 
-## HTTP acceptance contract
+TelemetryForge uses Kafka as the durable boundary between ingestion and
+processing. The current contract is **at least once** end to end.
 
-TelemetryForge does **not** return `202 Accepted` merely because a request passed validation.
+## Producer acceptance
 
-The sequence is:
+The gateway returns `202 Accepted` only after Kafka acknowledges the produced
+record.
 
 ```text
 HTTP request
-    ↓
-validate canonical envelope
-    ↓
-generate event ID if needed
-    ↓
-serialize JSON
-    ↓
+    |
+    v
+validate envelope
+    |
+    v
 produce to Kafka
-    ↓
+    |
+    v
 wait for broker acknowledgement
-    ↓
-HTTP 202 Accepted
+    |
+    +-- failure --> HTTP 503
+    |
+    `-- success --> HTTP 202
 ```
 
-If Kafka cannot acknowledge the event before the producer timeout, the gateway returns `503 Service Unavailable`.
+The producer requests acknowledgements from all in-sync replicas and keeps
+franz-go's idempotent producer behavior enabled.
 
-## Acknowledgements
+## Consumer acknowledgement
 
-The producer requests acknowledgements from all in-sync replicas. The local single-broker development environment has only one replica, while production deployments are expected to use a replicated topic configuration.
+Consumer auto-commit is disabled.
 
-## Idempotence
+A normal record is considered handled only after:
 
-The franz-go producer keeps its built-in idempotent producer behavior enabled. This reduces duplicates caused by retries at the Kafka producer protocol layer.
+1. Flight Recorder capture succeeds;
+2. normalization succeeds;
+3. TimescaleDB persistence succeeds idempotently; and
+4. any required processing stages complete.
 
-Application-level end-to-end idempotency is intentionally deferred until the reliability milestone because downstream consumers and persistence do not yet exist.
+A terminal processing failure is considered handled only after its detailed
+dead-letter replacement is acknowledged by `telemetry.dlq`.
 
-## Delivery guarantee
+Only then can the source partition offset advance.
 
-v0.2.0 should be understood as a **durable producer boundary**, not a full end-to-end delivery guarantee. End-to-end at-least-once processing semantics will be defined when consumers, offset commits, retries, and persistence are implemented.
+## Concurrent workers and partition order
+
+Workers run concurrently, so offset 11 can finish before offset 10 even though
+both came from the same Kafka partition.
+
+Kafka commits represent a **partition position**, not independent record
+checkboxes. Committing 11 while 10 is unfinished could cause 10 to disappear
+after a crash.
+
+TelemetryForge therefore registers records in poll order and advances a
+partition commit only through its contiguous completed prefix.
+
+```text
+partition 2
+
+offset 10    processing
+offset 11    done
+offset 12    done
+
+safe commit: none
+
+offset 10    done
+offset 11    done
+offset 12    done
+
+safe commit: through offset 12
+```
+
+Different partitions can advance independently.
+
+## Consumer-group rebalances
+
+franz-go consumer groups can rebalance while application code is processing
+records. A commit after ownership has moved can create duplicate or rewind
+behavior.
+
+TelemetryForge uses `BlockRebalanceOnPoll` with bounded `PollRecords` batches.
+A non-empty batch keeps its current partition ownership until every submitted
+record in that batch has finished normal or dead-letter handling. The consumer
+then calls `AllowRebalance` before polling the next batch.
+
+The trade-off is important: processing a batch must remain comfortably below
+the Kafka rebalance timeout. The batch size is deliberately capped at 100
+records, retries are bounded, and v0.7.0 observability/scaling work should expose
+processing time and lag so this assumption is measurable.
+
+## Crash behavior
+
+A crash can replay work whose database write succeeded but whose Kafka commit
+did not. Event-ID idempotency turns that duplicate delivery into a safe
+persistence no-op.
+
+TelemetryForge chooses this duplicate possibility over silently losing
+telemetry.
+
+## Local versus production replication
+
+The local single-broker Docker environment uses replication factor 1 because no
+second broker exists.
+
+A production deployment should use a replicated Kafka cluster, topic
+replication appropriate to its availability target, authenticated/encrypted
+broker connections, and monitored consumer lag.
+
+See also:
+
+- `docs/kafka/partitioning.md`
+- `docs/kafka/topic-strategy.md`
+- `docs/adr/0006-manual-offset-commit.md`
+- `docs/adr/0013-coordinate-concurrent-kafka-acknowledgements.md`

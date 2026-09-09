@@ -1,6 +1,6 @@
 # telemetryctl
 
-`telemetryctl` is the small operational CLI introduced in v0.5.0.
+`telemetryctl` is the operational CLI for incident capture, DLQ replay, and deduplication maintenance.
 
 It intentionally starts with a few explicit commands rather than becoming a
 large administration shell before the operational model is mature.
@@ -37,7 +37,7 @@ telemetryctl dedup prune
 
 Default horizon: 35 days.
 
-The command refuses horizons under 30 days in v0.5.0. Read
+The command refuses horizons under 30 days. Read
 `docs/reliability/dedup-lifecycle.md` before changing the value.
 
 ## Environment

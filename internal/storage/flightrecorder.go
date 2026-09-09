@@ -69,10 +69,21 @@ func (store *PostgresStore) FreezeIncident(ctx context.Context, incidentID, titl
 	result, err := tx.Exec(ctx, `
 		INSERT INTO incident_events
 			(incident_id, event_id, captured_at, event_time, source, event_type, envelope)
-		SELECT $1, event_id, captured_at, event_time, source, event_type, envelope
-		  FROM flight_recorder_events
-		 WHERE captured_at >= $2
-		   AND captured_at <= $3
+		SELECT $1,
+		       captured.event_id,
+		       captured.captured_at,
+		       captured.event_time,
+		       captured.source,
+		       captured.event_type,
+		       captured.envelope
+		  FROM (
+			SELECT DISTINCT ON (event_id)
+			       event_id, captured_at, event_time, source, event_type, envelope
+			  FROM flight_recorder_events
+			 WHERE captured_at >= $2
+			   AND captured_at <= $3
+			 ORDER BY event_id, captured_at ASC
+		  ) AS captured
 		ON CONFLICT DO NOTHING`,
 		incidentID, from.UTC(), to.UTC())
 	if err != nil {

@@ -183,3 +183,60 @@ func TestPoolRoutesPermanentFailureToFailureHandler(t *testing.T) {
 		t.Fatal("expected original record acknowledgement after DLQ handling")
 	}
 }
+
+func TestPoolCallsDoneExactlyOnce(t *testing.T) {
+	processor := &countingProcessor{}
+	pool, err := NewPool(1, 1, processor, testLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool.Start(context.Background())
+
+	var done atomic.Int32
+	if err := pool.Submit(context.Background(), Job{
+		Event: domain.Event{ID: "done-once", Source: "api", Type: "request"},
+		Ack:   func(context.Context) error { return nil },
+		Done:  func() { done.Add(1) },
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pool.Close()
+
+	if got := done.Load(); got != 1 {
+		t.Fatalf("Done called %d times, want exactly 1", got)
+	}
+}
+
+func TestPoolCallsDoneAfterTerminalFailureHandling(t *testing.T) {
+	pool, err := NewPoolWithRetry(1, 1, failingProcessor{}, testLogger(), reliability.RetryPolicy{
+		MaxAttempts: 1,
+		BaseDelay:   time.Millisecond,
+		MaxDelay:    time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool.Start(context.Background())
+
+	var failureHandled atomic.Bool
+	var doneObservedFailure atomic.Bool
+
+	if err := pool.Submit(context.Background(), Job{
+		Event: domain.Event{ID: "terminal", Source: "api", Type: "request"},
+		Failure: func(_ context.Context, _ domain.Event, _ error, _ int) error {
+			failureHandled.Store(true)
+			return nil
+		},
+		Ack: func(context.Context) error { return nil },
+		Done: func() {
+			doneObservedFailure.Store(failureHandled.Load())
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pool.Close()
+
+	if !doneObservedFailure.Load() {
+		t.Fatal("Done ran before terminal-failure handling completed")
+	}
+}

@@ -1,6 +1,6 @@
 {
   "name": "telemetryforge-dashboard",
-  "version": "0.6.0",
+  "version": "0.7.0-dev",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -10,13 +10,16 @@
   },
   "dependencies": {
     "next": "16.3.4",
-    "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@types/node": "^24",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "typescript": "^5.9"
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=24.20.0 <25"
   }
 }

@@ -1,9 +1,9 @@
-FROM node:24-alpine AS deps
+FROM node:24.20.0-alpine3.24 AS deps
 WORKDIR /app
 COPY package.json ./
 RUN npm install --no-audit --no-fund
 
-FROM node:24-alpine AS build
+FROM node:24.20.0-alpine3.24 AS build
 WORKDIR /app
 ARG TELEMETRYFORGE_API_BASE=http://gateway:8080
 ENV TELEMETRYFORGE_API_BASE=${TELEMETRYFORGE_API_BASE}
@@ -11,7 +11,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-FROM node:24-alpine AS runtime
+FROM node:24.20.0-alpine3.24 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000

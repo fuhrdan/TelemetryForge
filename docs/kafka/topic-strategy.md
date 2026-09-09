@@ -1,25 +1,48 @@
 # Kafka Topic Strategy
 
-## v0.2.0 topics
+## Current topics
 
-| Topic | Purpose | Default partitions | Local replication |
+| Topic | Purpose | Local partitions | Local replication |
 |---|---|---:|---:|
-| `telemetry.raw` | Generic logs, webhooks, traces, and custom events | 6 | 1 |
+| `telemetry.raw` | Generic logs, traces, webhooks, and custom events | 6 | 1 |
 | `telemetry.metrics` | Numeric metric events | 6 | 1 |
+| `telemetry.dlq` | Terminal failures and malformed source records | 6 | 1 |
 
-The single-broker local environment necessarily uses replication factor 1. Production deployments should use multiple brokers and a replication factor appropriate to the availability target.
+The local environment uses one Kafka broker, so replication factor 1 is the
+only meaningful development setting. Production deployments should use
+multiple brokers and an availability-appropriate replication factor.
 
 ## Why separate raw events and metrics?
 
-Metrics and generic events are expected to diverge in processing, retention, and aggregation behavior. Separating the topics now prevents later worker pipelines from requiring expensive event-type filtering before they can scale independently.
+Metrics and generic events have different likely aggregation, retention, and
+query behavior. Separate topics let processing paths evolve independently
+without forcing every consumer to inspect and discard unrelated records.
 
-## Reserved future topics
+## Dead-letter topic
 
-Later milestones are expected to introduce topics such as:
+`telemetry.dlq` is an operational backlog, not a trash can.
 
-- `telemetry.dlq`
+A dead-letter envelope preserves:
+
+- the decoded canonical event when possible;
+- base64-encoded raw bytes for malformed records;
+- original topic, partition, and offset;
+- failure classification;
+- error message;
+- attempt count; and
+- failure timestamp.
+
+The original source offset advances only after Kafka acknowledges the DLQ
+replacement.
+
+## Planned topics
+
+Future capabilities may justify separate topics such as:
+
 - `telemetry.replay`
 - `telemetry.incident`
 - `telemetry.shadow`
 
-They are intentionally not created in v0.2.0 because their semantics are not implemented yet.
+They should not be created until their delivery, retention, and ownership
+semantics are implemented and documented. Creating speculative topics early
+would make the architecture look more complete than it actually is.

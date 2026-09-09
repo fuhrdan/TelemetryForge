@@ -6,12 +6,12 @@ The easiest path requires Docker with Docker Compose.
 
 Direct service development uses:
 
-- Go 1.25+
-- Node.js 24+
+- Go 1.27.1+
+- Node.js 24.21 LTS+
 - Kafka
 - PostgreSQL/TimescaleDB
 
-## Start the complete v0.6.0 stack
+## Start the complete local stack
 
 ```bash
 docker compose up --build

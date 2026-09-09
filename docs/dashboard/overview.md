@@ -1,6 +1,6 @@
 # Dashboard Overview
 
-v0.6.0 is the first visual TelemetryForge release.
+The dashboard is TelemetryForge's visual operations surface.
 
 The dashboard is a Next.js/TypeScript application served separately from the Go
 gateway. It talks to the gateway through a same-origin Next.js rewrite so the

@@ -1,6 +1,6 @@
 # Querying Stored Telemetry
 
-v0.4.0 introduced read endpoints backed by TimescaleDB; v0.5.0 retains that query contract.
+TelemetryForge exposes bounded read endpoints backed by TimescaleDB.
 
 ## Events
 
@@ -37,8 +37,8 @@ Results are newest first.
 ## Why cap requests at 1000 rows?
 
 Unbounded API queries are an easy way to turn an analytics endpoint into a
-database/resource exhaustion problem. v0.4.0 intentionally establishes bounded
-queries before a dashboard exists.
+database/resource exhaustion problem. TelemetryForge intentionally establishes bounded
+queries so the analytics surface cannot request an unlimited result set.
 
 Pagination and aggregate/downsample queries will be added as the analytics
 surface matures.

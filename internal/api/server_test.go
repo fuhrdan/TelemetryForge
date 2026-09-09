@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
 )
 
@@ -164,5 +167,40 @@ func TestMetricRequiresValue(t *testing.T) {
 
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("expected %d, got %d", http.StatusBadRequest, response.Code)
+	}
+}
+
+type readinessReader struct {
+	err error
+}
+
+func (reader *readinessReader) QueryEvents(_ context.Context, _ storage.Query) ([]domain.Event, error) {
+	return nil, nil
+}
+
+func (reader *readinessReader) Ready(_ context.Context) error {
+	return reader.err
+}
+
+func TestNotReadyWhenDatabaseUnavailable(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	publisher := stream.NewMemoryPublisher()
+	reader := &readinessReader{err: errors.New("database unavailable")}
+	server := NewServer(
+		logger,
+		publisher,
+		Topics{Raw: "telemetry.raw", Metric: "telemetry.metrics"},
+		reader,
+	)
+
+	request := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected %d, got %d: %s", http.StatusServiceUnavailable, response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"dependency":"database"`) {
+		t.Fatalf("expected database readiness failure, got %s", response.Body.String())
 	}
 }

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -117,6 +118,16 @@ func (server *Server) handleLive(writer http.ResponseWriter, request *http.Reque
 	writer.Header().Set("Cache-Control", "no-cache")
 	writer.Header().Set("Connection", "keep-alive")
 	writer.Header().Set("X-Accel-Buffering", "no")
+
+	// The gateway keeps a finite WriteTimeout for ordinary API calls. SSE is a
+	// deliberately long-lived response, so clear the per-connection write
+	// deadline for this handler only. Heartbeats still keep intermediaries from
+	// treating an idle stream as abandoned.
+	controller := http.NewResponseController(writer)
+	if err := controller.SetWriteDeadline(time.Time{}); err != nil &&
+		!errors.Is(err, http.ErrNotSupported) {
+		server.logger.Warn("unable to clear SSE write deadline", "error", err)
+	}
 
 	cursorTime := time.Now().UTC().Add(-5 * time.Second)
 	cursorID := ""
