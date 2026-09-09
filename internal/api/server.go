@@ -66,6 +66,10 @@ func (server *Server) routes() {
 	if server.reader != nil {
 		server.mux.HandleFunc("GET /api/v1/events", server.handleQueryEvents)
 		server.mux.HandleFunc("GET /api/v1/metrics", server.handleQueryMetrics)
+		server.mux.HandleFunc("GET /api/v1/dashboard/summary", server.handleSummary)
+		server.mux.HandleFunc("GET /api/v1/incidents", server.handleIncidents)
+		server.mux.HandleFunc("GET /api/v1/incidents/{id}/events", server.handleIncidentEvents)
+		server.mux.HandleFunc("GET /api/v1/live", server.handleLive)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/fuhrdan/TelemetryForge/internal/incident"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
@@ -48,7 +49,17 @@ func main() {
 
 	// Preserve the incoming envelope before normalization. That ordering is
 	// deliberate: incident captures should show what the pipeline actually saw.
-	pipeline, err := worker.NewChain(recorder, worker.Normalizer{}, persister)
+	incidentConfig := incident.DefaultConfig()
+	incidentConfig.LatencyThresholdMS = envFloat("TELEMETRYFORGE_INCIDENT_LATENCY_MS", incidentConfig.LatencyThresholdMS)
+	incidentConfig.ErrorThreshold = envInt("TELEMETRYFORGE_INCIDENT_ERROR_COUNT", incidentConfig.ErrorThreshold)
+	detector := incident.NewDetector(store, incidentConfig)
+
+	pipeline, err := worker.NewChain(
+		recorder,
+		worker.Normalizer{},
+		persister,
+		worker.NewIncidentDetector(detector, logger),
+	)
 	if err != nil {
 		logger.Error("create processing pipeline", "error", err)
 		os.Exit(1)
@@ -100,6 +111,14 @@ func env(name, fallback string) string {
 func envInt(name string, fallback int) int {
 	value, err := strconv.Atoi(env(name, ""))
 	if err != nil || value < 1 {
+		return fallback
+	}
+	return value
+}
+
+func envFloat(name string, fallback float64) float64 {
+	value, err := strconv.ParseFloat(env(name, ""), 64)
+	if err != nil || value <= 0 {
 		return fallback
 	}
 	return value

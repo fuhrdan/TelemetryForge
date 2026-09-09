@@ -118,6 +118,8 @@ services:
       TELEMETRYFORGE_WORKER_COUNT: "4"
       TELEMETRYFORGE_WORKER_QUEUE_CAPACITY: "256"
       TELEMETRYFORGE_WORKER_DLQ_TOPIC: "telemetry.dlq"
+      TELEMETRYFORGE_INCIDENT_LATENCY_MS: "1000"
+      TELEMETRYFORGE_INCIDENT_ERROR_COUNT: "5"
       TELEMETRYFORGE_DATABASE_URL: "postgres://telemetryforge:telemetryforge@timescaledb:5432/telemetryforge?sslmode=disable"
     depends_on:
       kafka-init:
@@ -126,6 +128,20 @@ services:
         condition: service_healthy
       db-migrate:
         condition: service_completed_successfully
+    restart: unless-stopped
+
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+      args:
+        TELEMETRYFORGE_API_BASE: "http://gateway:8080"
+    ports:
+      - "3000:3000"
+    depends_on:
+      gateway:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

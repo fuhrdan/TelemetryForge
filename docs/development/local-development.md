@@ -4,10 +4,14 @@
 
 The easiest path requires Docker with Docker Compose.
 
-Direct service development uses Go 1.25+ plus reachable Kafka and
-PostgreSQL/TimescaleDB instances.
+Direct service development uses:
 
-## Start the full stack
+- Go 1.25+
+- Node.js 24+
+- Kafka
+- PostgreSQL/TimescaleDB
+
+## Start the complete v0.6.0 stack
 
 ```bash
 docker compose up --build
@@ -16,22 +20,44 @@ docker compose up --build
 Compose starts:
 
 1. TimescaleDB/PostgreSQL.
-2. the idempotent `db-migrate` service.
+2. idempotent SQL migrations.
 3. Kafka in KRaft mode.
-4. Kafka topic initialization (`telemetry.raw`, `telemetry.metrics`,
-   `telemetry.dlq`).
+4. Kafka topic initialization.
 5. the Go gateway.
-6. the Go processing worker.
+6. the Go worker.
+7. the Next.js dashboard.
 
-The gateway listens on `http://localhost:8080`.
+Open:
 
-## Why is there a migration service?
+```text
+http://localhost:3000
+```
 
-PostgreSQL's init directory runs only when the database volume is empty.
-`db-migrate` reruns the idempotent SQL migrations on startup so an existing
-local volume can move forward between TelemetryForge releases.
+Gateway:
 
-## Useful commands
+```text
+http://localhost:8080
+```
+
+## Run backend services directly
+
+```bash
+go run ./cmd/gateway
+go run ./cmd/worker
+```
+
+## Run the dashboard directly
+
+From the repository root:
+
+```bash
+make dashboard-dev
+```
+
+The local Next.js configuration proxies `/telemetry-api/*` to
+`http://localhost:8080`.
+
+## Useful operations
 
 ```bash
 make kafka-groups
@@ -39,31 +65,27 @@ make db-events
 make dlq-tail
 ```
 
-Run services directly:
+## Automatic incident thresholds
 
 ```bash
-go run ./cmd/gateway
+TELEMETRYFORGE_INCIDENT_LATENCY_MS=750 \
+TELEMETRYFORGE_INCIDENT_ERROR_COUNT=3 \
 go run ./cmd/worker
 ```
 
-Use operations tooling:
-
-```bash
-go run ./cmd/telemetryctl incident freeze --help
-go run ./cmd/telemetryctl dlq replay --help
-go run ./cmd/telemetryctl dedup prune --help
-```
-
 ## Verification
+
+Backend:
 
 ```bash
 make check
 ```
 
-With Kafka/TimescaleDB running:
+Dashboard:
 
 ```bash
-make integration-test
+make dashboard-build
 ```
 
-GitHub Actions additionally runs Kafka and storage integration jobs.
+GitHub Actions runs Go tests/builds, Kafka integration, TimescaleDB integration,
+dashboard type checking/build, and container builds.

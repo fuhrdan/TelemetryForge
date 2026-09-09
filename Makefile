@@ -1,4 +1,4 @@
-.PHONY: build run run-worker telemetryctl test integration-test fmt vet check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail
+.PHONY: build run run-worker telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident test integration-test fmt vet check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail
 
 build:
 	go build ./...
@@ -11,6 +11,12 @@ run-worker:
 
 telemetryctl:
 	go run ./cmd/telemetryctl
+
+dashboard-dev:
+	cd dashboard && npm install && npm run dev
+
+dashboard-build:
+	cd dashboard && npm install && npm run build
 
 test:
 	go test ./...
@@ -46,3 +52,9 @@ db-events:
 
 dlq-tail:
 	docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic telemetry.dlq --from-beginning
+
+demo-traffic:
+	python3 scripts/demo-traffic.py
+
+demo-incident:
+	python3 scripts/demo-traffic.py --incident

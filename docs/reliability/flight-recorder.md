@@ -69,3 +69,17 @@ The frozen incident model is the foundation for:
 - Evidence Graph construction
 - incident export/import packages
 - training scenarios
+
+
+## v0.6.0 automatic freezing
+
+The Flight Recorder can now be frozen automatically when the worker sees:
+
+- a configured latency/duration threshold breach; or
+- an error-count threshold for one source.
+
+The default automatic freeze preserves the preceding 15 minutes and records the
+trigger reason in the incident metadata.
+
+Manual `telemetryctl incident freeze` remains available for operator-selected
+windows.

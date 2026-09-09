@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.6.0] - 2026-09-09
+
+### Added
+- Next.js/TypeScript real-time dashboard.
+- Server-Sent Events live telemetry endpoint.
+- Dashboard summary aggregation API.
+- Incident list and captured-event detail APIs.
+- Responsive metric cards, SVG signal chart, live stream, and incident timeline.
+- Automatic latency-threshold incident detection.
+- Automatic per-source error-burst detection.
+- Incident cooldown behavior.
+- Trigger-reason metadata.
+- Dashboard container and Compose service.
+- Human-readable dashboard, SSE, and automatic-capture documentation.
+- ADR 0011 for durable-store-backed SSE.
+- ADR 0012 for explicit automatic incident thresholds.
+
+### Changed
+- Worker pipeline now evaluates incident rules after durable persistence.
+- Metrics filtering is performed in the storage query rather than after fetching.
+- Incident metadata now includes status, trigger reason, and detection time.
+
+### Reliability
+- Automatic incident-capture failure is logged without retrying an already
+  persisted telemetry event.
+- SSE reads shared storage so live visibility is not tied to one gateway process.
+
 ## [0.5.0] - 2026-09-09
 
 ### Added

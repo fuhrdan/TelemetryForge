@@ -1,82 +1,74 @@
-# TelemetryForge v0.5.0 Release Notes
+# TelemetryForge v0.6.0 Release Notes
 
-## Reliability, DLQ & Incident Flight Recorder
+## Real-Time Dashboard & Automatic Incident Capture
 
-v0.5.0 turns failure handling into a first-class part of the architecture and
-introduces the first TelemetryForge-specific incident feature.
+v0.6.0 is the first visual TelemetryForge release.
 
 ### Added
 
-- transient/permanent processing-error classification
-- bounded exponential retries with 20% jitter
-- four total attempts by default
-- Kafka `telemetry.dlq` topic
-- detailed dead-letter envelope
-- malformed-payload dead-letter preservation
-- original Kafka topic/partition/offset metadata
-- source-offset acknowledgement after successful DLQ publication
-- `telemetryctl` operations CLI
-- DLQ replay from a dead-letter JSON record
-- rolling 30-minute Incident Flight Recorder
-- durable incident freezing
-- deduplication pruning command
-- explicit database migration service for existing volumes
-- retry and terminal-failure tests
-- Flight Recorder tests
-- reliability documentation and ADRs
+- Next.js 16.3.4 / React 19.2.7 TypeScript dashboard
+- responsive operations UI
+- Server-Sent Events telemetry feed
+- durable-store-backed live polling
+- five-minute dashboard summary API
+- events/sec card
+- error-rate card
+- P95 latency card
+- active-source card
+- live SVG metric chart
+- live telemetry table
+- frozen incident list
+- incident event timeline
+- automatic high-latency incident capture
+- automatic error-burst incident capture
+- per-source/reason cooldown
+- incident trigger metadata
+- configurable latency/error thresholds
+- dashboard Docker image and Compose service
+- incident detail API
+- dependency-free demo telemetry/incident generator
+- human-readable SSE/dashboard/incident documentation
+- ADR 0011: SSE from durable shared storage
+- ADR 0012: explicit automatic incident thresholds
 
-### Incident Flight Recorder
+### Automatic capture defaults
 
-The worker now records the incoming canonical envelope before normalization.
+High latency:
 
-The rolling TimescaleDB buffer keeps 30 minutes by default. Operators can freeze
-a selected capture window into durable incident storage:
-
-```bash
-telemetryctl incident freeze \
-  --id INC-2026-0042 \
-  --title "Checkout latency spike" \
-  --from 2026-09-09T16:00:00Z \
-  --to 2026-09-09T16:20:00Z
+```text
+>= 1000ms for latency/duration metrics
 ```
 
-This creates the persistence model needed by later Incident Replay and Evidence
-Graph releases.
+Error burst:
 
-### Retry semantics
+```text
+5 error-classified events from one source in 1 minute
+```
 
-Transient errors retry with bounded exponential backoff. Permanent failures do
-not waste repeated attempts.
+The freeze window looks back 15 minutes and the default duplicate-trigger
+cooldown is 10 minutes.
 
-After four total failed attempts, transient work moves to the DLQ.
+### Live-stream architecture
 
-Unknown/unclassified errors default to permanent to avoid accidental infinite
-retry behavior.
+The SSE endpoint reads from shared durable storage rather than a gateway-local
+broadcast queue. This is intentionally less clever but remains correct when
+multiple application replicas exist.
 
-### DLQ acknowledgement semantics
+### Dashboard dependency policy
 
-The original Kafka record is not committed until Kafka acknowledges the
-dead-letter record.
-
-If DLQ publication fails, the original record remains available to the consumer
-group.
-
-### Upgrade behavior
-
-v0.5.0 adds an explicit `db-migrate` service. This fixes an important local
-upgrade concern: PostgreSQL init scripts only execute on an empty database
-volume, while the migration service applies idempotent migrations to existing
-v0.4.0 volumes as well.
+The first chart is implemented with React + SVG rather than bringing in a
+charting library. This keeps the v0.6.0 frontend small and makes the live data
+path easy to inspect.
 
 ### Known limitations
 
-- DLQ browsing UI is not implemented yet.
-- Replay currently operates on an exported dead-letter JSON record.
-- Flight Recorder freezing is manual; automatic anomaly-triggered freezing
-  arrives later.
-- Flight Recorder uses the same TimescaleDB instance in this development
-  architecture; a cheaper/local buffer may replace it at larger scale.
-- retry classification is intentionally small and will become richer as more
-  downstream dependencies are introduced.
-- authentication, authorization, tenant isolation, and PII redaction remain
-  future milestones.
+- SSE currently polls TimescaleDB once per second per connected browser.
+- thresholds are global defaults, not source-specific rules.
+- automatic capture freezes the preceding window; it does not yet continue
+  capturing a post-trigger tail.
+- incident status cannot yet be changed from the UI.
+- incident timeline does not yet correlate causal dependencies.
+- dashboard authentication/tenant isolation is not implemented.
+- there is no Cardinality Firewall yet.
+
+These limitations are documented rather than hidden.

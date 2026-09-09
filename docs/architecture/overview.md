@@ -1,67 +1,69 @@
-# TelemetryForge Architecture — v0.5.0
+# TelemetryForge Architecture — v0.6.0
 
-TelemetryForge currently has two independently scalable runtime services plus
-two durable infrastructure systems.
+TelemetryForge now has three application surfaces:
+
+1. Go ingestion/query gateway.
+2. Go Kafka processing workers.
+3. Next.js browser dashboard.
+
+Shared infrastructure remains Kafka plus PostgreSQL/TimescaleDB.
 
 ```text
-                    +----------------------+
-HTTP / webhooks --->| Go ingestion gateway |
-                    +----------+-----------+
-                               |
-                               v
-                         Apache Kafka
-                               |
-                               v
-                    telemetryforge-processors
-                               |
-                               v
-                       bounded worker pool
-                               |
-                +--------------+--------------+
-                |                             |
-                v                             v
-        Flight Recorder                 processing chain
-        rolling buffer                       |
-                |                             v
-                |                        TimescaleDB
-                |                             |
-                +--> frozen incidents         +--> Query API
+Applications
+    |
+    v
+Go Gateway -------------------------------+
+    |                                     |
+    v                                     | query / SSE
+Kafka                                     |
+    |                                     |
+    v                                     v
+Worker Group                         TimescaleDB
+    |                                     ^
+    v                                     |
+Flight Recorder                           |
+    |                                     |
+    v                                     |
+Normalize -> Persist ---------------------+
+    |
+    v
+Automatic Incident Detector
+    |
+ threshold breach
+    v
+Frozen Incident
+    |
+    +------------------------------------> Dashboard
 
-terminal failures -----------------------> telemetry.dlq
+terminal processing failure -> telemetry.dlq
 ```
 
-## Ingestion tier
+## Gateway
 
-The gateway validates the canonical event envelope and waits for Kafka
-acknowledgement before returning HTTP `202 Accepted`.
+The gateway validates ingestion, waits for Kafka acknowledgement, exposes
+bounded query APIs, dashboard summaries, incident reads, and the SSE stream.
 
-## Processing tier
+## Worker
 
-The worker uses consumer groups, a bounded queue, classified retries, the
-Flight Recorder, normalization, and idempotent persistence.
+The worker uses consumer groups, bounded queues, classified retries, the Flight
+Recorder, normalization, idempotent persistence, and automatic incident
+detection.
 
-A source offset is committed only after either:
+## Dashboard
 
-- normal persistence succeeds; or
-- a terminal failure is durably published to `telemetry.dlq`.
+The Next.js dashboard is a separate service. It does not connect directly to
+Kafka or the database. All browser data flows through the Go API boundary.
 
-## Storage tier
+The browser uses a same-origin proxy path so v0.6.0 does not need permissive
+CORS configuration.
 
-PostgreSQL/TimescaleDB provides:
+## Horizontal-scaling principle
 
-- time-series telemetry storage
-- event-ID deduplication
-- short-lived Flight Recorder storage
-- durable frozen incident windows
+The dashboard live stream reads shared durable storage rather than process-local
+memory. This preserves correct behavior when gateway/worker replicas are added
+in v0.7.0.
 
-## Why separate Kafka from storage?
+## Next milestone
 
-Kafka absorbs bursty producer traffic and decouples ingestion availability from
-database processing speed. TimescaleDB provides queryable analytical storage.
-Each system does the job it is designed for instead of using application memory
-as the buffer between them.
-
-## Where the project goes next
-
-v0.6.0 can now build a real-time dashboard and automatic incident capture on a
-reliable ingest/process/store foundation.
+v0.7.0 adds Kubernetes scaling and the Cardinality Firewall. The dashboard and
+SSE contract established here should continue working as replica counts grow.
