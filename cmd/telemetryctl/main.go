@@ -1,7 +1,7 @@
 // Command telemetryctl provides small operational tools for TelemetryForge.
 //
-// v0.5.0 intentionally starts with narrow, auditable commands for incident
-// freezing, DLQ replay, and deduplication maintenance.
+// Commands are intentionally narrow and auditable: incident freezing, DLQ
+// replay, deduplication maintenance, and policy validation.
 package main
 
 import (
@@ -16,6 +16,7 @@ import (
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
+	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
 )
@@ -50,6 +51,14 @@ func main() {
 			os.Exit(2)
 		}
 		if err := dedupPrune(ctx, os.Args[3:]); err != nil {
+			exitErr(err)
+		}
+	case "policy":
+		if os.Args[2] != "validate" {
+			usage()
+			os.Exit(2)
+		}
+		if err := policyValidate(os.Args[3:]); err != nil {
 			exitErr(err)
 		}
 	default:
@@ -149,7 +158,7 @@ func dedupPrune(ctx context.Context, args []string) error {
 		return err
 	}
 	if *olderThan < 30*24*time.Hour {
-		return errors.New("--older-than must be at least 30 days in v0.5.0")
+		return errors.New("--older-than must be at least 30 days")
 	}
 
 	store, err := storage.NewPostgresStore(ctx, *databaseURL)
@@ -166,11 +175,38 @@ func dedupPrune(ctx context.Context, args []string) error {
 	return nil
 }
 
+func policyValidate(args []string) error {
+	set := flag.NewFlagSet("policy validate", flag.ContinueOnError)
+	file := set.String("file", "", "policy JSON file")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*file) == "" {
+		return errors.New("--file is required")
+	}
+
+	loaded, err := policy.Load(*file)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf(
+		"policy %s@%s is valid (%d rules, default threshold %d, default action %s)\n",
+		loaded.Name,
+		loaded.Version,
+		len(loaded.Rules),
+		loaded.DefaultUniqueThreshold,
+		loaded.DefaultAction,
+	)
+	return nil
+}
+
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   telemetryctl incident freeze --id INC-42 --title "Checkout latency" --from <RFC3339> --to <RFC3339>
   telemetryctl dlq replay --file dead-letter.json [--topic telemetry.raw]
-  telemetryctl dedup prune [--older-than 840h]`)
+  telemetryctl dedup prune [--older-than 840h]
+  telemetryctl policy validate --file policies/active.json`)
 }
 
 func exitErr(err error) {

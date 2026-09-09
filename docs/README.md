@@ -12,7 +12,8 @@ to reconstruct every decision from implementation details.
 - [Local development](development/local-development.md)
 - [Testing strategy](development/testing.md)
 - [Troubleshooting](operations/troubleshooting.md)
-- [v0.7.0 development plan](roadmap/v0.7.0.md)
+- [Project roadmap](../ROADMAP.md)
+- [v0.9.0 development plan](roadmap/v0.9.0.md)
 
 ## Architecture
 
@@ -41,6 +42,17 @@ to reconstruct every decision from implementation details.
 - [Deduplication lifecycle](reliability/dedup-lifecycle.md)
 - [Incident Flight Recorder](reliability/flight-recorder.md)
 - [Automatic incident capture](incidents/automatic-capture.md)
+
+## Policy and cardinality
+
+- [Cardinality Firewall](policy/cardinality-firewall.md)
+- [Policy-as-Code](policy/policy-as-code.md)
+- [Shadow Pipeline](policy/shadow-pipeline.md)
+
+## Deployment
+
+- [Kubernetes](deployment/kubernetes.md)
+- [Terraform / AWS EKS](deployment/terraform.md)
 
 ## Dashboard
 

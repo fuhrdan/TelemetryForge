@@ -1,7 +1,7 @@
 # TelemetryForge Dashboard
 
-**Development package version:** `0.7.0-dev`
-**Stable released UI feature set:** `v0.6.0`
+**Package version:** `0.8.0`
+**Release:** `v0.8.0`
 
 The dashboard is intentionally small and readable.
 
@@ -49,3 +49,14 @@ a real need.
 
 When zooming, time-axis exploration, multiple synchronized series, or large
 datasets become requirements, this decision should be revisited.
+
+
+## v0.8.0 additions
+
+The dashboard now also renders:
+
+- Cardinality Firewall findings
+- active/shadow finding mode
+- observed/projected unique values
+- policy action
+- candidate-policy disagreements

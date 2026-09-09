@@ -31,3 +31,9 @@ type Writer interface {
 type Reader interface {
 	QueryEvents(ctx context.Context, query Query) ([]domain.Event, error)
 }
+
+// PolicyReader exposes Cardinality Firewall and shadow-policy evidence.
+type PolicyReader interface {
+	ListCardinalityFindings(ctx context.Context, limit int) ([]CardinalityFinding, error)
+	ListPolicyDiffs(ctx context.Context, limit int) ([]PolicyDiff, error)
+}

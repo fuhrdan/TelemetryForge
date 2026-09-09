@@ -20,8 +20,8 @@ specific problem rather than adding technology for its own sake.
 
 ## Dependency updates
 
-`.github/dependabot.yml` watches Go modules, npm packages, GitHub Actions, and
-Docker references. Dependency changes should remain separate from major feature
+`.github/dependabot.yml` watches Go modules, npm packages, GitHub Actions,
+Docker references, and Terraform providers. Dependency changes should remain separate from major feature
 changes when possible so failures are easier to attribute.
 
 ## Documentation

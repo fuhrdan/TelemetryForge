@@ -56,15 +56,19 @@ semantics, including:
 - database migrations
 - Flight Recorder incident freezing
 
-## v0.7.0 testing additions
+## v0.8.0 coverage
 
-Kubernetes/Cardinality Firewall work should add tests for:
+The release adds/targets tests for:
 
 - cardinality estimation and threshold policy
 - deterministic allow/drop/quarantine decisions
-- dangerous-dimension detection
-- Kubernetes manifest rendering/validation
-- health/readiness behavior with multiple replicas
+- bounded estimator/reporting state
+- active versus shadow policy decisions
+- strict policy validation
+- worker health/readiness behavior
+- Kubernetes manifest rendering
+- Terraform format/init/validate
+- quarantine/finding/diff persistence
 - consumer scaling guidance against topic partition count
 
 ## Performance claims

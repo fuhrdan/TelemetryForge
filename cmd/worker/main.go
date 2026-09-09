@@ -8,9 +8,12 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
+	"github.com/fuhrdan/TelemetryForge/internal/health"
 	"github.com/fuhrdan/TelemetryForge/internal/incident"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
+	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
 	"github.com/fuhrdan/TelemetryForge/internal/worker"
@@ -35,6 +38,38 @@ func main() {
 	}
 	defer store.Close()
 
+	activePolicyPath := env("TELEMETRYFORGE_POLICY_FILE", "policies/active.json")
+	activePolicy, err := policy.Load(activePolicyPath)
+	if err != nil {
+		logger.Error("load active telemetry policy", "path", activePolicyPath, "error", err)
+		os.Exit(1)
+	}
+
+	var shadowPolicy *policy.Policy
+	shadowPolicyPath := env("TELEMETRYFORGE_SHADOW_POLICY_FILE", "policies/shadow.json")
+	if strings.EqualFold(shadowPolicyPath, "disabled") {
+		shadowPolicyPath = ""
+	}
+	if shadowPolicyPath != "" {
+		loadedShadow, err := policy.Load(shadowPolicyPath)
+		if err != nil {
+			logger.Error("load shadow telemetry policy", "path", shadowPolicyPath, "error", err)
+			os.Exit(1)
+		}
+		shadowPolicy = &loadedShadow
+	}
+
+	policyEngine, err := policy.NewEngine(
+		activePolicy,
+		shadowPolicy,
+		store,
+		envInt("TELEMETRYFORGE_CARDINALITY_MAX_DIMENSIONS", 20000),
+	)
+	if err != nil {
+		logger.Error("create policy engine", "error", err)
+		os.Exit(1)
+	}
+
 	recorder, err := worker.NewFlightRecorder(store)
 	if err != nil {
 		logger.Error("create flight recorder", "error", err)
@@ -57,6 +92,7 @@ func main() {
 	pipeline, err := worker.NewChain(
 		recorder,
 		worker.Normalizer{},
+		worker.NewPolicyProcessor(policyEngine),
 		persister,
 		worker.NewIncidentDetector(detector, logger),
 	)
@@ -78,6 +114,23 @@ func main() {
 	}
 	defer consumer.Close()
 
+	adminAddress := env("TELEMETRYFORGE_WORKER_ADMIN_ADDRESS", ":8081")
+	healthServer := health.New(adminAddress, logger, map[string]health.Checker{
+		"kafka":    consumer,
+		"database": store,
+	})
+	go func() {
+		if err := healthServer.Start(); err != nil {
+			logger.Error("worker health server stopped", "error", err)
+			stop()
+		}
+	}()
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = healthServer.Shutdown(shutdownCtx)
+	}()
+
 	pool, err := worker.NewPool(workers, queueCapacity, pipeline, logger)
 	if err != nil {
 		logger.Error("create worker pool", "error", err)
@@ -92,7 +145,10 @@ func main() {
 		"topics", strings.Join(topics, ","),
 		"dlq_topic", env("TELEMETRYFORGE_WORKER_DLQ_TOPIC", "telemetry.dlq"),
 		"persistence", "postgresql/timescaledb",
-		"flight_recorder", "enabled")
+		"flight_recorder", "enabled",
+		"policy", activePolicy.Name+"@"+activePolicy.Version,
+		"shadow_policy", shadowPolicyPath != "",
+		"admin_address", adminAddress)
 
 	if err := consumer.Run(ctx, pool); err != nil {
 		logger.Error("consumer stopped with error", "error", err)

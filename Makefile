@@ -1,4 +1,4 @@
-.PHONY: build run run-worker telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident test integration-test fmt vet check docs-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail
+.PHONY: build run run-worker telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail
 
 build:
 	go build ./...
@@ -39,6 +39,19 @@ docs-check:
 	git diff --check
 	docker compose config --quiet
 
+
+policy-check:
+	go run ./cmd/telemetryctl policy validate --file policies/active.json
+	go run ./cmd/telemetryctl policy validate --file policies/shadow.json
+
+k8s-render:
+	kubectl kustomize deployments/kubernetes/base >/dev/null
+
+terraform-check:
+	terraform -chdir=infra/terraform/aws fmt -check
+	terraform -chdir=infra/terraform/aws init -backend=false -input=false
+	terraform -chdir=infra/terraform/aws validate
+
 docker-up:
 	docker compose up --build
 
@@ -65,3 +78,6 @@ demo-traffic:
 
 demo-incident:
 	python3 scripts/demo-traffic.py --incident
+
+demo-cardinality:
+	python3 scripts/demo-traffic.py --cardinality --count 160 --interval 0.05

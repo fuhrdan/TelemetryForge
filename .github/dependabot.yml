@@ -31,3 +31,10 @@ updates:
     schedule:
       interval: weekly
     labels: ["dependencies", "dashboard", "docker"]
+
+  - package-ecosystem: "terraform"
+    directory: "/infra/terraform/aws"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "terraform"]

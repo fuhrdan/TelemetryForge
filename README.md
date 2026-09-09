@@ -2,47 +2,50 @@
 
 [![CI](https://github.com/fuhrdan/TelemetryForge/actions/workflows/ci.yml/badge.svg)](https://github.com/fuhrdan/TelemetryForge/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/badge/Go-1.27.1-00ADD8?logo=go&logoColor=white)](https://go.dev/)
-[![Next.js](https://img.shields.io/badge/Next.js-16.3.4-black?logo=next.js)](https://nextjs.org/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.37-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
+[![Terraform](https://img.shields.io/badge/Terraform-1.16.1-844FBA?logo=terraform&logoColor=white)](https://www.terraform.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **Distributed, event-driven telemetry control plane and observability gateway.**
 
-TelemetryForge accepts telemetry, buffers it durably through Kafka, processes it
-with bounded Go workers, persists it in PostgreSQL/TimescaleDB, preserves
-full-fidelity incident evidence, and exposes live operations data through a
-Next.js dashboard.
+TelemetryForge sits between applications and observability backends. It accepts
+telemetry, buffers it durably through Kafka, processes it with bounded Go
+workers, persists it in PostgreSQL/TimescaleDB, preserves incident evidence,
+protects downstream systems from cardinality explosions, and exposes live
+operations data through a Next.js dashboard.
 
-The project is deliberately built as an engineering portfolio as well as a
-working system: important behavior is tested, non-obvious code is commented,
-and architecture decisions are documented in plain English.
-
-> **Stable release:** `v0.6.0` — Real-Time Dashboard & Automatic Incident Capture<br>
-> **Development target:** `v0.7.0` — Kubernetes Scaling & Cardinality Firewall
+> **Current release:** `v0.8.0` — Kubernetes, Cardinality Firewall, Terraform,
+> Policy-as-Code & Shadow Pipeline
 
 ## Why TelemetryForge is different
 
-Many observability platforms already collect logs, metrics, and traces.
-TelemetryForge is focused on the **control plane between applications and those
-backends**.
+TelemetryForge is not trying to replace every dashboard in Datadog, Grafana,
+Splunk, or Honeycomb. It focuses on the **control plane before telemetry reaches
+those systems**.
 
-Current and planned differentiators include:
+Implemented differentiators now include:
 
-- **Incident Flight Recorder** — keep a short full-fidelity rolling buffer even
-  when normal storage/policy becomes selective.
-- **Automatic Incident Capture** — freeze evidence before the rolling buffer
-  expires when deterministic latency/error thresholds trip.
-- **Cardinality Firewall** — v0.7.0 target: detect dangerous dimensions before
-  they create an observability-cost explosion downstream.
-- **Incident Replay** — safely replay captured production evidence through new
-  policies and processors.
-- **Telemetry Cost Simulator** — show the storage/cost effect and visibility
-  trade-off before changing telemetry policy.
-- **Evidence Graph** — connect incident conclusions to supporting and
-  contradicting telemetry instead of producing opaque diagnoses.
+- **Incident Flight Recorder** — rolling full-fidelity evidence before normal
+  policy changes telemetry.
+- **Automatic Incident Capture** — deterministic latency/error thresholds freeze
+  a Flight Recorder window.
+- **Cardinality Firewall** — approximate unique-dimension growth is detected
+  before identifier-shaped tags become downstream cost explosions.
+- **Policy-as-Code** — versioned, strictly validated JSON policy files select
+  `allow`, `drop_tag`, or `quarantine`.
+- **Shadow Pipeline** — a candidate policy evaluates the same traffic without
+  changing the active event path; decision differences are stored and shown in
+  the dashboard.
 
-See the [roadmap](ROADMAP.md) for the planned sequence.
+Planned differentiators:
 
-## Architecture
+- **Incident Replay**
+- **Telemetry Cost Simulator**
+- **Evidence Graph**
+
+See [ROADMAP.md](ROADMAP.md).
+
+## v0.8.0 architecture
 
 ```mermaid
 flowchart LR
@@ -51,248 +54,297 @@ flowchart LR
     K --> W[Go Worker Group]
 
     W --> F[Flight Recorder]
-    F --> N[Normalize]
-    N --> P[Idempotent Persistence]
+    F --> N[Normalizer]
+    N --> CF[Cardinality Firewall]
+    CF --> P[Idempotent Persistence]
     P --> T[(PostgreSQL + TimescaleDB)]
     P --> D[Incident Detector]
-    D --> I[(Frozen Incidents)]
+
+    CF --> Q[(Quarantine Evidence)]
+    CF -. same event .-> SP[Shadow Policy]
+    SP --> PD[(Policy Differences)]
 
     W -->|terminal failure| DLQ[(telemetry.dlq)]
+    D --> I[(Frozen Incidents)]
 
     T --> API[Query / Summary / SSE API]
     I --> API
+    Q --> API
+    PD --> API
     API --> UI[Next.js Dashboard]
 ```
 
-For the system guarantees and component boundaries, read
+For reliability and ownership guarantees, read
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Current capabilities
 
 | Area | Current behavior |
 |---|---|
-| Ingestion | Go HTTP API with versioned canonical event envelope |
-| Durable handoff | Kafka with broker acknowledgement before HTTP `202` |
-| Partitioning | Stable source key for per-source ordering |
-| Processing | Consumer groups, bounded worker queue, backpressure |
-| Delivery | At-least-once processing with contiguous per-partition commits and rebalance-safe poll batches |
-| Reliability | Classified retry, exponential backoff/jitter, DLQ |
-| Persistence | PostgreSQL + TimescaleDB with idempotent event IDs |
-| Incident evidence | 30-minute full-fidelity rolling Flight Recorder |
-| Incident capture | Manual and automatic latency/error threshold freezing |
-| Live UI | Next.js dashboard with SSE, summaries, incident timeline |
-| Operations | `telemetryctl` freeze/replay/dedup commands |
+| Ingestion | Go HTTP API with versioned canonical envelope |
+| Durable handoff | Kafka acknowledgement before HTTP `202` |
+| Processing | Consumer groups, bounded workers, backpressure |
+| Delivery | At-least-once with contiguous per-partition commits and rebalance-safe poll batches |
+| Reliability | Classified retries, backoff/jitter, DLQ, idempotent persistence |
+| Persistence | PostgreSQL + TimescaleDB |
+| Incident evidence | 30-minute full-fidelity Flight Recorder |
+| Incident capture | Manual and automatic freezing |
+| Cardinality | Bounded 64-register HyperLogLog estimator per source/type/dimension |
+| Policy | Active JSON policy + candidate shadow policy |
+| Actions | `allow`, `drop_tag`, `quarantine` |
+| Live UI | SSE dashboard, incident timeline, firewall findings, shadow diffs |
+| Kubernetes | Kustomize base, probes, HPA, PDB, policy ConfigMap |
+| Terraform | AWS VPC + EKS foundation |
+| Operations | `telemetryctl` incident/DLQ/dedup/policy commands |
 
 ## Quickstart
 
-### Requirements
+Requirements:
 
 - Docker with Docker Compose
-- Optional for direct development: Go 1.27.1+ and Node.js 24.21 LTS
+- optional direct development: Go 1.27.1+ and Node.js 24 LTS
 
-Start the complete local stack:
+Start everything:
 
 ```bash
 docker compose up --build
 ```
 
-Open the dashboard:
+Open:
 
 ```text
-http://localhost:3000
+Dashboard: http://localhost:3000
+Gateway:   http://localhost:8080
 ```
 
-Gateway/API:
-
-```text
-http://localhost:8080
-```
-
-Generate normal demo traffic:
+Generate normal traffic:
 
 ```bash
 make demo-traffic
 ```
 
-Generate traffic that deliberately crosses the automatic incident thresholds:
+Trigger automatic incident capture:
 
 ```bash
 make demo-incident
 ```
 
-The second command is useful for a fast portfolio demo: live telemetry appears
-in the dashboard, the latency/error thresholds trip, and the Flight Recorder
-freezes an incident window for investigation.
-
-## Example ingestion
+Exercise the Cardinality Firewall and shadow policy:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/metrics \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source":"payment-service",
-    "type":"request.duration",
-    "timestamp":"2026-09-09T15:30:00Z",
-    "tags":{"environment":"demo","region":"local"},
-    "value":147.2,
-    "unit":"ms",
-    "schema_version":"1.0",
-    "correlation_id":"order-123"
-  }'
+make demo-cardinality
 ```
 
-Query persisted metrics:
+Then inspect the **Cardinality Firewall** and **Shadow Pipeline** panels in the
+dashboard.
 
-```bash
-curl "http://localhost:8080/api/v1/metrics?source=payment-service&limit=25"
-```
+## Policy-as-Code
 
-Dashboard summary:
-
-```bash
-curl "http://localhost:8080/api/v1/dashboard/summary?window=5m"
-```
-
-## Reliability model
-
-TelemetryForge makes failure ordering explicit.
-
-Successful processing:
+Default active policy:
 
 ```text
-Kafka record
-    -> Flight Recorder
-    -> normalize
-    -> idempotent database transaction
-    -> automatic incident evaluation
-    -> commit Kafka offset
+policies/active.json
 ```
 
-Terminal failure:
+Candidate shadow policy:
 
 ```text
-processing failure
-    -> classified retry when transient
-    -> telemetry.dlq when permanent/exhausted
-    -> wait for DLQ acknowledgement
-    -> commit original source offset
+policies/shadow.json
 ```
 
-Concurrent workers do not commit offsets independently. TelemetryForge
-advances each Kafka partition only through the contiguous completed prefix and
-holds the consumer-group rebalance gate until the bounded poll batch has
-finished.
+Validate either before deployment:
 
-The project intentionally claims **at-least-once**, not exactly-once,
-processing. Database event IDs provide idempotency at the current persistence
-boundary.
+```bash
+go run ./cmd/telemetryctl policy validate \
+  --file policies/active.json
+```
+
+The active policy can remove a dangerous dimension or mark an event quarantined.
+The shadow policy **never mutates production behavior**; it only records what it
+would have done differently.
+
+Read:
+
+- [Cardinality Firewall](docs/policy/cardinality-firewall.md)
+- [Policy-as-Code](docs/policy/policy-as-code.md)
+- [Shadow Pipeline](docs/policy/shadow-pipeline.md)
+
+## Cardinality privacy model
+
+The estimator does not keep a set of raw identifier values.
+
+For operational findings, TelemetryForge stores a short SHA-256-derived
+fingerprint rather than the original high-cardinality value.
+
+Full original evidence remains only in explicitly protected paths such as the
+Flight Recorder/quarantine archive.
+
+## Kubernetes
+
+Render the base:
+
+```bash
+kubectl kustomize deployments/kubernetes/base
+```
+
+The manifests include:
+
+- gateway, worker, and dashboard deployments
+- services
+- worker/gateway liveness and dependency-aware readiness
+- HPA examples
+- PodDisruptionBudgets
+- ConfigMaps
+- active/shadow policy ConfigMap
+- secret template
+- ingress example
+
+The worker HPA is intentionally capped at six replicas because the local topic
+model uses six partitions. More consumer replicas than partitions do not
+increase useful Kafka group concurrency.
+
+See [Kubernetes deployment](docs/deployment/kubernetes.md).
+
+## Terraform
+
+AWS foundation:
+
+```text
+infra/terraform/aws/
+```
+
+Validate:
+
+```bash
+terraform -chdir=infra/terraform/aws init -backend=false
+terraform -chdir=infra/terraform/aws validate
+```
+
+The module provisions networking and Amazon EKS, while Kafka and
+PostgreSQL/TimescaleDB remain external service contracts.
+
+Current cloud baseline:
+
+- Terraform 1.16.1
+- AWS provider 6.62.0
+- EKS Kubernetes 1.36
+
+Upstream Kubernetes 1.37 is newer, but EKS currently exposes 1.36 as its newest
+standard-support minor.
+
+See [Terraform deployment](docs/deployment/terraform.md).
+
+## API additions
+
+Cardinality findings:
+
+```text
+GET /api/v1/cardinality/findings?limit=100
+```
+
+Shadow-policy differences:
+
+```text
+GET /api/v1/policy/shadow-diffs?limit=100
+```
+
+The complete API map lives in
+[docs/api/http-api.md](docs/api/http-api.md).
 
 ## Documentation
 
-The complete documentation map is in [`docs/README.md`](docs/README.md).
+Start with [`docs/README.md`](docs/README.md).
 
-Useful starting points:
+Particularly useful for v0.8.0:
 
 - [Architecture overview](docs/architecture/overview.md)
-- [Event flow](docs/architecture/event-flow.md)
-- [HTTP API reference](docs/api/http-api.md)
+- [Kafka delivery semantics](docs/kafka/delivery-semantics.md)
+- [Cardinality Firewall](docs/policy/cardinality-firewall.md)
+- [Policy-as-Code](docs/policy/policy-as-code.md)
+- [Shadow Pipeline](docs/policy/shadow-pipeline.md)
+- [Kubernetes deployment](docs/deployment/kubernetes.md)
+- [Terraform deployment](docs/deployment/terraform.md)
 - [Configuration reference](docs/reference/configuration.md)
-- [Failure handling](docs/architecture/failure-handling.md)
-- [Incident Flight Recorder](docs/reliability/flight-recorder.md)
-- [Automatic incident capture](docs/incidents/automatic-capture.md)
-- [SSE design](docs/dashboard/sse.md)
-- [Troubleshooting](docs/operations/troubleshooting.md)
 - [Testing strategy](docs/development/testing.md)
-- [v0.7.0 plan](docs/roadmap/v0.7.0.md)
+- [Troubleshooting](docs/operations/troubleshooting.md)
 
-Architectural decisions are captured in [`docs/adr/`](docs/adr/).
+Architecture decisions are under [`docs/adr/`](docs/adr/).
 
 ## Repository layout
 
 ```text
-cmd/gateway/                 Go ingestion/query/SSE service
-cmd/worker/                  Go Kafka processing service
-cmd/telemetryctl/            operations and replay CLI
-
-dashboard/                   Next.js / React / TypeScript dashboard
-
-internal/api/                HTTP and SSE transport
-internal/domain/             canonical event + DLQ envelopes
-internal/incident/           automatic incident detection
+cmd/                         gateway, worker, telemetryctl
+dashboard/                   Next.js operations UI
+internal/api/                REST + SSE transport
+internal/domain/             canonical telemetry types
+internal/health/             worker health/readiness
+internal/incident/           automatic incident capture
+internal/policy/             Cardinality Firewall + active/shadow policy
 internal/reliability/        retry/error classification
-internal/storage/            PostgreSQL/TimescaleDB repository
-internal/stream/             Kafka producer/consumer boundary
+internal/storage/            PostgreSQL/TimescaleDB
+internal/stream/             Kafka producer/consumer + offset coordination
 internal/worker/             bounded processing pipeline
 
+policies/                    active/shadow policy-as-code
 migrations/                  idempotent SQL migrations
-scripts/                     demo and repository checks
-tests/integration/           external dependency integration tests
-
-docs/                       architecture, operations, reliability, ADRs
-.github/                     CI, Dependabot, issue/PR templates
+deployments/kubernetes/      Kubernetes/Kustomize
+infra/terraform/aws/         Terraform EKS foundation
+scripts/                     demos and repository checks
+tests/integration/           broker/database integration tests
+docs/                        human-readable engineering documentation
 ```
 
-## Development
+## Validation
 
-Fast backend checks:
+Backend:
 
 ```bash
 make check
 ```
 
-Documentation/repository hygiene:
+Documentation/repository:
 
 ```bash
 make docs-check
 ```
 
-Dashboard build/type check:
+Policy:
 
 ```bash
-make dashboard-build
+make policy-check
 ```
 
-External integration tests require Kafka and TimescaleDB:
+Kubernetes:
 
 ```bash
-make integration-test
+make k8s-render
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow.
+Terraform:
 
-## Technology baseline
+```bash
+make terraform-check
+```
 
-The v0.7.0 development branch refreshes the runtime/tooling baseline while
-keeping feature behavior at the stable v0.6.0 level until v0.7 capabilities are
-implemented:
-
-- Go 1.27.1
-- Apache Kafka 4.3.1
-- TimescaleDB 2.30.0 / PostgreSQL 17 image
-- Node.js 24.21.0 LTS
-- Next.js 16.3.4
-- React / React DOM 19.2.8
-- TypeScript 5.9.3
-- Alpine Linux 3.24.1 runtime
-
-See [the version baseline](docs/reference/versions.md) for the dependency policy.
+CI runs unit/race/vet/build checks, Kafka/TimescaleDB integration tests,
+dashboard build/type checking, policy validation, Kubernetes rendering, Terraform
+validation, and container builds.
 
 ## Security status
 
-TelemetryForge is still pre-1.0. The local stack does **not** yet implement the
-complete authentication, tenant-isolation, Kafka TLS/SASL, secret-management,
-and PII-redaction model required for Internet-facing production use.
+TelemetryForge remains pre-1.0. The Kubernetes/Terraform material does not yet
+provide the complete production authentication, tenant isolation, Kafka
+TLS/SASL, secret-management, or PII-redaction model.
 
-Do not expose the development Compose stack directly to an untrusted network.
+Do not treat the checked-in local configuration as Internet-ready production
+security.
+
 See [SECURITY.md](SECURITY.md).
 
-## Project status and performance claims
+## Performance claims
 
-The repository distinguishes released capabilities from planned work. v0.7.0
-items remain marked **in development** until their acceptance criteria pass.
-
-No throughput/latency benchmark is claimed in this README yet. Reproducible k6
-load testing and checked-in performance methodology are planned before v1.0.
+No benchmark number is advertised yet. Reproducible k6 methodology and
+self-observability are part of the v0.9.0 milestone.
 
 ## License
 

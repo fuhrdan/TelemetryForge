@@ -95,6 +95,12 @@ services:
       TELEMETRYFORGE_DATABASE_URL: "postgres://telemetryforge:telemetryforge@timescaledb:5432/telemetryforge?sslmode=disable"
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
     depends_on:
       kafka-init:
         condition: service_completed_successfully
@@ -118,9 +124,19 @@ services:
       TELEMETRYFORGE_WORKER_COUNT: "4"
       TELEMETRYFORGE_WORKER_QUEUE_CAPACITY: "256"
       TELEMETRYFORGE_WORKER_DLQ_TOPIC: "telemetry.dlq"
+      TELEMETRYFORGE_WORKER_ADMIN_ADDRESS: ":8081"
+      TELEMETRYFORGE_POLICY_FILE: "/etc/telemetryforge/policies/active.json"
+      TELEMETRYFORGE_SHADOW_POLICY_FILE: "/etc/telemetryforge/policies/shadow.json"
+      TELEMETRYFORGE_CARDINALITY_MAX_DIMENSIONS: "20000"
       TELEMETRYFORGE_INCIDENT_LATENCY_MS: "1000"
       TELEMETRYFORGE_INCIDENT_ERROR_COUNT: "5"
       TELEMETRYFORGE_DATABASE_URL: "postgres://telemetryforge:telemetryforge@timescaledb:5432/telemetryforge?sslmode=disable"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8081/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
     depends_on:
       kafka-init:
         condition: service_completed_successfully
@@ -141,7 +157,7 @@ services:
       - "3000:3000"
     depends_on:
       gateway:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

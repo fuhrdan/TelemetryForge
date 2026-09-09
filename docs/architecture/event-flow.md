@@ -9,12 +9,15 @@
 5. Worker-group member consumes the record.
 6. Flight Recorder stores the untouched decoded envelope.
 7. Normalizer canonicalizes source/type.
-8. TimescaleDB persistence commits idempotently.
-9. Automatic incident rules evaluate the durable event.
-10. Worker completion marks the source record handled.
-11. The acknowledgement coordinator advances the partition only through its
+8. Active Cardinality Firewall policy evaluates/mutates the normal event.
+9. Candidate shadow policy evaluates the same normalized event without mutation.
+10. Policy findings/differences/quarantine evidence are persisted as needed.
+11. TimescaleDB primary telemetry persistence commits idempotently.
+12. Automatic incident rules evaluate the durable event.
+13. Worker completion marks the source record handled.
+14. The acknowledgement coordinator advances the partition only through its
     contiguous completed prefix.
-12. After every submitted job from the bounded poll batch finishes, the
+15. After every submitted job from the bounded poll batch finishes, the
     consumer allows a group rebalance.
 
 ## Live dashboard
@@ -51,3 +54,19 @@ telemetry event.
 Permanent or retry-exhausted processing failures are published to
 `telemetry.dlq`. The original source offset commits only after Kafka
 acknowledges the dead-letter replacement.
+
+
+## Cardinality policy path
+
+For every tag dimension:
+
+1. bounded HyperLogLog state observes a SHA-256-derived hash;
+2. active policy selects threshold/action;
+3. a finding is rate-limited and stored when risk is detected;
+4. `drop_tag` removes the dimension from the normal event;
+5. `quarantine` preserves a full normalized copy separately and removes the
+   risky dimension from the normal representation;
+6. shadow policy evaluates independently;
+7. active/shadow differences are stored for review.
+
+The raw risky tag value is not copied into the cardinality-finding table.

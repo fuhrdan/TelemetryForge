@@ -77,3 +77,25 @@ rebalance-aware close behavior so a blocked rebalance cannot hang process exit.
 
 The project favors recoverability and duplicate-safe replay over falsely
 claiming completion.
+
+
+## Policy storage failure
+
+Cardinality policy is part of the processing path.
+
+If the active policy decides that a finding/quarantine record must be persisted
+and that storage operation fails, processing fails rather than silently
+claiming the policy was enforced.
+
+Runtime policy-evidence persistence failures are classified as transient,
+use the same bounded retry/backoff policy as other database interruptions, and
+can ultimately enter the DLQ if the dependency does not recover.
+
+Shadow-policy evidence uses the same durability rule: TelemetryForge does not
+claim a candidate-policy comparison exists if it could not be stored.
+
+## Policy validation failure
+
+Invalid active/shadow policy files fail worker startup.
+
+This is safer than silently falling back to an allow-all policy after a typo.

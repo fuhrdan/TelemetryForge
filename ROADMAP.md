@@ -1,58 +1,50 @@
 # TelemetryForge Roadmap
 
-The roadmap is intentionally incremental: every release should be runnable,
-documented, testable, and understandable on its own.
+Every milestone should remain runnable, documented, testable, and honest about
+what is implemented versus planned.
 
 | Version | Status | Milestone |
 |---|---|---|
-| v0.1.0 | Released | Gateway foundation and canonical event envelope |
+| v0.1.0 | Released | Gateway foundation and canonical envelope |
 | v0.2.0 | Released | Kafka durable publishing |
 | v0.3.0 | Released | Consumer groups, bounded workers, backpressure |
 | v0.4.0 | Released | PostgreSQL/TimescaleDB persistence and query API |
 | v0.5.0 | Released | Retry classification, DLQ, replay CLI, Flight Recorder |
 | v0.6.0 | Released | Real-time dashboard and automatic incident capture |
-| **v0.7.0** | **In development** | Kubernetes scaling and Cardinality Firewall |
-| v0.8.0 | Planned | Terraform, policy-as-code, shadow pipeline |
-| v0.9.0 | Planned | Incident Replay, cost simulation, self-observability, load testing |
+| v0.7.0 | Folded into v0.8.0 | Repository hardening, Kubernetes, Cardinality Firewall foundation |
+| **v0.8.0** | **Released** | **Cardinality Firewall, Terraform, policy-as-code, shadow pipeline** |
+| v0.9.0 | Planned | Incident Replay, cost simulation, self-observability, k6 load testing |
 | v1.0.0 | Planned | Evidence Graph, security hardening, polished production portfolio release |
 
-## v0.7.0 target
+## Why there is no v0.7.0 release tag
 
-v0.7.0 has two themes:
+The v0.7.0 development branch became a repository/reliability hardening baseline.
+When work continued directly into v0.8.0, the planned v0.7 Kubernetes and
+Cardinality Firewall work was completed cumulatively inside v0.8.0 instead of
+creating a release tag that would imply those features had shipped earlier.
 
-### Kubernetes and horizontal scaling
+## v0.9.0 target
 
-- Kubernetes manifests for gateway, worker, and dashboard
-- ConfigMaps and Secrets boundaries
-- health/readiness probes
-- resource requests/limits
-- HorizontalPodAutoscaler examples
-- PodDisruptionBudgets
-- worker scaling guidance tied to Kafka partition count
-- failure/scaling documentation and smoke checks
-
-### Cardinality Firewall
-
-- detect label/tag cardinality growth before forwarding it downstream
-- identify likely dangerous dimensions such as session IDs or request IDs
-- estimate projected unique-series growth
-- allow, drop-tag, or quarantine policy actions
-- surface findings in the dashboard
-- preserve the rejected/quarantined evidence needed for debugging
-- document false-positive and policy trade-offs
-
-The detailed acceptance checklist lives in
-[`docs/roadmap/v0.7.0.md`](docs/roadmap/v0.7.0.md).
+- Incident Replay against frozen production telemetry
+- policy replay in shadow mode
+- Telemetry Cost Simulator
+- OpenTelemetry self-observability
+- Prometheus/Grafana operational metrics
+- broker-derived consumer lag
+- reproducible k6 load tests
+- checked-in benchmark methodology/results
+- richer incident investigation workflow
 
 ## v1.0 direction
 
-TelemetryForge is not trying to win by reproducing every dashboard feature of
-Datadog, Grafana, Splunk, or Honeycomb. Its differentiators are the control
-plane between applications and those backends:
+The production-grade portfolio release should demonstrate:
 
 - Incident Flight Recorder
-- safe Incident Replay
+- Incident Replay
 - Cardinality Firewall
+- policy-as-code + shadow evaluation
 - Telemetry Cost Simulator
-- Evidence Graph with supporting and contradicting evidence
-- policy-as-code and shadow evaluation before deployment
+- Evidence Graph
+- explicit security boundaries
+- reproducible performance evidence
+- deployment/runbook quality

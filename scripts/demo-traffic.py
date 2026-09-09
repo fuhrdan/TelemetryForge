@@ -2,8 +2,9 @@
 """Generate local TelemetryForge demo traffic with only Python's stdlib.
 
 Normal mode emits healthy latency and occasional application events.
-Use --incident to deliberately emit high latency plus an error burst so the
-v0.6.0 automatic Flight Recorder capture can be demonstrated.
+Use --incident to deliberately emit high latency plus an error burst.
+Use --cardinality to emit identifier-shaped labels that exercise the
+Cardinality Firewall and shadow-policy comparison.
 """
 
 import argparse
@@ -56,6 +57,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://localhost:8080")
     parser.add_argument("--incident", action="store_true")
+    parser.add_argument("--cardinality", action="store_true")
     parser.add_argument("--count", type=int, default=120)
     parser.add_argument("--interval", type=float, default=0.25)
     args = parser.parse_args()
@@ -65,6 +67,8 @@ def main() -> None:
     print(f"Sending demo telemetry to {args.base_url}")
     if args.incident:
         print("Incident mode enabled: latency/error thresholds will be crossed.")
+    if args.cardinality:
+        print("Cardinality mode enabled: unique request_id/session_id tags will grow.")
 
     for index in range(args.count):
         source = sources[index % len(sources)]
@@ -75,7 +79,14 @@ def main() -> None:
             latency = random.uniform(1150.0, 1800.0)
 
         try:
-            metric(args.base_url, source, latency)
+            if args.cardinality:
+                body = envelope("checkout-api", "request.duration")
+                body["tags"]["request_id"] = f"req-{uuid.uuid4()}"
+                body["tags"]["session_id"] = f"session-{uuid.uuid4()}"
+                body.update({"value": latency, "unit": "ms"})
+                post(args.base_url, "/api/v1/metrics", body)
+            else:
+                metric(args.base_url, source, latency)
 
             if args.incident and 28 <= index <= 33:
                 error(args.base_url, "checkout-api")

@@ -24,6 +24,9 @@ Flight Recorder
 Normalizer
        |
        v
+Cardinality Firewall
+       |
+       v
 TimescaleDB persistence
        |
        v
@@ -103,3 +106,15 @@ every submitted job from that poll has completed its normal or DLQ handling.
 This keeps commits within the ownership epoch that produced the work.
 
 See `docs/kafka/delivery-semantics.md` and ADR 0013 for the full trade-off.
+
+
+## Cardinality policy stage
+
+The active policy runs after normalization and before normal persistence.
+
+This allows `drop_tag` to remove a dangerous dimension from the downstream
+representation while the earlier Flight Recorder retains the original
+full-fidelity event.
+
+The optional shadow policy runs against the same normalized input but records
+only action differences.

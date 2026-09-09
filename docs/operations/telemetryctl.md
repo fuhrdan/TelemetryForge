@@ -50,3 +50,14 @@ TELEMETRYFORGE_KAFKA_BROKERS
 ```
 
 Flags override environment values where provided.
+
+
+## Validate policy
+
+```bash
+telemetryctl policy validate --file policies/active.json
+```
+
+This performs strict JSON/schema validation without starting a worker.
+
+Use it for both active and shadow files before deployment.

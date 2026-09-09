@@ -133,3 +133,37 @@ Required downstream dependency failures use HTTP `503`:
 
 The API deliberately avoids returning database/Kafka internals to callers;
 detailed dependency errors belong in service logs.
+
+
+## Cardinality Firewall
+
+### `GET /api/v1/cardinality/findings`
+
+Returns newest-first active and shadow cardinality findings.
+
+Optional:
+
+```text
+limit=1..500
+```
+
+Each result includes the policy/version, mode, source, event type, dimension,
+observed/projected unique estimate, action, reason, short value fingerprint,
+and first/last seen timestamps.
+
+Raw high-cardinality values are intentionally not returned.
+
+## Shadow policy
+
+### `GET /api/v1/policy/shadow-diffs`
+
+Returns active-versus-candidate action differences.
+
+Optional:
+
+```text
+limit=1..500
+```
+
+The shadow pipeline never changes the active event path. This endpoint shows
+what the candidate policy would have done differently.

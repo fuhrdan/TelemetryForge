@@ -1,104 +1,218 @@
 # TelemetryForge Architecture
 
-TelemetryForge is a distributed telemetry control plane built around a simple
-rule: **accept telemetry durably, process it predictably, and preserve enough
-evidence to explain failures later**.
-
-For the detailed documentation set, start with the [documentation index](docs/README.md).
-
-## System at a glance
-
-```mermaid
-flowchart LR
-    A[Applications / Webhooks] --> G[Go Gateway]
-    G --> K[(Apache Kafka)]
-    K --> W[Go Worker Group]
-
-    W --> F[Incident Flight Recorder]
-    F --> N[Normalize]
-    N --> P[Idempotent Persistence]
-    P --> T[(PostgreSQL + TimescaleDB)]
-    P --> D[Incident Detector]
-    D --> I[(Frozen Incidents)]
-
-    W -->|terminal failure| Q[(telemetry.dlq)]
-
-    T --> API[Query / Summary / SSE API]
-    I --> API
-    API --> UI[Next.js Dashboard]
-```
+TelemetryForge is a distributed telemetry control plane built around explicit
+durability, bounded concurrency, evidence preservation, and reversible policy
+changes.
 
 ## Runtime components
 
-### Gateway
-
-The Go gateway owns the public HTTP boundary. It validates the canonical event
-envelope and waits for Kafka acknowledgement before returning `202 Accepted`.
-It also exposes bounded query, dashboard summary, incident, and SSE endpoints.
-
-### Kafka
-
-Kafka is the durable boundary between ingestion and processing. Records are
-partitioned by telemetry source, which preserves per-source ordering while
-allowing independent sources to spread across partitions.
-
-### Workers
-
-Workers consume through a Kafka consumer group. A bounded in-process queue
-provides backpressure, and processing uses a fixed concurrency ceiling.
-
-The current pipeline is:
-
 ```text
-Flight Recorder -> normalization -> idempotent persistence -> incident detection
+                  HTTP
+Applications ----------------> Go Gateway
+                                  |
+                                  v
+                              Apache Kafka
+                                  |
+                                  v
+                         Consumer Group / Workers
+                                  |
+                                  v
+                         Flight Recorder (full)
+                                  |
+                                  v
+                              Normalize
+                                  |
+                                  v
+                      Cardinality Firewall
+                         /             \
+                        /               \
+                 active policy       shadow policy
+                    |                    |
+          mutate normal event      compare only
+                    |                    |
+                    +---------+----------+
+                              |
+                              v
+                    PostgreSQL/TimescaleDB
+                              |
+               +--------------+--------------+
+               |                             |
+               v                             v
+          Query / SSE API             Incident evidence
+               |
+               v
+         Next.js Dashboard
 ```
 
-### PostgreSQL / TimescaleDB
+Terminal processing failures go to `telemetry.dlq`.
 
-TimescaleDB stores time-oriented telemetry while ordinary PostgreSQL tables
-store global event-ID deduplication and incident metadata. Database writes are
-transactional so a duplicate Kafka delivery becomes a safe no-op.
+## Core guarantees
 
-### Dashboard
+1. **Durable acceptance.** The gateway returns `202` only after Kafka
+   acknowledges the event.
+2. **Bounded memory.** Worker queues, incident detector state, and cardinality
+   estimator state have explicit caps.
+3. **At-least-once processing.** Kafka offsets advance only after successful
+   handling.
+4. **Contiguous partition commits.** Concurrent worker completion cannot commit
+   past earlier unfinished records in the same partition.
+5. **Rebalance-safe poll batches.** A bounded poll batch retains partition
+   ownership until all submitted jobs complete.
+6. **Idempotent persistence.** Canonical event IDs prevent duplicate primary
+   telemetry rows after replay/retry.
+7. **Durable terminal failure handling.** Source offsets advance only after the
+   DLQ replacement is acknowledged.
+8. **Evidence before mutation.** The Flight Recorder captures the event before
+   normalization or cardinality policy removes dimensions.
+9. **Shadow before promotion.** Candidate policy can evaluate real traffic
+   without changing the active event representation.
 
-The Next.js dashboard reads through the Go API. It does not connect directly to
-Kafka or PostgreSQL. Live telemetry uses Server-Sent Events backed by shared
-durable storage rather than process-local memory.
+## Ingestion
 
-## Reliability guarantees
+The Go gateway:
 
-TelemetryForge currently provides these explicit guarantees:
+- validates a versioned canonical envelope;
+- applies request-size and strict-JSON limits;
+- publishes to Kafka;
+- exposes health/readiness;
+- provides bounded read APIs;
+- provides dashboard summaries/incidents;
+- streams live telemetry over SSE; and
+- exposes Cardinality Firewall / shadow-policy evidence.
 
-1. **Durable ingestion acknowledgement.** The gateway does not return `202`
-   until Kafka acknowledges the record.
-2. **Bounded worker memory.** Backlog grows in Kafka rather than an unbounded Go
-   queue.
-3. **At-least-once processing.** Kafka offsets are committed after successful
-   processing, not before it. Concurrent completion cannot commit past earlier
-   unfinished work in the same partition.
-4. **Rebalance-safe batches.** A bounded poll batch retains partition ownership
-   until all submitted jobs have finished normal or dead-letter handling.
-5. **Idempotent persistence.** Canonical event IDs protect against duplicate
-   database rows after retries or rebalances.
-6. **Durable terminal failure handling.** Source offsets are committed only
-   after Kafka accepts the DLQ replacement.
-7. **Pre-normalization incident evidence.** The Flight Recorder preserves the
-   incoming decoded envelope before processing modifies it.
+## Kafka
 
-## Architectural boundaries
+Topics:
 
-The project intentionally does **not** claim exactly-once end-to-end semantics.
-It uses at-least-once delivery plus idempotency because that contract is easier
-to reason about and verify with the current persistence model.
+```text
+telemetry.raw
+telemetry.metrics
+telemetry.dlq
+```
 
-The local Docker Compose stack is a development environment. Authentication,
-tenant isolation, Kafka TLS/SASL, production secret management, and
-policy-driven redaction are not complete yet. See [SECURITY.md](SECURITY.md).
+Records are keyed by source.
 
-## Key design records
+Consumer auto-commit is disabled. The acknowledgement coordinator advances a
+partition only through its completed contiguous prefix.
 
-Architectural choices are recorded as ADRs under [`docs/adr/`](docs/adr/).
-The most important current decisions include Kafka, source partitioning,
-bounded workers, manual offset acknowledgement, TimescaleDB, idempotent event
-storage, classified retry/DLQ handling, the Flight Recorder, durable-store SSE, explicit automatic incident thresholds, and coordinated
-concurrent Kafka acknowledgements/rebalances.
+franz-go `BlockRebalanceOnPoll` keeps ownership stable while one bounded
+`PollRecords` batch is still being processed.
+
+See `docs/kafka/delivery-semantics.md`.
+
+## Worker pipeline
+
+Current stage order:
+
+```text
+Flight Recorder
+    -> Normalizer
+    -> Cardinality Firewall / active + shadow policy
+    -> Idempotent Persister
+    -> Automatic Incident Detector
+```
+
+### Why policy runs before persistence
+
+The normal stored representation is the representation that future output
+routers should be allowed to forward.
+
+`drop_tag` therefore removes a dangerous dimension before normal persistence.
+The original value remains preserved in the earlier Flight Recorder.
+
+`quarantine` additionally stores a full normalized copy in dedicated quarantine
+storage and marks the normal representation as blocked for future routing.
+
+## Cardinality state
+
+Each source/type/dimension uses a 64-register HyperLogLog estimator.
+
+State is:
+
+- fixed-size per estimator;
+- globally bounded by configured dimension count;
+- least-recently-seen evicted at the cap;
+- value-hashed with SHA-256; and
+- operational findings rate-limited.
+
+The current estimator is replica-local. Cluster-global merging is a documented
+future scaling improvement.
+
+## Policy
+
+Policy files are JSON and versioned in Git.
+
+```text
+policies/active.json
+policies/shadow.json
+```
+
+Active actions:
+
+```text
+allow
+drop_tag
+quarantine
+```
+
+The shadow policy observes the same normalized event but never changes the
+active path.
+
+## Storage
+
+PostgreSQL/TimescaleDB holds:
+
+- canonical telemetry
+- event-ID deduplication
+- Flight Recorder rolling buffer
+- frozen incidents
+- quarantine evidence
+- cardinality findings
+- active/shadow policy differences
+
+## Dashboard
+
+The browser only communicates with the Go API. It does not connect directly to
+Kafka or PostgreSQL.
+
+SSE reads shared durable storage using `(ingested_at, event_id)` as a cursor,
+which keeps the browser contract correct across gateway replicas.
+
+## Kubernetes
+
+`deployments/kubernetes/base/` contains a Kustomize base with:
+
+- gateway/worker/dashboard Deployments
+- Services
+- health/readiness probes
+- HPA examples
+- PodDisruptionBudgets
+- policy ConfigMap
+- secret template
+
+Worker replica usefulness is bounded by Kafka partition count.
+
+## Terraform
+
+`infra/terraform/aws/` provisions AWS networking plus EKS.
+
+Kafka and TimescaleDB remain external service contracts so the compute
+foundation does not dictate organization-specific data-platform choices.
+
+## Deployment versions
+
+- upstream Kubernetes baseline: 1.37
+- Amazon EKS Terraform default: 1.36
+- Terraform: 1.16.2
+- AWS provider: 6.62.0
+
+## Next architecture milestone
+
+v0.9.0 adds:
+
+- Incident Replay
+- Telemetry Cost Simulator
+- OpenTelemetry self-observability
+- Prometheus/Grafana metrics
+- broker-derived Kafka lag
+- reproducible k6 performance methodology

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 )
 
@@ -161,5 +162,88 @@ func TestFlightRecorderFreezeDeduplicatesRetries(t *testing.T) {
 	}
 	if len(events) != 1 || events[0].ID != event.ID {
 		t.Fatalf("unexpected incident events: %#v", events)
+	}
+}
+
+func TestPolicyEvidencePersistence(t *testing.T) {
+	databaseURL := os.Getenv("TELEMETRYFORGE_INTEGRATION_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TELEMETRYFORGE_INTEGRATION_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	store, err := storage.NewPostgresStore(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Now().UTC()
+	finding := policy.Finding{
+		PolicyName:       "integration-active",
+		PolicyVersion:    "1",
+		Mode:             "active",
+		Source:           "integration-policy",
+		EventType:        "request.duration",
+		Dimension:        "request_id",
+		ObservedUnique:   100,
+		ProjectedUnique:  1000,
+		Action:           policy.ActionDropTag,
+		Reason:           "integration finding",
+		ValueFingerprint: "abcdef123456",
+		FirstSeen:        now.Add(-time.Minute),
+		LastSeen:         now,
+	}
+	if err := store.RecordCardinalityFinding(ctx, finding); err != nil {
+		t.Fatal(err)
+	}
+
+	diff := policy.Diff{
+		ObservedAt:    now,
+		Source:        finding.Source,
+		EventType:     finding.EventType,
+		Dimension:     finding.Dimension,
+		ActivePolicy:  "integration-active",
+		ActiveVersion: "1",
+		ActiveAction:  policy.ActionAllow,
+		ShadowPolicy:  "integration-shadow",
+		ShadowVersion: "2",
+		ShadowAction:  policy.ActionDropTag,
+		Reason:        "integration diff",
+	}
+	if err := store.RecordPolicyDiff(ctx, diff); err != nil {
+		t.Fatal(err)
+	}
+
+	findings, err := store.ListCardinalityFindings(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, item := range findings {
+		if item.PolicyName == finding.PolicyName && item.Source == finding.Source {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected persisted cardinality finding")
+	}
+
+	diffs, err := store.ListPolicyDiffs(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found = false
+	for _, item := range diffs {
+		if item.ActivePolicy == diff.ActivePolicy && item.ShadowPolicy == diff.ShadowPolicy {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected persisted shadow-policy diff")
 	}
 }

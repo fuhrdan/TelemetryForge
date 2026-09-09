@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: telemetryforge-config
+  namespace: telemetryforge
+data:
+  TELEMETRYFORGE_ADDRESS: ":8080"
+  TELEMETRYFORGE_KAFKA_BROKERS: "kafka.example.internal:9092"
+  TELEMETRYFORGE_KAFKA_CLIENT_ID: "telemetryforge-gateway"
+  TELEMETRYFORGE_KAFKA_RAW_TOPIC: "telemetry.raw"
+  TELEMETRYFORGE_KAFKA_METRIC_TOPIC: "telemetry.metrics"
+  TELEMETRYFORGE_WORKER_CLIENT_ID: "telemetryforge-worker"
+  TELEMETRYFORGE_WORKER_GROUP_ID: "telemetryforge-processors"
+  TELEMETRYFORGE_WORKER_TOPICS: "telemetry.raw,telemetry.metrics"
+  TELEMETRYFORGE_WORKER_DLQ_TOPIC: "telemetry.dlq"
+  TELEMETRYFORGE_WORKER_COUNT: "4"
+  TELEMETRYFORGE_WORKER_QUEUE_CAPACITY: "256"
+  TELEMETRYFORGE_WORKER_ADMIN_ADDRESS: ":8081"
+  TELEMETRYFORGE_INCIDENT_LATENCY_MS: "1000"
+  TELEMETRYFORGE_INCIDENT_ERROR_COUNT: "5"
+  TELEMETRYFORGE_POLICY_FILE: "/etc/telemetryforge/policies/active.json"
+  TELEMETRYFORGE_SHADOW_POLICY_FILE: "/etc/telemetryforge/policies/shadow.json"
+  TELEMETRYFORGE_CARDINALITY_MAX_DIMENSIONS: "20000"

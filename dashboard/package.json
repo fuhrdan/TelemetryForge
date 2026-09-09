@@ -1,6 +1,6 @@
 {
   "name": "telemetryforge-dashboard",
-  "version": "0.7.0-dev",
+  "version": "0.8.0",
   "private": true,
   "scripts": {
     "dev": "next dev",

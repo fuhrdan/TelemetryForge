@@ -30,6 +30,11 @@ REQUIRED = [
     ROOT / "docs" / "operations" / "troubleshooting.md",
     ROOT / "docs" / "development" / "testing.md",
     ROOT / "docs" / "development" / "release-process.md",
+    ROOT / "docs" / "policy" / "cardinality-firewall.md",
+    ROOT / "docs" / "policy" / "policy-as-code.md",
+    ROOT / "docs" / "policy" / "shadow-pipeline.md",
+    ROOT / "docs" / "deployment" / "kubernetes.md",
+    ROOT / "docs" / "deployment" / "terraform.md",
 ]
 
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

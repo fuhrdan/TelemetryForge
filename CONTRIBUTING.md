@@ -81,6 +81,34 @@ make integration-test
 - Explain retention/index choices in `docs/storage/`.
 - Do not silently change a delivery/idempotency guarantee in SQL alone.
 
+### Policy changes
+
+Treat policy files as code:
+
+```bash
+go run ./cmd/telemetryctl policy validate --file policies/active.json
+go run ./cmd/telemetryctl policy validate --file policies/shadow.json
+```
+
+For a potentially destructive policy change, prefer changing the shadow policy
+first and reviewing stored differences before promoting it to active.
+
+### Kubernetes / Terraform
+
+Render Kubernetes changes:
+
+```bash
+make k8s-render
+```
+
+Validate Terraform changes:
+
+```bash
+make terraform-check
+```
+
+Do not commit real Kubernetes secrets, Terraform state, or cloud credentials.
+
 ## Documentation standards
 
 Human-readable documentation is a project requirement.

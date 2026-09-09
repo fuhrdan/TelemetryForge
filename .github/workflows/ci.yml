@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "v0.7.0-dev"]
+    branches: ["main", "v0.8.0"]
   pull_request:
     branches: ["main"]
 
@@ -41,6 +41,10 @@ jobs:
         run: go test -race -coverprofile=coverage.out ./...
       - name: Build
         run: go build ./...
+      - name: Validate active policy
+        run: go run ./cmd/telemetryctl policy validate --file policies/active.json
+      - name: Validate shadow policy
+        run: go run ./cmd/telemetryctl policy validate --file policies/shadow.json
 
   kafka-integration:
     runs-on: ubuntu-latest
@@ -90,7 +94,6 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24.21.0"
-          package-manager-cache: false
       - name: Install dashboard dependencies
         run: npm install --no-audit --no-fund
       - name: Type check
@@ -99,6 +102,29 @@ jobs:
         env:
           TELEMETRYFORGE_API_BASE: http://gateway:8080
         run: npm run build
+
+  infrastructure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-kubectl@v5
+        with:
+          version: "v1.37.0"
+      - name: Render Kubernetes manifests
+        run: kubectl kustomize deployments/kubernetes/base > /tmp/telemetryforge-k8s.yaml
+      - name: Parse Kubernetes manifests
+        run: kubectl apply --dry-run=client --validate=false -f /tmp/telemetryforge-k8s.yaml
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.16.2"
+          terraform_wrapper: false
+      - name: Terraform format
+        run: terraform -chdir=infra/terraform/aws fmt -check
+      - name: Terraform init
+        run: terraform -chdir=infra/terraform/aws init -backend=false -input=false
+      - name: Terraform validate
+        run: terraform -chdir=infra/terraform/aws validate
+
 
   containers:
     runs-on: ubuntu-latest

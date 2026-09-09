@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+_No changes yet._
+
+## [0.8.0] - 2026-09-09
+
+
+### Cardinality Firewall
+- Added bounded 64-register HyperLogLog cardinality estimation.
+- Added identifier-shaped dangerous-dimension heuristics.
+- Added `allow`, `drop_tag`, and `quarantine` policy actions.
+- Added SHA-256-derived fingerprints instead of raw high-cardinality values.
+- Added finding/diff rate limiting and bounded tracker state.
+- Added idempotent quarantine evidence storage keyed by canonical event ID.
+- Added Cardinality Firewall API and dashboard panel.
+- Added cardinality demo traffic.
+
+### Policy / shadow pipeline
+- Added strictly validated versioned JSON policy-as-code.
+- Added active and candidate shadow policy files.
+- Added candidate-policy comparison without active-path mutation.
+- Added policy-difference storage/API/dashboard.
+- Added `telemetryctl policy validate`.
+
+### Kubernetes
+- Added Kustomize deployment base for gateway, worker, and dashboard.
+- Added worker HTTP liveness/readiness service.
+- Added HPA, PodDisruptionBudget, ConfigMap, policy ConfigMap, Secret template, and Ingress example.
+- Documented worker scaling against Kafka partition count.
+
+### Terraform
+- Added Terraform 1.16.2 / AWS provider 6.62.0 EKS foundation.
+- Added VPC, public/private subnets, NAT, IAM, EKS cluster, and managed node group.
+- Defaulted EKS to Kubernetes 1.36, the newest current EKS standard-support minor.
+- Added Terraform CI format/init/validate checks.
+
 ### Documentation / repository readiness
 - Added root architecture and roadmap documents.
 - Added a documentation index, configuration reference, troubleshooting guide, testing guide, release process, and GitHub repository conventions.

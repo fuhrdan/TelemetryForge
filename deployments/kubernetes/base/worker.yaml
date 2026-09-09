@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: telemetryforge
+spec:
+  # Local topics currently use six partitions. More than six active consumer
+  # replicas for one six-partition topic do not create additional group-level
+  # concurrency.
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: telemetryforge-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: telemetryforge-worker
+        app.kubernetes.io/part-of: telemetryforge
+    spec:
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: worker
+          image: ghcr.io/fuhrdan/telemetryforge:v0.8.0
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/telemetryforge-worker"]
+          ports:
+            - name: admin
+              containerPort: 8081
+          envFrom:
+            - configMapRef:
+                name: telemetryforge-config
+            - secretRef:
+                name: telemetryforge-secrets
+          volumeMounts:
+            - name: policies
+              mountPath: /etc/telemetryforge/policies
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: admin
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: admin
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: policies
+          configMap:
+            name: telemetryforge-policies

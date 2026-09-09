@@ -26,6 +26,7 @@ Compose starts:
 5. the Go gateway.
 6. the Go worker.
 7. the Next.js dashboard.
+8. active/shadow policy files packaged with the worker image.
 
 Open:
 
@@ -89,3 +90,31 @@ make dashboard-build
 
 GitHub Actions runs Go tests/builds, Kafka integration, TimescaleDB integration,
 dashboard type checking/build, and container builds.
+
+
+## Policy validation
+
+```bash
+make policy-check
+```
+
+## Cardinality demo
+
+```bash
+make demo-cardinality
+```
+
+The demo emits unique `request_id` and `session_id` tags. Open the dashboard and
+watch the Cardinality Firewall and Shadow Pipeline panels.
+
+## Kubernetes
+
+```bash
+make k8s-render
+```
+
+## Terraform
+
+```bash
+make terraform-check
+```

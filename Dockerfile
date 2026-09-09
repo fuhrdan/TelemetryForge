@@ -12,6 +12,7 @@ RUN addgroup -S telemetryforge && adduser -S -G telemetryforge telemetryforge
 COPY --from=build /out/telemetryforge-gateway /usr/local/bin/telemetryforge-gateway
 COPY --from=build /out/telemetryforge-worker /usr/local/bin/telemetryforge-worker
 COPY --from=build /out/telemetryctl /usr/local/bin/telemetryctl
+COPY policies /etc/telemetryforge/policies
 USER telemetryforge
-EXPOSE 8080
+EXPOSE 8080 8081
 ENTRYPOINT ["/usr/local/bin/telemetryforge-gateway"]

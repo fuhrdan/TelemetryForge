@@ -36,8 +36,9 @@ an external secret/configuration mechanism.
 | `TELEMETRYFORGE_INCIDENT_ERROR_COUNT` | `5` | Error-count threshold within the built-in one-minute window |
 
 The current error window, Flight Recorder lookback, cooldown, and 10,000-source
-state cap are code-level defaults. A later policy-as-code release will move those values into
-versioned policy.
+incident-detector state cap are still code-level defaults. The v0.8.0 policy-as-code
+format currently governs Cardinality Firewall decisions; incident thresholds can be
+migrated into versioned policy in a later release.
 
 ## Dashboard
 
@@ -50,3 +51,30 @@ the dashboard container is built with `http://gateway:8080`.
 Values in `.env.example` and `docker-compose.yml` are intentionally obvious
 local defaults. They are not production credentials. See
 [the security policy](../../SECURITY.md).
+
+
+## Cardinality Firewall / policy
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TELEMETRYFORGE_POLICY_FILE` | `policies/active.json` for direct development | Active JSON policy |
+| `TELEMETRYFORGE_SHADOW_POLICY_FILE` | `policies/shadow.json` | Candidate shadow policy; set to `disabled` to turn off |
+| `TELEMETRYFORGE_CARDINALITY_MAX_DIMENSIONS` | `20000` | Maximum in-memory source/type/dimension estimators |
+| `TELEMETRYFORGE_WORKER_ADMIN_ADDRESS` | `:8081` | Worker health/readiness listener |
+
+Docker/Kubernetes override the policy paths to
+`/etc/telemetryforge/policies/*.json`.
+
+## Kubernetes
+
+The Kustomize base supplies non-secret values through
+`telemetryforge-config` and policies through `telemetryforge-policies`.
+
+`TELEMETRYFORGE_DATABASE_URL` comes from the separately managed
+`telemetryforge-secrets` Secret.
+
+## Terraform
+
+Terraform configuration is independent of application environment variables.
+See `infra/terraform/aws/variables.tf` for AWS-region, EKS version, and node
+scaling inputs.

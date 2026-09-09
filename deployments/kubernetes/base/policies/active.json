@@ -1,0 +1,45 @@
+{
+  "name": "default-cardinality-policy",
+  "version": "1.0.0",
+  "default_unique_threshold": 1000,
+  "default_action": "allow",
+  "dangerous_keys": [
+    "request_id",
+    "session_id",
+    "trace_id",
+    "user_id",
+    "order_id",
+    "uuid",
+    "token"
+  ],
+  "rules": [
+    {
+      "source": "*",
+      "type": "*",
+      "dimension": "request_id",
+      "unique_threshold": 100,
+      "action": "drop_tag"
+    },
+    {
+      "source": "*",
+      "type": "*",
+      "dimension": "session_id",
+      "unique_threshold": 250,
+      "action": "drop_tag"
+    },
+    {
+      "source": "*",
+      "type": "*",
+      "dimension": "trace_id",
+      "unique_threshold": 500,
+      "action": "drop_tag"
+    },
+    {
+      "source": "*",
+      "type": "*",
+      "dimension": "user_id",
+      "unique_threshold": 1000,
+      "action": "quarantine"
+    }
+  ]
+}

@@ -38,3 +38,24 @@ GET /api/v1/incidents/{id}/events
 
 The Next.js application proxies them under `/telemetry-api/` so the browser
 talks to one origin.
+
+
+## Cardinality Firewall
+
+The v0.8 dashboard adds a panel showing recent active/shadow findings:
+
+- source
+- dimension
+- observed unique estimate
+- projected unique estimate
+- policy action
+
+## Shadow Pipeline
+
+A second panel shows candidate-policy disagreements:
+
+```text
+active action -> shadow action
+```
+
+This gives operators a visual review surface before promoting a shadow policy.

@@ -1,0 +1,6 @@
+aws_region         = "us-west-2"
+name               = "telemetryforge"
+node_desired_size  = 3
+node_min_size      = 2
+node_max_size      = 6
+node_instance_types = ["m7i.large"]

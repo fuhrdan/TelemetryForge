@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Sparkline } from "../components/Sparkline";
 
 type TelemetryEvent = {
@@ -35,6 +35,34 @@ type Incident = {
   event_count: number;
 };
 
+type CardinalityFinding = {
+  policy_name: string;
+  policy_version: string;
+  mode: "active" | "shadow";
+  source: string;
+  event_type: string;
+  dimension: string;
+  observed_unique: number;
+  projected_unique: number;
+  action: "allow" | "drop_tag" | "quarantine";
+  reason: string;
+  last_seen: string;
+};
+
+type PolicyDiff = {
+  observed_at: string;
+  source: string;
+  event_type: string;
+  dimension: string;
+  active_policy: string;
+  active_version: string;
+  active_action: string;
+  shadow_policy: string;
+  shadow_version: string;
+  shadow_action: string;
+  reason: string;
+};
+
 const emptySummary: Summary = {
   window_seconds: 300,
   events: 0,
@@ -62,11 +90,15 @@ export default function Dashboard() {
   const [incidentEvents, setIncidentEvents] = useState<TelemetryEvent[]>([]);
   const [streamState, setStreamState] = useState("connecting");
   const [sourceFilter, setSourceFilter] = useState("");
+  const [findings, setFindings] = useState<CardinalityFinding[]>([]);
+  const [policyDiffs, setPolicyDiffs] = useState<PolicyDiff[]>([]);
 
   const refresh = useCallback(async () => {
-    const [summaryResponse, incidentResponse] = await Promise.all([
+    const [summaryResponse, incidentResponse, findingResponse, diffResponse] = await Promise.all([
       fetch("/telemetry-api/api/v1/dashboard/summary?window=5m", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/incidents?limit=20", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/cardinality/findings?limit=30", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/policy/shadow-diffs?limit=20", { cache: "no-store" }),
     ]);
 
     if (summaryResponse.ok) {
@@ -75,6 +107,14 @@ export default function Dashboard() {
     if (incidentResponse.ok) {
       const payload = await incidentResponse.json();
       setIncidents(payload.incidents ?? []);
+    }
+    if (findingResponse.ok) {
+      const payload = await findingResponse.json();
+      setFindings(payload.findings ?? []);
+    }
+    if (diffResponse.ok) {
+      const payload = await diffResponse.json();
+      setPolicyDiffs(payload.diffs ?? []);
     }
   }, []);
 
@@ -151,7 +191,7 @@ export default function Dashboard() {
               <div className="eyebrow">LIVE METRIC SIGNAL</div>
               <h2>Incoming metric values</h2>
             </div>
-            <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
+            <select value={sourceFilter} onChange={(event: ChangeEvent<HTMLSelectElement>) => setSourceFilter(event.target.value)}>
               <option value="">All sources</option>
               {sources.map((source) => <option key={source} value={source}>{source}</option>)}
             </select>
@@ -240,6 +280,59 @@ export default function Dashboard() {
               </div>
             </>
           )}
+        </article>
+      </section>
+
+      <section className="policy-grid">
+        <article className="panel firewall-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">CARDINALITY FIREWALL</div>
+              <h2>High-risk dimensions</h2>
+            </div>
+            <span className="count-badge">{findings.length}</span>
+          </div>
+          <div className="policy-table">
+            <div className="policy-header">
+              <span>Source</span><span>Dimension</span><span>Unique</span><span>Projected</span><span>Action</span>
+            </div>
+            {findings.slice(0, 12).map((finding, index) => (
+              <div className="policy-row" key={`${finding.source}-${finding.dimension}-${finding.last_seen}-${index}`}>
+                <span>{finding.source}</span>
+                <span className="source">{finding.dimension}</span>
+                <span>{finding.observed_unique}</span>
+                <span>{finding.projected_unique}</span>
+                <span className={`action ${finding.action}`}>{finding.mode === "shadow" ? `shadow:${finding.action}` : finding.action}</span>
+              </div>
+            ))}
+            {findings.length === 0 && <div className="empty policy-empty">No cardinality findings yet.</div>}
+          </div>
+        </article>
+
+        <article className="panel shadow-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">SHADOW PIPELINE</div>
+              <h2>Candidate policy differences</h2>
+            </div>
+            <span className="count-badge">{policyDiffs.length}</span>
+          </div>
+          <div className="shadow-list">
+            {policyDiffs.slice(0, 10).map((diff, index) => (
+              <div className="shadow-row" key={`${diff.source}-${diff.dimension}-${diff.observed_at}-${index}`}>
+                <div>
+                  <strong>{diff.source} · {diff.dimension}</strong>
+                  <span>{diff.event_type}</span>
+                </div>
+                <div className="shadow-actions">
+                  <span>{diff.active_action}</span>
+                  <b>→</b>
+                  <span>{diff.shadow_action}</span>
+                </div>
+              </div>
+            ))}
+            {policyDiffs.length === 0 && <div className="empty policy-empty">Active and shadow policies currently agree.</div>}
+          </div>
         </article>
       </section>
     </main>

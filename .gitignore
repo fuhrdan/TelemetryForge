@@ -27,3 +27,18 @@ Thumbs.db
 # Python helpers
 __pycache__/
 *.pyc
+
+# Local Kubernetes secret material
+/deployments/kubernetes/base/secret.yaml
+
+# Terraform local state / providers
+**/.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
