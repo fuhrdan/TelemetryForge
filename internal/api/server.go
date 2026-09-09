@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/security"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
 )
@@ -43,6 +44,7 @@ type Server struct {
 	topics    Topics
 	reader    storage.Reader
 	observer  Observer
+	redactor  *security.Redactor
 }
 
 // NewServer creates a configured HTTP server handler.
@@ -64,6 +66,19 @@ func NewServerWithObserver(logger *slog.Logger, publisher stream.Publisher, topi
 	return server
 }
 
+// SetRedactor enables presentation-time API redaction. It does not modify
+// stored telemetry or Flight Recorder evidence.
+func (server *Server) SetRedactor(redactor *security.Redactor) {
+	server.redactor = redactor
+}
+
+func (server *Server) redactEvents(events []domain.Event) []domain.Event {
+	if server.redactor == nil {
+		return events
+	}
+	return server.redactor.Events(events)
+}
+
 // ServeHTTP implements http.Handler.
 func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	server.mux.ServeHTTP(writer, request)
@@ -80,6 +95,7 @@ func (server *Server) routes() {
 		server.mux.HandleFunc("GET /api/v1/dashboard/summary", server.handleSummary)
 		server.mux.HandleFunc("GET /api/v1/incidents", server.handleIncidents)
 		server.mux.HandleFunc("GET /api/v1/incidents/{id}/events", server.handleIncidentEvents)
+		server.mux.HandleFunc("GET /api/v1/incidents/{id}/evidence-graph", server.handleEvidenceGraph)
 		server.mux.HandleFunc("GET /api/v1/live", server.handleLive)
 		if _, ok := server.reader.(storage.PolicyReader); ok {
 			server.mux.HandleFunc("GET /api/v1/cardinality/findings", server.handleCardinalityFindings)
@@ -135,6 +151,11 @@ func (server *Server) handleEvent(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 
+	if err := authorizeEventTenant(request, &event); err != nil {
+		writeError(writer, http.StatusForbidden, err.Error())
+		return
+	}
+
 	if err := ensureEventID(&event); err != nil {
 		server.logger.Error("event id generation failed", "error", err)
 		writeError(writer, http.StatusInternalServerError, "unable to accept event")
@@ -155,6 +176,7 @@ func (server *Server) handleEvent(writer http.ResponseWriter, request *http.Requ
 	}
 	server.logger.Info(
 		"telemetry event accepted",
+		"tenant_id", event.TenantID,
 		"event_id", event.ID,
 		"source", event.Source,
 		"type", event.Type,
@@ -178,6 +200,11 @@ func (server *Server) handleMetric(writer http.ResponseWriter, request *http.Req
 		return
 	}
 
+	if err := authorizeEventTenant(request, &event); err != nil {
+		writeError(writer, http.StatusForbidden, err.Error())
+		return
+	}
+
 	if err := ensureEventID(&event); err != nil {
 		server.logger.Error("event id generation failed", "error", err)
 		writeError(writer, http.StatusInternalServerError, "unable to accept metric")
@@ -198,6 +225,7 @@ func (server *Server) handleMetric(writer http.ResponseWriter, request *http.Req
 	}
 	server.logger.Info(
 		"metric accepted",
+		"tenant_id", event.TenantID,
 		"event_id", event.ID,
 		"source", event.Source,
 		"type", event.Type,
@@ -207,6 +235,14 @@ func (server *Server) handleMetric(writer http.ResponseWriter, request *http.Req
 	)
 
 	writeAccepted(writer, event.ID)
+}
+
+func authorizeEventTenant(request *http.Request, event *domain.Event) error {
+	if event.TenantID != "" {
+		return errors.New("tenant_id must be omitted; it is assigned by authentication")
+	}
+	event.TenantID = security.TenantID(request.Context())
+	return nil
 }
 
 func decodeEvent(writer http.ResponseWriter, request *http.Request) (domain.Event, error) {

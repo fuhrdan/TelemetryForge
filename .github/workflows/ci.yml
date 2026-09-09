@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "v0.9.0"]
+    branches: ["main", "v1.0.0"]
   pull_request:
     branches: ["main"]
 
@@ -18,6 +18,8 @@ jobs:
         run: python3 scripts/check-docs.py
       - name: Check whitespace
         run: git diff --check
+      - name: Validate API key example
+        run: python3 -m json.tool security/api-keys.example.json >/dev/null
       - name: Validate Docker Compose configuration
         run: docker compose config --quiet
 
@@ -114,6 +116,12 @@ jobs:
         run: kubectl kustomize deployments/kubernetes/base > /tmp/telemetryforge-k8s.yaml
       - name: Parse Kubernetes manifests
         run: kubectl apply --dry-run=client --validate=false -f /tmp/telemetryforge-k8s.yaml
+      - name: Render production Kubernetes overlay
+        run: kubectl kustomize deployments/kubernetes/overlays/production > /tmp/telemetryforge-production.yaml
+      - name: Parse production Kubernetes overlay
+        run: kubectl apply --dry-run=client --validate=false -f /tmp/telemetryforge-production.yaml
+      - name: Parse production secret example
+        run: kubectl apply --dry-run=client --validate=false -f deployments/kubernetes/overlays/production/secret.example.yaml
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.16.2"

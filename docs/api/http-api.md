@@ -9,6 +9,34 @@ http://localhost:8080
 All JSON responses use `Content-Type: application/json` except the SSE stream.
 The current API is a development contract and is not authenticated yet.
 
+
+## Authentication
+
+In local `disabled` mode the API behaves as a trusted `default` tenant.
+
+In production `api_key` mode use:
+
+```text
+Authorization: Bearer <key>
+```
+
+or for simple ingestion clients:
+
+```text
+X-TelemetryForge-Key: <key>
+```
+
+Scopes:
+
+- `ingest` — POST telemetry
+- `read` — tenant-scoped API reads
+- `admin` — all scopes plus administrative surfaces
+
+`GET /health` and `GET /ready` remain public.
+
+Clients must not send `tenant_id`; the gateway assigns it after authentication.
+
+
 ## Health
 
 ### `GET /health`
@@ -208,3 +236,21 @@ The worker exposes its own `GET /metrics` on the admin listener (default
 `:8081`).
 
 Prometheus labels intentionally avoid raw request paths and telemetry IDs.
+
+
+## Evidence Graph
+
+### `GET /api/v1/incidents/{id}/evidence-graph`
+
+Builds a tenant-scoped Evidence Graph from frozen incident events plus that
+tenant's replay/cost history.
+
+The graph returns:
+
+- nodes
+- supporting / contradicting / related edges
+- evidence basis for each edge
+- bounded built-in hypotheses
+- an explicit non-causality disclaimer
+
+The latest graph snapshot is persisted for investigation history.

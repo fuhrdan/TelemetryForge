@@ -44,6 +44,17 @@ to reconstruct every decision from implementation details.
 - [Automatic incident capture](incidents/automatic-capture.md)
 
 
+## Evidence Graph
+
+- [Evidence Graph](evidence/evidence-graph.md)
+
+## Security
+
+- [Authentication](security/authentication.md)
+- [Tenant isolation](security/tenant-isolation.md)
+- [API redaction](security/redaction.md)
+- [Dashboard server proxy](security/dashboard-proxy.md)
+
 ## Replay and cost
 
 - [Incident Replay](incidents/replay.md)
@@ -66,6 +77,7 @@ to reconstruct every decision from implementation details.
 
 - [Kubernetes](deployment/kubernetes.md)
 - [Terraform / AWS EKS](deployment/terraform.md)
+- [Production profile](deployment/production-profile.md)
 
 ## Dashboard
 
@@ -96,3 +108,10 @@ to reconstruct every decision from implementation details.
 ADRs are numbered sequentially in [`adr/`](adr/). Add an ADR when a change
 materially affects deployment, reliability, data semantics, security boundaries,
 or long-term maintainability.
+
+
+## v1 operations and demo
+
+- [v1.0 upgrade runbook](operations/upgrade-v1.md)
+- [v1.0 rollback runbook](operations/rollback-v1.md)
+- [v1.0 portfolio demo](demo/v1-portfolio-demo.md)

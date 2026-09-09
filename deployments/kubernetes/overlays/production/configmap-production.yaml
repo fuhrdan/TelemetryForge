@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: telemetryforge-config
+  namespace: telemetryforge
+data:
+  TELEMETRYFORGE_AUTH_MODE: "api_key"
+  TELEMETRYFORGE_API_KEYS_FILE: "/var/run/secrets/telemetryforge/api-keys.json"
+  TELEMETRYFORGE_REDACT_PAYLOAD: "true"
+  TELEMETRYFORGE_KAFKA_TLS: "true"
+  TELEMETRYFORGE_KAFKA_SASL_MECHANISM: "scram-sha-512"

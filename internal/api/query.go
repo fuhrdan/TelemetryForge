@@ -43,6 +43,7 @@ func (server *Server) queryTelemetry(writer http.ResponseWriter, request *http.R
 		events = filtered
 	}
 
+	events = server.redactEvents(events)
 	writeJSON(writer, http.StatusOK, map[string]any{
 		"count":  len(events),
 		"events": events,

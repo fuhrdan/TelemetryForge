@@ -18,10 +18,14 @@ spec:
         app.kubernetes.io/name: telemetryforge-gateway
         app.kubernetes.io/part-of: telemetryforge
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       terminationGracePeriodSeconds: 30
       containers:
         - name: gateway
-          image: ghcr.io/fuhrdan/telemetryforge:v0.8.0
+          image: ghcr.io/fuhrdan/telemetryforge:v1.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -53,6 +57,7 @@ spec:
               cpu: "1"
               memory: 512Mi
           securityContext:
+            runAsNonRoot: true
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
@@ -63,6 +68,8 @@ kind: Service
 metadata:
   name: gateway
   namespace: telemetryforge
+  labels:
+    app.kubernetes.io/name: telemetryforge-gateway
 spec:
   selector:
     app.kubernetes.io/name: telemetryforge-gateway

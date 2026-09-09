@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/security"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
 )
@@ -202,5 +203,35 @@ func TestNotReadyWhenDatabaseUnavailable(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), `"dependency":"database"`) {
 		t.Fatalf("expected database readiness failure, got %s", response.Body.String())
+	}
+}
+
+func TestIngestRejectsClientSuppliedTenantID(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	publisher := stream.NewMemoryPublisher()
+	server := NewServer(
+		logger,
+		publisher,
+		Topics{Raw: "telemetry.raw", Metric: "telemetry.metrics"},
+	)
+
+	body := `{
+	  "tenant_id":"other",
+	  "source":"checkout",
+	  "type":"request",
+	  "timestamp":"2026-09-09T12:00:00Z",
+	  "schema_version":"1.0"
+	}`
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/events", strings.NewReader(body))
+	request = request.WithContext(security.WithTenant(request.Context(), "alpha"))
+	response := httptest.NewRecorder()
+
+	server.ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("expected %d, got %d: %s", http.StatusForbidden, response.Code, response.Body.String())
+	}
+	if len(publisher.Events()) != 0 {
+		t.Fatal("spoofed tenant event must not reach Kafka publisher")
 	}
 }

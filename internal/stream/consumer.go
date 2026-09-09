@@ -34,6 +34,7 @@ type ConsumerConfig struct {
 	Topics   []string
 	DLQTopic string
 	Observer Observer
+	Security KafkaSecurityConfig
 }
 
 // KafkaConsumer consumes telemetry using a Kafka consumer group.
@@ -77,7 +78,7 @@ func NewKafkaConsumer(config ConsumerConfig, logger *slog.Logger) (*KafkaConsume
 		dlqTopic = "telemetry.dlq"
 	}
 
-	client, err := kgo.NewClient(
+	options := []kgo.Opt{
 		kgo.SeedBrokers(config.Brokers...),
 		kgo.ClientID(clientID),
 		kgo.ConsumerGroup(config.GroupID),
@@ -90,7 +91,14 @@ func NewKafkaConsumer(config ConsumerConfig, logger *slog.Logger) (*KafkaConsume
 		kgo.BlockRebalanceOnPoll(),
 		kgo.RequiredAcks(kgo.AllISRAcks()),
 		kgo.RecordPartitioner(kgo.StickyKeyPartitioner(nil)),
-	)
+	}
+	securityOptions, err := kafkaSecurityOptions(config.Security)
+	if err != nil {
+		return nil, err
+	}
+	options = append(options, securityOptions...)
+
+	client, err := kgo.NewClient(options...)
 	if err != nil {
 		return nil, fmt.Errorf("create Kafka consumer: %w", err)
 	}

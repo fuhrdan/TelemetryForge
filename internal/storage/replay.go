@@ -8,18 +8,19 @@ import (
 
 	"github.com/fuhrdan/TelemetryForge/internal/costsim"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
+	"github.com/fuhrdan/TelemetryForge/internal/security"
 )
 
 // StartReplay creates one durable replay-history row before processing starts.
 func (store *PostgresStore) StartReplay(ctx context.Context, run replay.Run) error {
 	_, err := store.pool.Exec(ctx, `
         INSERT INTO replay_runs
-            (run_id, incident_id, mode, status, active_policy, active_version,
-             shadow_policy, shadow_version, output_topic, started_at)
-        VALUES ($1,$2,$3,$4,$5,$6,NULLIF($7,''),NULLIF($8,''),NULLIF($9,''),$10)`,
-		run.ID, run.IncidentID, run.Mode, run.Status, run.ActivePolicy,
-		run.ActiveVersion, run.ShadowPolicy, run.ShadowVersion, run.OutputTopic,
-		run.StartedAt)
+            (tenant_id, run_id, incident_id, mode, status, active_policy,
+             active_version, shadow_policy, shadow_version, output_topic, started_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,NULLIF($8,''),NULLIF($9,''),NULLIF($10,''),$11)`,
+		security.TenantID(ctx), run.ID, run.IncidentID, run.Mode, run.Status,
+		run.ActivePolicy, run.ActiveVersion, run.ShadowPolicy, run.ShadowVersion,
+		run.OutputTopic, run.StartedAt)
 	if err != nil {
 		return fmt.Errorf("insert replay run: %w", err)
 	}
@@ -30,17 +31,18 @@ func (store *PostgresStore) StartReplay(ctx context.Context, run replay.Run) err
 func (store *PostgresStore) RecordReplayEvent(ctx context.Context, result replay.EventResult) error {
 	_, err := store.pool.Exec(ctx, `
         INSERT INTO replay_event_results
-            (run_id, event_id, changed, dropped_tag_count, quarantined,
+            (tenant_id, run_id, event_id, changed, dropped_tag_count, quarantined,
              finding_count, shadow_diff_count)
-        VALUES ($1,$2,$3,$4,$5,$6,$7)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
         ON CONFLICT (run_id, event_id) DO UPDATE SET
             changed = EXCLUDED.changed,
             dropped_tag_count = EXCLUDED.dropped_tag_count,
             quarantined = EXCLUDED.quarantined,
             finding_count = EXCLUDED.finding_count,
             shadow_diff_count = EXCLUDED.shadow_diff_count`,
-		result.RunID, result.EventID, result.Changed, result.DroppedTagCount,
-		result.Quarantined, result.FindingCount, result.ShadowDiffCount)
+		security.TenantID(ctx), result.RunID, result.EventID, result.Changed,
+		result.DroppedTagCount, result.Quarantined, result.FindingCount,
+		result.ShadowDiffCount)
 	if err != nil {
 		return fmt.Errorf("insert replay event result: %w", err)
 	}
@@ -51,18 +53,19 @@ func (store *PostgresStore) RecordReplayEvent(ctx context.Context, result replay
 func (store *PostgresStore) CompleteReplay(ctx context.Context, run replay.Run) error {
 	_, err := store.pool.Exec(ctx, `
         UPDATE replay_runs
-           SET status = $2,
-               completed_at = $3,
-               event_count = $4,
-               changed_event_count = $5,
-               dropped_tag_count = $6,
-               quarantined_count = $7,
-               finding_count = $8,
-               shadow_diff_count = $9,
-               published_count = $10,
-               error = NULLIF($11,'')
-         WHERE run_id = $1`,
-		run.ID, run.Status, run.CompletedAt, run.EventCount, run.ChangedEventCount,
+           SET status = $3,
+               completed_at = $4,
+               event_count = $5,
+               changed_event_count = $6,
+               dropped_tag_count = $7,
+               quarantined_count = $8,
+               finding_count = $9,
+               shadow_diff_count = $10,
+               published_count = $11,
+               error = NULLIF($12,'')
+         WHERE tenant_id = $1
+           AND run_id = $2`,
+		security.TenantID(ctx), run.ID, run.Status, run.CompletedAt, run.EventCount, run.ChangedEventCount,
 		run.DroppedTagCount, run.QuarantinedCount, run.FindingCount,
 		run.ShadowDiffCount, run.PublishedCount, run.Error)
 	if err != nil {
@@ -85,8 +88,9 @@ func (store *PostgresStore) ListReplayRuns(ctx context.Context, limit int) ([]re
                quarantined_count, finding_count, shadow_diff_count,
                published_count, COALESCE(error,'')
           FROM replay_runs
+         WHERE tenant_id = $1
          ORDER BY started_at DESC
-         LIMIT $1`, limit)
+         LIMIT $2`, security.TenantID(ctx), limit)
 	if err != nil {
 		return nil, fmt.Errorf("query replay runs: %w", err)
 	}
@@ -124,7 +128,7 @@ func (store *PostgresStore) SaveCostSimulation(ctx context.Context, result costs
 
 	_, err = store.pool.Exec(ctx, `
         INSERT INTO cost_simulations
-            (simulation_id, incident_id, active_policy, active_version,
+            (tenant_id, simulation_id, incident_id, active_policy, active_version,
              shadow_policy, shadow_version, pricing_model, currency,
              started_at, completed_at, window_seconds, event_count,
              baseline_bytes, active_bytes, shadow_bytes,
@@ -134,13 +138,14 @@ func (store *PostgresStore) SaveCostSimulation(ctx context.Context, result costs
              projected_monthly_active_cost, projected_monthly_shadow_cost,
              active_changed_events, shadow_changed_events, assumptions, error)
         VALUES
-            ($1,$2,$3,$4,NULLIF($5,''),NULLIF($6,''),NULLIF($7,''),NULLIF($8,''),
-             $9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,
-             $25,$26,$27::jsonb,NULLIF($28,''))
+            ($1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),NULLIF($8,''),NULLIF($9,''),
+             $10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,
+             $26,$27,$28::jsonb,NULLIF($29,''))
         ON CONFLICT (simulation_id) DO UPDATE SET
             completed_at = EXCLUDED.completed_at,
             error = EXCLUDED.error`,
-		result.ID, result.IncidentID, result.ActivePolicy, result.ActiveVersion,
+		security.TenantID(ctx), result.ID, result.IncidentID, result.ActivePolicy,
+		result.ActiveVersion,
 		result.ShadowPolicy, result.ShadowVersion, result.PricingModel,
 		result.Currency, result.StartedAt, result.CompletedAt, result.WindowSeconds,
 		result.EventCount, result.Baseline.Bytes, result.Active.Bytes,
@@ -173,8 +178,9 @@ func (store *PostgresStore) ListCostSimulations(ctx context.Context, limit int) 
                active_changed_events, shadow_changed_events, assumptions,
                COALESCE(error,'')
           FROM cost_simulations
+         WHERE tenant_id = $1
          ORDER BY started_at DESC
-         LIMIT $1`, limit)
+         LIMIT $2`, security.TenantID(ctx), limit)
 	if err != nil {
 		return nil, fmt.Errorf("query cost simulations: %w", err)
 	}

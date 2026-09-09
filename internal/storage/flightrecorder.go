@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/security"
 )
 
 // WriteFlightEvent appends one full canonical envelope to the short-lived
@@ -24,9 +25,10 @@ func (store *PostgresStore) WriteFlightEvent(ctx context.Context, event domain.E
 
 	_, err = store.pool.Exec(ctx, `
 		INSERT INTO flight_recorder_events
-			(event_id, captured_at, event_time, source, event_type, envelope)
-		VALUES ($1, now(), $2, $3, $4, $5::jsonb)`,
-		event.ID, event.Timestamp.UTC(), event.Source, event.Type, string(envelope))
+			(tenant_id, event_id, captured_at, event_time, source, event_type, envelope)
+		VALUES ($1, $2, now(), $3, $4, $5, $6::jsonb)`,
+		tenantForEvent(ctx, event), event.ID, event.Timestamp.UTC(),
+		event.Source, event.Type, string(envelope))
 	if err != nil {
 		return fmt.Errorf("write flight-recorder event: %w", err)
 	}
@@ -54,22 +56,25 @@ func (store *PostgresStore) FreezeIncident(ctx context.Context, incidentID, titl
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
+	tenantID := security.TenantID(ctx)
+
 	_, err = tx.Exec(ctx, `
-		INSERT INTO incidents (incident_id, title, frozen_from, frozen_to)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (incident_id)
+		INSERT INTO incidents (tenant_id, incident_id, title, frozen_from, frozen_to)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (tenant_id, incident_id)
 		DO UPDATE SET title = EXCLUDED.title,
 		              frozen_from = EXCLUDED.frozen_from,
 		              frozen_to = EXCLUDED.frozen_to`,
-		incidentID, title, from.UTC(), to.UTC())
+		tenantID, incidentID, title, from.UTC(), to.UTC())
 	if err != nil {
 		return 0, fmt.Errorf("create incident: %w", err)
 	}
 
 	result, err := tx.Exec(ctx, `
 		INSERT INTO incident_events
-			(incident_id, event_id, captured_at, event_time, source, event_type, envelope)
+			(tenant_id, incident_id, event_id, captured_at, event_time, source, event_type, envelope)
 		SELECT $1,
+		       $2,
 		       captured.event_id,
 		       captured.captured_at,
 		       captured.event_time,
@@ -80,12 +85,13 @@ func (store *PostgresStore) FreezeIncident(ctx context.Context, incidentID, titl
 			SELECT DISTINCT ON (event_id)
 			       event_id, captured_at, event_time, source, event_type, envelope
 			  FROM flight_recorder_events
-			 WHERE captured_at >= $2
-			   AND captured_at <= $3
+			 WHERE tenant_id = $1
+			   AND captured_at >= $3
+			   AND captured_at <= $4
 			 ORDER BY event_id, captured_at ASC
 		  ) AS captured
 		ON CONFLICT DO NOTHING`,
-		incidentID, from.UTC(), to.UTC())
+		tenantID, incidentID, from.UTC(), to.UTC())
 	if err != nil {
 		return 0, fmt.Errorf("freeze incident events: %w", err)
 	}

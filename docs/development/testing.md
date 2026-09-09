@@ -112,3 +112,24 @@ product claim.
 
 A published benchmark must use the procedure in
 `docs/performance/benchmark-methodology.md`.
+
+
+## v1.0.0 security/evidence coverage
+
+New checks include:
+
+- API-key scope enforcement
+- health probe auth exemption
+- client `tenant_id` spoof rejection
+- tenant-isolated Cardinality Firewall state
+- same event ID independently accepted by two tenants
+- API redaction without source-event mutation
+- Kafka TLS/SASL configuration validation
+- Evidence Graph support/contradiction behavior
+- explicit non-causality wording
+- Evidence Graph API/storage boundary
+- dashboard server-proxy TypeScript compilation
+- production Kustomize overlay rendering in CI
+
+The real Go 1.27.1 dependency-backed build remains the authoritative CI gate
+when the local sandbox cannot fetch/currently run that toolchain.

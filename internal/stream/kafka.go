@@ -21,9 +21,9 @@ const defaultProduceTimeout = 5 * time.Second
 
 // KafkaPublisher publishes canonical TelemetryForge envelopes to Kafka.
 //
-// Records are keyed by source. Using a stable source key keeps telemetry from
-// one producer ordered within a topic partition while still allowing Kafka to
-// spread independent sources across partitions.
+// Records are keyed by tenant + source. This preserves per-source ordering
+// inside a tenant without making two tenants with the same source name share a
+// partition key merely because their service names match.
 type KafkaPublisher struct {
 	client         *kgo.Client
 	logger         *slog.Logger
@@ -35,6 +35,7 @@ type KafkaConfig struct {
 	Brokers        []string
 	ClientID       string
 	ProduceTimeout time.Duration
+	Security       KafkaSecurityConfig
 }
 
 // NewKafkaPublisher creates a Kafka-backed Publisher.
@@ -57,13 +58,20 @@ func NewKafkaPublisher(config KafkaConfig, logger *slog.Logger) (*KafkaPublisher
 		produceTimeout = defaultProduceTimeout
 	}
 
-	client, err := kgo.NewClient(
+	options := []kgo.Opt{
 		kgo.SeedBrokers(config.Brokers...),
 		kgo.ClientID(clientID),
 		kgo.RequiredAcks(kgo.AllISRAcks()),
 		kgo.RecordPartitioner(kgo.StickyKeyPartitioner(nil)),
 		kgo.ProducerBatchCompression(kgo.SnappyCompression()),
-	)
+	}
+	securityOptions, err := kafkaSecurityOptions(config.Security)
+	if err != nil {
+		return nil, err
+	}
+	options = append(options, securityOptions...)
+
+	client, err := kgo.NewClient(options...)
 	if err != nil {
 		return nil, fmt.Errorf("create Kafka client: %w", err)
 	}
@@ -95,10 +103,11 @@ func (publisher *KafkaPublisher) Publish(ctx context.Context, topic string, even
 
 	record := &kgo.Record{
 		Topic: topic,
-		Key:   []byte(event.Source),
+		Key:   []byte(event.TenantID + "|" + event.Source),
 		Value: payload,
 		Headers: []kgo.RecordHeader{
 			{Key: "telemetryforge-event-id", Value: []byte(event.ID)},
+			{Key: "telemetryforge-tenant-id", Value: []byte(event.TenantID)},
 			{Key: "telemetryforge-schema-version", Value: []byte(event.SchemaVersion)},
 			{Key: "telemetryforge-correlation-id", Value: []byte(event.CorrelationID)},
 		},

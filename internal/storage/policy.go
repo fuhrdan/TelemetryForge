@@ -8,6 +8,7 @@ import (
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
+	"github.com/fuhrdan/TelemetryForge/internal/security"
 )
 
 // CardinalityFinding is the stored representation returned to the dashboard.
@@ -22,11 +23,12 @@ type PolicyDiff = policy.Diff
 func (store *PostgresStore) RecordCardinalityFinding(ctx context.Context, finding policy.Finding) error {
 	_, err := store.pool.Exec(ctx, `
 		INSERT INTO cardinality_findings
-			(observed_at, policy_name, policy_version, mode, source, event_type,
-			 dimension, observed_unique, projected_unique, action, reason,
-			 value_fingerprint, first_seen, last_seen)
+			(tenant_id, observed_at, policy_name, policy_version, mode, source,
+			 event_type, dimension, observed_unique, projected_unique, action,
+			 reason, value_fingerprint, first_seen, last_seen)
 		VALUES
-			($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+			($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+		tenantForPolicyFinding(ctx, finding.TenantID),
 		time.Now().UTC(),
 		finding.PolicyName,
 		finding.PolicyVersion,
@@ -52,10 +54,11 @@ func (store *PostgresStore) RecordCardinalityFinding(ctx context.Context, findin
 func (store *PostgresStore) RecordPolicyDiff(ctx context.Context, diff policy.Diff) error {
 	_, err := store.pool.Exec(ctx, `
 		INSERT INTO policy_shadow_diffs
-			(observed_at, source, event_type, dimension, active_policy,
+			(tenant_id, observed_at, source, event_type, dimension, active_policy,
 			 active_version, active_action, shadow_policy, shadow_version,
 			 shadow_action, reason)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		tenantForPolicyFinding(ctx, diff.TenantID),
 		diff.ObservedAt,
 		diff.Source,
 		diff.EventType,
@@ -84,10 +87,11 @@ func (store *PostgresStore) RecordQuarantine(ctx context.Context, event domain.E
 	}
 	_, err = store.pool.Exec(ctx, `
 		INSERT INTO quarantined_events
-			(event_id, source, event_type, reason, envelope)
-		VALUES ($1,$2,$3,$4,$5::jsonb)
-		ON CONFLICT (event_id) DO NOTHING`,
-		event.ID, event.Source, event.Type, reason, string(envelope))
+			(tenant_id, event_id, source, event_type, reason, envelope)
+		VALUES ($1,$2,$3,$4,$5,$6::jsonb)
+		ON CONFLICT (tenant_id, event_id) DO NOTHING`,
+		tenantForEvent(ctx, event), event.ID, event.Source, event.Type,
+		reason, string(envelope))
 	if err != nil {
 		return fmt.Errorf("insert quarantined event: %w", err)
 	}
@@ -100,12 +104,13 @@ func (store *PostgresStore) ListCardinalityFindings(ctx context.Context, limit i
 		limit = 100
 	}
 	rows, err := store.pool.Query(ctx, `
-		SELECT policy_name, policy_version, mode, source, event_type, dimension,
-		       observed_unique, projected_unique, action, reason,
+		SELECT tenant_id, policy_name, policy_version, mode, source, event_type,
+		       dimension, observed_unique, projected_unique, action, reason,
 		       value_fingerprint, first_seen, last_seen
 		  FROM cardinality_findings
+		 WHERE tenant_id = $1
 		 ORDER BY observed_at DESC
-		 LIMIT $1`, limit)
+		 LIMIT $2`, security.TenantID(ctx), limit)
 	if err != nil {
 		return nil, fmt.Errorf("query cardinality findings: %w", err)
 	}
@@ -116,6 +121,7 @@ func (store *PostgresStore) ListCardinalityFindings(ctx context.Context, limit i
 		var finding policy.Finding
 		var action string
 		if err := rows.Scan(
+			&finding.TenantID,
 			&finding.PolicyName,
 			&finding.PolicyVersion,
 			&finding.Mode,
@@ -144,12 +150,13 @@ func (store *PostgresStore) ListPolicyDiffs(ctx context.Context, limit int) ([]p
 		limit = 100
 	}
 	rows, err := store.pool.Query(ctx, `
-		SELECT observed_at, source, event_type, dimension, active_policy,
-		       active_version, active_action, shadow_policy, shadow_version,
-		       shadow_action, reason
+		SELECT tenant_id, observed_at, source, event_type, dimension,
+		       active_policy, active_version, active_action, shadow_policy,
+		       shadow_version, shadow_action, reason
 		  FROM policy_shadow_diffs
+		 WHERE tenant_id = $1
 		 ORDER BY observed_at DESC
-		 LIMIT $1`, limit)
+		 LIMIT $2`, security.TenantID(ctx), limit)
 	if err != nil {
 		return nil, fmt.Errorf("query policy shadow diffs: %w", err)
 	}
@@ -161,6 +168,7 @@ func (store *PostgresStore) ListPolicyDiffs(ctx context.Context, limit int) ([]p
 		var activeAction string
 		var shadowAction string
 		if err := rows.Scan(
+			&diff.TenantID,
 			&diff.ObservedAt,
 			&diff.Source,
 			&diff.EventType,
@@ -180,4 +188,11 @@ func (store *PostgresStore) ListPolicyDiffs(ctx context.Context, limit int) ([]p
 		diffs = append(diffs, diff)
 	}
 	return diffs, rows.Err()
+}
+
+func tenantForPolicyFinding(ctx context.Context, tenantID string) string {
+	if tenantID != "" {
+		return tenantID
+	}
+	return security.TenantID(ctx)
 }

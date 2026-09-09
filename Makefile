@@ -1,4 +1,4 @@
-.PHONY: build run run-worker telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check
+.PHONY: build run run-worker telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check
 
 build:
 	go build ./...
@@ -46,6 +46,7 @@ policy-check:
 
 k8s-render:
 	kubectl kustomize deployments/kubernetes/base >/dev/null
+	kubectl kustomize deployments/kubernetes/overlays/production >/dev/null
 
 terraform-check:
 	terraform -chdir=infra/terraform/aws fmt -check
@@ -81,6 +82,9 @@ demo-incident:
 
 demo-cardinality:
 	python3 scripts/demo-traffic.py --cardinality --count 160 --interval 0.05
+
+demo-evidence:
+	python3 scripts/demo-traffic.py --evidence-demo --count 45 --interval 0.20
 
 observability-check:
 	docker run --rm --entrypoint /bin/promtool \

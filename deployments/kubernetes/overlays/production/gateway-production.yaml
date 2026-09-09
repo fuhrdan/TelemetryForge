@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: telemetryforge
+spec:
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "false"
+    spec:
+      containers:
+        - name: gateway
+          volumeMounts:
+            - name: api-keys
+              mountPath: /var/run/secrets/telemetryforge
+              readOnly: true
+      volumes:
+        - name: api-keys
+          secret:
+            secretName: telemetryforge-api-keys
+            items:
+              - key: api-keys.json
+                path: api-keys.json

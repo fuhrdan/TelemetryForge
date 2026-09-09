@@ -4,6 +4,36 @@
 
 _No changes yet._
 
+## [1.0.0] - 2026-09-09
+
+### Evidence Graph
+- Added evidence-backed incident graphs with supporting, contradicting, and contextual relationships.
+- Added correlation/trace/source/change/latency/error/recovery relationships.
+- Added conservative built-in hypotheses and explicit non-causality disclaimer.
+- Added Evidence Graph API, CLI command, dashboard investigation surface, and persistent snapshots.
+
+### Authentication / tenant isolation
+- Added hash-only API-key authentication with ingest/read/admin scopes.
+- Derived tenant identity from authenticated principal; rejected client-supplied tenant IDs.
+- Added tenant identity to the canonical envelope/Kafka key/header.
+- Tenant-scoped telemetry, dedup, Flight Recorder, incidents, policy evidence, replay, cost, and graph storage.
+- Tenant-isolated Cardinality Firewall and automatic-incident in-memory state.
+- Added same-event-ID multi-tenant integration coverage.
+
+### Security
+- Added server-side Next.js dashboard auth proxy.
+- Added presentation-time tag/payload redaction.
+- Added Kafka TLS, custom CA, mTLS, SASL PLAIN, SCRAM-SHA-256, and SCRAM-SHA-512.
+- Added production Kubernetes auth/redaction/Kafka-security overlay.
+- Added non-root/seccomp/service-account-token hardening.
+
+### Operations / documentation
+- Added production deployment profile.
+- Added v1 upgrade and rollback runbooks.
+- Added v1 portfolio demo scenario.
+- Added ADRs 0021-0024 and dedicated authentication/tenant/redaction/dashboard-proxy docs.
+
+
 ## [0.9.0] - 2026-09-09
 
 ### Incident Replay

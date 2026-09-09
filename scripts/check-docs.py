@@ -41,6 +41,15 @@ REQUIRED = [
     ROOT / "docs" / "observability" / "metrics.md",
     ROOT / "docs" / "observability" / "tracing.md",
     ROOT / "docs" / "performance" / "benchmark-methodology.md",
+    ROOT / "docs" / "evidence" / "evidence-graph.md",
+    ROOT / "docs" / "security" / "authentication.md",
+    ROOT / "docs" / "security" / "tenant-isolation.md",
+    ROOT / "docs" / "security" / "redaction.md",
+    ROOT / "docs" / "security" / "dashboard-proxy.md",
+    ROOT / "docs" / "deployment" / "production-profile.md",
+    ROOT / "docs" / "operations" / "upgrade-v1.md",
+    ROOT / "docs" / "operations" / "rollback-v1.md",
+    ROOT / "docs" / "demo" / "v1-portfolio-demo.md",
 ]
 
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

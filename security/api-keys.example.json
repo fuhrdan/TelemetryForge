@@ -1,0 +1,28 @@
+{
+  "keys": [
+    {
+      "name": "demo-ingest",
+      "sha256": "43aa28a5bf1462f9d0c2089981ddb7a425ce4ae436409fdd066189155c3e7419",
+      "tenant_id": "demo",
+      "scopes": [
+        "ingest"
+      ]
+    },
+    {
+      "name": "demo-dashboard",
+      "sha256": "bc24ee9d02f0d3845b6f2032abdb63f8dcfded0c4edf8fb05aebc1a21d6fc51f",
+      "tenant_id": "demo",
+      "scopes": [
+        "read"
+      ]
+    },
+    {
+      "name": "demo-admin",
+      "sha256": "906a9a4393194638d2579042ed349715dbb0d02d14b092c83e6f4997bf3288bf",
+      "tenant_id": "demo",
+      "scopes": [
+        "admin"
+      ]
+    }
+  ]
+}

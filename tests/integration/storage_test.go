@@ -10,6 +10,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
+	"github.com/fuhrdan/TelemetryForge/internal/security"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 )
 
@@ -348,5 +349,128 @@ func TestReplayAndCostHistoryPersistence(t *testing.T) {
 	}
 	if !foundSimulation {
 		t.Fatal("expected cost simulation in history")
+	}
+}
+
+func TestTenantIsolationAllowsSameEventIDWithoutCrossRead(t *testing.T) {
+	databaseURL := os.Getenv("TELEMETRYFORGE_INTEGRATION_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TELEMETRYFORGE_INTEGRATION_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	store, err := storage.NewPostgresStore(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	eventID := "tenant-shared-" + time.Now().UTC().Format("20060102T150405.000000000")
+	alpha := domain.Event{
+		ID: eventID, TenantID: "alpha", Source: "alpha-source", Type: "tenant.test",
+		Timestamp: time.Now().UTC(), SchemaVersion: "1.0",
+	}
+	beta := alpha
+	beta.TenantID = "beta"
+	beta.Source = "beta-source"
+
+	if err := store.WriteEvent(ctx, alpha); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.WriteEvent(ctx, beta); err != nil {
+		t.Fatal(err)
+	}
+
+	alphaCtx := security.WithTenant(ctx, "alpha")
+	alphaEvents, err := store.QueryEvents(alphaCtx, storage.Query{Limit: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	betaCtx := security.WithTenant(ctx, "beta")
+	betaEvents, err := store.QueryEvents(betaCtx, storage.Query{Limit: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	find := func(events []domain.Event, id string) *domain.Event {
+		for index := range events {
+			if events[index].ID == id {
+				return &events[index]
+			}
+		}
+		return nil
+	}
+
+	alphaFound := find(alphaEvents, eventID)
+	betaFound := find(betaEvents, eventID)
+	if alphaFound == nil || alphaFound.Source != "alpha-source" {
+		t.Fatalf("alpha tenant result=%#v", alphaFound)
+	}
+	if betaFound == nil || betaFound.Source != "beta-source" {
+		t.Fatalf("beta tenant result=%#v", betaFound)
+	}
+}
+
+func TestTenantIsolationAllowsSameIncidentID(t *testing.T) {
+	databaseURL := os.Getenv("TELEMETRYFORGE_INTEGRATION_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TELEMETRYFORGE_INTEGRATION_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	store, err := storage.NewPostgresStore(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Now().UTC()
+	incidentID := "shared-incident-" + now.Format("20060102T150405.000000000")
+
+	for _, tenant := range []string{"alpha", "beta"} {
+		event := domain.Event{
+			ID:            tenant + "-flight-" + now.Format("150405.000000000"),
+			TenantID:      tenant,
+			Source:        tenant + "-source",
+			Type:          "request.error",
+			Timestamp:     now,
+			SchemaVersion: "1.0",
+		}
+		if err := store.WriteFlightEvent(ctx, event); err != nil {
+			t.Fatal(err)
+		}
+
+		tenantCtx := security.WithTenant(ctx, tenant)
+		count, err := store.FreezeIncident(
+			tenantCtx,
+			incidentID,
+			tenant+" incident",
+			now.Add(-time.Minute),
+			now.Add(time.Minute),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("tenant %s froze %d events, want 1", tenant, count)
+		}
+	}
+
+	for _, tenant := range []string{"alpha", "beta"} {
+		events, err := store.IncidentEvents(
+			security.WithTenant(ctx, tenant),
+			incidentID,
+			10,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(events) != 1 || events[0].TenantID != tenant {
+			t.Fatalf("tenant %s incident events=%#v", tenant, events)
+		}
 	}
 }

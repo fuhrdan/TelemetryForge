@@ -89,6 +89,7 @@ func (server *Server) handleIncidentEvents(writer http.ResponseWriter, request *
 		return
 	}
 
+	events = server.redactEvents(events)
 	writeJSON(writer, http.StatusOK, map[string]any{
 		"incident_id": incidentID,
 		"count":       len(events),
@@ -172,7 +173,11 @@ func (server *Server) handleLive(writer http.ResponseWriter, request *http.Reque
 				}
 
 				for _, record := range events {
-					payload, err := json.Marshal(record.Event)
+					event := record.Event
+					if server.redactor != nil {
+						event = server.redactor.Event(event)
+					}
+					payload, err := json.Marshal(event)
 					if err != nil {
 						continue
 					}

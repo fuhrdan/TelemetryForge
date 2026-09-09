@@ -95,6 +95,9 @@ services:
       TELEMETRYFORGE_KAFKA_RAW_TOPIC: "telemetry.raw"
       TELEMETRYFORGE_KAFKA_METRIC_TOPIC: "telemetry.metrics"
       TELEMETRYFORGE_DATABASE_URL: "postgres://telemetryforge:telemetryforge@timescaledb:5432/telemetryforge?sslmode=disable"
+      TELEMETRYFORGE_AUTH_MODE: "disabled"
+      TELEMETRYFORGE_DEFAULT_TENANT: "default"
+      TELEMETRYFORGE_REDACT_PAYLOAD: "false"
       TELEMETRYFORGE_OTLP_TRACES_ENDPOINT: "http://otel-collector:4318/v1/traces"
     ports:
       - "8080:8080"
@@ -155,8 +158,9 @@ services:
     build:
       context: ./dashboard
       dockerfile: Dockerfile
-      args:
-        TELEMETRYFORGE_API_BASE: "http://gateway:8080"
+    environment:
+      TELEMETRYFORGE_API_BASE: "http://gateway:8080"
+      TELEMETRYFORGE_DASHBOARD_API_KEY: ""
     ports:
       - "3000:3000"
     depends_on:

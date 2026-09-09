@@ -1,354 +1,235 @@
 # TelemetryForge Architecture
 
-TelemetryForge is a distributed telemetry control plane built around explicit
-durability, bounded concurrency, evidence preservation, reversible policy
-changes, and replayable incident evidence.
+TelemetryForge v1.0.0 is an OpenTelemetry-native telemetry control plane built
+around durability, bounded concurrency, evidence preservation, reversible
+policy, replayable investigations, and explicit tenant/security boundaries.
 
-## Runtime components
+## Runtime path
 
 ```text
-Applications
-    |
-    v
+Authenticated client
+       |
+       v
 Go Gateway
-    |
-    v
-Apache Kafka
-    |
-    v
-Consumer Group / Workers
-    |
-    v
-Flight Recorder
-    |
-    v
-Normalize
-    |
-    v
+  assign tenant_id
+       |
+       v
+Kafka (tenant|source key)
+       |
+       v
+Bounded Worker Group
+       |
+       v
+Flight Recorder (full fidelity)
+       |
+       v
+Normalizer
+       |
+       v
 Cardinality Firewall
-   / \
-  /   \ candidate policy
- v     v
-active shadow
-  \   /
-   v v
+  active + shadow
+       |
+       v
 TimescaleDB
-   |
-   +--------------------+
-   |                    |
-   v                    v
-Incidents          Query / SSE API
-   |                    |
-   +-----> Replay       v
-   |       / Cost    Next.js Dashboard
-   |
-   +-----> Evidence
-
-Gateway / Worker
-   |
-   +---- Prometheus metrics
-   |
-   `---- OpenTelemetry traces
-             |
-             v
-      OTel Collector -> Tempo
-
-Prometheus ------------------> Grafana
-Tempo -----------------------> Grafana
+       |
+       +------> Frozen Incident
+       |           |
+       |           +--> Incident Replay
+       |           +--> Cost Simulator
+       |           `--> Evidence Graph
+       |
+       `------> Tenant-scoped Query/SSE API
+                       |
+                       v
+               Next.js server proxy
+                       |
+                       v
+                    Browser
 ```
 
-Terminal processing failures go to `telemetry.dlq`.
-
-Optional replay publication is isolated under `telemetry.replay*`.
+Gateway and worker also expose bounded Prometheus metrics and sampled
+OpenTelemetry traces.
 
 ## Core guarantees
 
-1. **Durable acceptance.** HTTP `202` is returned only after Kafka acknowledges
-   the accepted event.
-2. **Bounded application memory.** Worker queues, incident detector state,
-   cardinality estimators, and finding-suppression maps have explicit limits.
-3. **At-least-once processing.** Kafka offsets advance after successful normal
-   or durable DLQ handling.
-4. **Contiguous partition commits.** Concurrent worker completion cannot commit
-   past earlier unfinished records from the same partition.
-5. **Rebalance-safe poll batches.** Partition ownership remains stable until all
-   submitted work from one bounded poll batch finishes.
-6. **Idempotent primary persistence.** Canonical event IDs absorb duplicate
-   at-least-once deliveries.
-7. **Evidence before mutation.** The Flight Recorder captures telemetry before
-   normalization or policy removes dimensions.
-8. **Shadow before promotion.** Candidate policy never mutates the active event
-   path.
-9. **Replay isolation.** Frozen incident analysis does not re-enter the normal
-   production persistence/incident path.
-10. **No implicit pricing.** Cost simulation produces money only from explicit
-    pricing input.
-11. **Self-observability uses bounded labels.** Raw telemetry IDs/tags/URLs do
-    not become Prometheus dimensions.
+1. **Durable acceptance.** HTTP `202` follows Kafka acknowledgement.
+2. **Bounded memory.** Worker queues, incident state, and cardinality state have
+   configured bounds.
+3. **At-least-once processing.** Offsets advance after successful or durable DLQ
+   handling.
+4. **Contiguous partition commits.** Later worker completion cannot commit past
+   earlier unfinished records in one partition.
+5. **Rebalance-safe poll batches.** Partition ownership remains stable while a
+   bounded batch drains.
+6. **Tenant-local idempotency.** `(tenant_id,event_id)` prevents duplicate
+   processing without cross-tenant suppression.
+7. **Evidence before mutation.** Flight Recorder capture precedes policy changes.
+8. **Shadow before promotion.** Candidate policy does not change active behavior.
+9. **Replay isolation.** Incident Replay is analysis-only unless explicitly
+   exported to `telemetry.replay*`.
+10. **No implicit pricing.** Cost dollars require explicit pricing input.
+11. **Evidence association is not causality.** Graph edges carry basis,
+    assessment, and contradictory evidence.
+12. **Tenant identity comes from authentication.** Client-supplied tenant IDs
+    are rejected.
 
-## Ingestion
+## Authentication / tenant propagation
 
-The Go gateway owns the public HTTP boundary. It:
-
-- validates the canonical event envelope;
-- applies request-size/strict-JSON limits;
-- produces to Kafka and waits for acknowledgement;
-- exposes bounded read APIs;
-- serves dashboard/incident/replay/cost history;
-- streams live telemetry over SSE;
-- exposes `/health`, `/ready`, and `/metrics`; and
-- emits sampled OpenTelemetry spans.
-
-HTTP metrics use registered `net/http` route patterns rather than raw paths.
-
-## Kafka boundary
-
-Topics:
+In `api_key` mode the gateway authenticates a hash-backed API key and resolves:
 
 ```text
-telemetry.raw
-telemetry.metrics
-telemetry.dlq
-telemetry.replay
+principal name
+tenant_id
+scopes
 ```
 
-The first three are normal processing topics. `telemetry.replay` is an isolated,
-opt-in replay-output namespace with no checked-in normal worker consumer.
+The canonical event receives `tenant_id` only after authentication.
 
-Production ingestion records are keyed by source.
-
-The consumer disables auto-commit and coordinates completed offsets per
-partition. A later offset cannot move the committed position while an earlier
-record is unfinished.
-
-A bounded `PollRecords` batch also retains partition ownership until its
-submitted jobs finish.
-
-## Trace propagation
-
-The gateway starts an HTTP span. The producer starts a Kafka publish child span
-and injects W3C Trace Context/Baggage into Kafka headers.
-
-The worker extracts that context before starting:
+Kafka key:
 
 ```text
-worker.process
+tenant_id | source
 ```
 
-Each processor stage creates a child:
+Kafka header:
 
 ```text
-worker.stage
+telemetryforge-tenant-id
 ```
 
-This makes Flight Recorder, policy, persistence, and incident-processing delays
-visible in Tempo without turning those stage names into unbounded metrics.
+Worker-side policy/incident state uses the event tenant rather than HTTP
+context, so tenant isolation survives the asynchronous broker boundary.
 
-## Worker pipeline
+## Storage boundary
 
-Production stage order:
+Tenant-aware data includes:
 
-```text
-Flight Recorder
-    -> Normalizer
-    -> Cardinality Firewall (active + shadow)
-    -> Idempotent Persister
-    -> Automatic Incident Detector
-```
-
-### Cardinality Firewall
-
-Each source/type/dimension uses:
-
-- exact counting for the first 16 distinct SHA-256-derived hashes; then
-- a bounded 64-register HyperLogLog estimate.
-
-The global number of tracked dimension states is bounded.
-
-Active actions:
-
-```text
-allow
-drop_tag
-quarantine
-```
-
-The shadow policy observes but never mutates production behavior.
-
-## Incident Flight Recorder
-
-The rolling Flight Recorder stores the pre-policy decoded envelope.
-
-A frozen incident copies a selected time window into durable incident storage.
-
-Duplicate processing attempts are deduplicated by canonical event ID when the
-incident timeline is frozen/read.
-
-## Incident Replay
-
-Replay is deliberately not the production worker chain.
-
-Default replay executes:
-
-```text
-frozen incident
-    -> normalize
-    -> active policy
-    -> optional shadow policy
-    -> compact replay-result persistence
-```
-
-It does not call:
-
-- the Flight Recorder;
-- primary telemetry persistence;
-- automatic incident capture; or
-- Kafka publish.
-
-If an operator explicitly supplies an output topic, the library only accepts:
-
-```text
-telemetry.replay
-telemetry.replay.<suffix>
-```
-
-Replay policy evaluation uses the frozen event timestamp so time-window behavior
-represents the incident rather than replay execution speed.
-
-## Telemetry Cost Simulator
-
-The simulator uses the same frozen evidence.
-
-It computes:
-
-- baseline/active/shadow canonical JSON bytes;
-- exact distinct sample series;
-- changed-event counts;
-- linear 30-day byte-volume projection.
-
-It does not assign prices unless a strict operator-provided pricing model exists.
-
-Pricing assumptions are persisted with every simulation.
-
-## Storage
-
-PostgreSQL/TimescaleDB holds:
-
-- canonical telemetry
-- event-ID deduplication
-- rolling Flight Recorder
-- frozen incidents
+- event deduplication
+- telemetry events
+- Flight Recorder
+- incidents
+- policy findings/diffs
 - quarantine evidence
-- cardinality findings
-- active/shadow policy differences
-- replay run history
-- compact replay event results
-- cost simulation results/assumptions
+- replay history/results
+- cost simulations
+- Evidence Graph snapshots
+
+Pre-v1 rows migrate to tenant `default`.
+
+## Evidence Graph
+
+Graph construction uses captured fields only.
+
+Supporting examples:
+
+- same correlation ID
+- same trace ID
+- latency before error
+- captured change before error
+
+Contradicting example:
+
+- recovery signal after an error contradicting uninterrupted degradation
+
+Context-only example:
+
+- same source within a short time window
+
+The graph does not label any node as an automated root cause.
+
+See `docs/evidence/evidence-graph.md`.
+
+## Dashboard security boundary
+
+The browser talks to:
+
+```text
+/telemetry-api/*
+```
+
+on the Next.js application.
+
+The Next.js server injects a tenant-scoped read-only gateway credential from its
+server environment.
+
+This keeps the reusable key out of browser JavaScript and supports authenticated
+SSE.
+
+## Read-time redaction
+
+The gateway can redact configured tags and/or payloads on:
+
+- query API
+- frozen incident API
+- live SSE
+
+Stored evidence remains unchanged.
+
+This preserves forensic evidence but means direct database/backups remain
+sensitive.
+
+## Kafka security
+
+The same security profile is used by gateway, worker, and telemetryctl.
+
+Supported:
+
+```text
+TLS 1.2+
+custom CA
+optional mTLS client certificate
+SASL PLAIN
+SCRAM-SHA-256
+SCRAM-SHA-512
+```
+
+Local Compose remains plaintext for development.
 
 ## Self-observability
 
-Each Go service uses a private Prometheus registry plus Go/process collectors.
+Prometheus labels stay bounded.
 
-Important gateway metrics include:
-
-```text
-HTTP request count / duration
-accepted events
-Kafka publish failures
-```
-
-Worker metrics include:
+Trace Context/Baggage propagates through Kafka, linking:
 
 ```text
-job outcomes / duration
-retries
-queue depth / capacity
-Kafka consumer lag
-DLQ counts
+HTTP -> Kafka produce -> Kafka consume -> worker.process -> worker.stage
 ```
 
-Kafka lag is broker-derived using committed consumer-group offsets versus broker
-end offsets.
+Kafka lag comes from committed group offsets versus broker end offsets.
 
-The lag monitor runs independently every 15 seconds. Failure to collect lag is
-operationally visible but does not stop processing.
+## Deployment profiles
 
-## Local observability stack
+### Local
 
-Docker Compose provisions:
+`docker compose up --build`
 
-```text
-OpenTelemetry Collector
-Prometheus
-Grafana
-Tempo
-```
+- auth disabled
+- tenant `default`
+- development database/broker credentials
+- local Grafana/Prometheus/Tempo
 
-The Collector receives OTLP and forwards traces to Tempo.
+### Kubernetes base
 
-Prometheus scrapes the gateway, worker, and Collector.
+Readable application deployment with probes, resources, HPA, PDB, and policy
+ConfigMap.
 
-Grafana receives provisioned Prometheus and Tempo datasources plus a
-TelemetryForge dashboard.
+### Kubernetes production overlay
 
-Tempo uses local filesystem storage only for development.
+Adds:
 
-## Dashboard
+- API-key auth
+- secret-mounted key hashes
+- server-side dashboard read key
+- payload redaction
+- Kafka TLS/SCRAM
+- non-root/seccomp
+- disabled service-account token automount
+- authenticated metrics guidance
 
-The Next.js UI reads only Go APIs; it never connects directly to Kafka or
-PostgreSQL.
+See `docs/deployment/production-profile.md`.
 
-It displays:
+## Evidence-first future extensions
 
-- live telemetry/summary
-- frozen incidents
-- Cardinality Firewall findings
-- shadow-policy differences
-- replay history
-- cost simulation history
-
-Deep runtime metrics/traces live in Grafana/Tempo rather than duplicating a
-second observability query engine inside the Next.js app.
-
-## Kubernetes
-
-The Kustomize base contains:
-
-- gateway/worker/dashboard Deployments
-- Services
-- health/readiness probes
-- `/metrics` scrape annotations
-- HPA examples
-- PodDisruptionBudgets
-- policy ConfigMap
-- secret template
-
-The worker admin Service exposes port 8081 inside the cluster for operational
-scraping/readiness.
-
-Worker replica usefulness remains bounded by Kafka partition count.
-
-## Terraform
-
-The AWS Terraform foundation provisions networking and EKS compute.
-
-Kafka, TimescaleDB, Prometheus, Tempo, and other data services remain external
-contracts so organizations can use their approved managed/self-hosted
-platforms.
-
-## Performance methodology
-
-k6 scenarios are checked in for:
-
-- smoke
-- sustained ingress
-- bounded-backpressure behavior
-
-The repository does not advertise a throughput number until the result includes
-hardware/resources, Kafka/worker settings, request latency/error rate, maximum
-broker lag, and backlog-drain evidence.
-
-## v1.0 architecture target
-
-v1.0 should add the Evidence Graph and hardened security boundaries without
-weakening the existing replay/policy/durability guarantees.
+Any future AI explanation layer should consume Evidence Graph nodes/edges,
+reference its supporting evidence, and preserve contradictory evidence rather
+than replacing the graph with an opaque root-cause score.

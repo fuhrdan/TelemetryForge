@@ -7,130 +7,150 @@
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-1.46.0-425CC7?logo=opentelemetry&logoColor=white)](https://opentelemetry.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Distributed, event-driven telemetry control plane and observability gateway.**
+**OpenTelemetry-native telemetry control plane for incident evidence, policy
+safety, cardinality control, and replayable investigations.**
 
-TelemetryForge sits between applications and observability backends. It accepts
-telemetry, buffers it durably through Kafka, processes it with bounded Go
-workers, protects downstream systems from cardinality explosions, preserves
-full-fidelity incident evidence, and gives operators a safe place to replay
-production incidents and compare telemetry policy before changing live traffic.
+> **Current release:** `v1.0.0` — Evidence Graph, tenant isolation, scoped
+> authentication, response redaction, Kafka TLS/SASL, production deployment
+> profile, and complete incident-investigation workflow.
 
-> **Current release:** `v0.9.0` — Incident Replay, Telemetry Cost Simulator,
-> self-observability, broker-derived Kafka lag, and reproducible k6 methodology.
+TelemetryForge sits between applications and observability backends. It does
+not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
+backend. It controls telemetry **before** downstream cost, cardinality, policy,
+and evidence decisions become irreversible.
 
-## Why TelemetryForge is different
+## Signature capabilities
 
-TelemetryForge is not trying to replace Datadog, Grafana, Splunk, Honeycomb, or
-another observability backend. It focuses on the **telemetry control plane
-before those systems**.
+### Incident Flight Recorder
 
-Implemented differentiators:
+Keeps a rolling full-fidelity pre-policy telemetry buffer and freezes incident
+windows before retention removes them.
 
-- **Incident Flight Recorder** — keeps a rolling pre-policy, full-fidelity
-  telemetry window.
-- **Automatic Incident Capture** — freezes evidence when deterministic
-  latency/error thresholds cross.
-- **Cardinality Firewall** — detects dangerous label growth and can `allow`,
-  `drop_tag`, or `quarantine`.
-- **Policy-as-Code** — versioned JSON policy with strict validation.
-- **Shadow Pipeline** — evaluates candidate policy without changing active
-  telemetry behavior.
-- **Incident Replay** — re-runs frozen evidence through normalization and policy
-  without normal production side effects.
-- **Telemetry Cost Simulator** — compares sample bytes/series and monthly volume
-  projections before a policy is promoted.
-- **Evidence-first self-observability** — Prometheus metrics, OpenTelemetry
-  traces, broker-derived consumer lag, Grafana dashboards, and bounded labels.
+### Cardinality Firewall
 
-Still planned for `v1.0.0`:
+Uses bounded exact/HLL state to detect dangerous tag growth before it becomes
+downstream series explosion.
 
-- **Evidence Graph**
-- security/tenant hardening
-- production-grade runbooks and deployment profiles
-- replay/cost evidence integrated into a polished incident investigation flow
+Policy actions:
 
-See [ROADMAP.md](ROADMAP.md).
+```text
+allow
+drop_tag
+quarantine
+```
 
-## v0.9.0 architecture
+### Policy-as-Code + Shadow Pipeline
+
+Versioned JSON policy is validated at startup and in CI.
+
+A candidate shadow policy sees real traffic but never mutates the active event
+path.
+
+### Incident Replay
+
+Frozen production evidence can be re-evaluated through current/candidate policy
+without re-entering the normal production persistence path.
+
+Optional publication is restricted to:
+
+```text
+telemetry.replay
+telemetry.replay.*
+```
+
+### Telemetry Cost Simulator
+
+Compares baseline/active/shadow canonical bytes and exact sample-series shape.
+
+Dollar projections appear only when an operator explicitly provides a reviewed
+pricing model.
+
+### Evidence Graph
+
+Builds explainable incident relationships from captured evidence:
+
+- shared correlation ID;
+- shared trace ID;
+- source/time sequence;
+- latency-before-error;
+- deployment/change-before-error;
+- recovery evidence;
+- replay/cost-analysis artifacts.
+
+Edges are explicitly classified as:
+
+```text
+supporting
+contradicting
+related
+```
+
+TelemetryForge **does not claim temporal association proves root cause**.
+
+## v1 security boundary
+
+Production-oriented v1 adds:
+
+- API-key authentication using hash-only server configuration;
+- `ingest`, `read`, and `admin` scopes;
+- tenant identity derived from authentication, never trusted from client input;
+- tenant-scoped persistence, deduplication, incidents, policy state, replay,
+  cost simulation, and Evidence Graphs;
+- server-side Next.js dashboard credential proxy;
+- presentation-time tag/payload redaction;
+- Kafka TLS, optional mTLS, SASL PLAIN and SCRAM;
+- authenticated `/metrics` in production auth mode;
+- non-root/seccomp Kubernetes defaults and a production Kustomize overlay.
+
+Read:
+
+- [Authentication](docs/security/authentication.md)
+- [Tenant Isolation](docs/security/tenant-isolation.md)
+- [API Redaction](docs/security/redaction.md)
+- [Dashboard Proxy](docs/security/dashboard-proxy.md)
+- [Production Profile](docs/deployment/production-profile.md)
+
+## Architecture
 
 ```mermaid
 flowchart LR
-    A[Applications / Webhooks] --> G[Go Gateway]
-    G --> K[(Apache Kafka)]
-    K --> W[Go Worker Group]
+    A[Applications] --> G[Authenticated Go Gateway]
+    G --> K[(Kafka)]
+    K --> W[Bounded Worker Group]
 
     W --> F[Flight Recorder]
     F --> N[Normalizer]
     N --> CF[Cardinality Firewall]
-    CF --> P[Idempotent Persistence]
-    P --> T[(PostgreSQL + TimescaleDB)]
-    P --> D[Incident Detector]
+    CF --> DB[(TimescaleDB)]
+    CF -. candidate .-> SP[Shadow Policy]
 
-    CF -. same event .-> SP[Shadow Policy]
-    D --> I[(Frozen Incidents)]
-
+    DB --> I[Frozen Incidents]
     I --> R[Incident Replay]
-    R --> RR[(Replay Results)]
     I --> C[Cost Simulator]
-    C --> CR[(Cost Simulations)]
+    I --> EG[Evidence Graph]
 
-    W -->|terminal failure| DLQ[(telemetry.dlq)]
-    R -. explicit opt-in only .-> RK[(telemetry.replay)]
+    DB --> API[Tenant-scoped Query / SSE API]
+    R --> API
+    C --> API
+    EG --> API
+    API --> PX[Next.js Server Proxy]
+    PX --> UI[Browser Dashboard]
 
-    T --> API[Query / Summary / SSE API]
-    I --> API
-    RR --> API
-    CR --> API
-    API --> UI[Next.js Dashboard]
-
-    G --> PM[Prometheus Metrics]
+    G --> PM[Prometheus]
     W --> PM
-    G --> OT[OTLP Traces]
+    G --> OT[OpenTelemetry]
     W --> OT
-    OT --> OC[OpenTelemetry Collector]
+    OT --> OC[OTel Collector]
     OC --> TP[(Tempo)]
-    PM --> PR[(Prometheus)]
-    PR --> GF[Grafana]
+    PM --> GF[Grafana]
     TP --> GF
 ```
 
-For reliability and ownership guarantees, read
-[ARCHITECTURE.md](ARCHITECTURE.md).
-
-## Current capabilities
-
-| Area | Current behavior |
-|---|---|
-| Ingestion | Go HTTP API with versioned canonical envelope |
-| Durable handoff | Kafka acknowledgement before HTTP `202` |
-| Processing | Consumer groups, bounded workers, backpressure |
-| Delivery | At-least-once with contiguous per-partition commits and rebalance-safe poll batches |
-| Reliability | Classified retries, backoff/jitter, DLQ, idempotent persistence |
-| Persistence | PostgreSQL + TimescaleDB |
-| Incident evidence | 30-minute pre-policy Flight Recorder |
-| Incident capture | Manual and automatic freezing |
-| Cardinality | Fixed 16-hash exact window + bounded 64-register HLL |
-| Policy | Active JSON policy + candidate shadow policy |
-| Policy actions | `allow`, `drop_tag`, `quarantine` |
-| Incident Replay | Side-effect-free analysis by default; optional isolated `telemetry.replay*` output |
-| Cost simulation | Sample bytes/series + monthly volume; dollars only with explicit pricing |
-| Metrics | Low-cardinality Prometheus metrics for gateway/worker behavior |
-| Tracing | Sampled OpenTelemetry traces with Kafka Trace Context propagation |
-| Kafka lag | Broker-derived committed-offset versus end-offset lag |
-| Live UI | SSE operations dashboard plus incident/replay/cost/policy history |
-| Kubernetes | Kustomize base, probes, HPA, PDB, scrape annotations |
-| Terraform | AWS VPC + EKS foundation |
-| Load testing | Pinned k6 smoke, sustained, and backpressure scenarios |
-| Operations | `telemetryctl` incident/replay/cost/DLQ/dedup/policy commands |
+See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Quickstart
 
-Requirements:
-
-- Docker with Docker Compose
-- optional direct development: Go 1.27.1+ and Node.js 24 LTS
-
-Start the complete local stack:
+Local development intentionally keeps authentication disabled.
 
 ```bash
 docker compose up --build
@@ -139,158 +159,163 @@ docker compose up --build
 Open:
 
 ```text
-TelemetryForge UI: http://localhost:3000
-Gateway API:       http://localhost:8080
-Grafana:           http://localhost:3001
-Prometheus:        http://localhost:9090
-Tempo:             http://localhost:3200
+TelemetryForge: http://localhost:3000
+Gateway:        http://localhost:8080
+Grafana:        http://localhost:3001
+Prometheus:     http://localhost:9090
+Tempo:          http://localhost:3200
 ```
 
-Local Grafana credentials:
-
-```text
-admin / telemetryforge
-```
-
-Those credentials and the exposed observability ports are development-only.
-
-Generate normal traffic:
+Generate normal telemetry:
 
 ```bash
 make demo-traffic
 ```
 
-Trigger automatic incident capture:
+Generate the v1 investigation scenario:
 
 ```bash
-make demo-incident
+make demo-evidence
 ```
 
-Exercise the Cardinality Firewall:
+The evidence scenario emits:
+
+```text
+deployment marker
+   -> high latency
+   -> errors
+   -> recovery
+```
+
+Select the automatic incident in the dashboard to inspect the Evidence Graph.
+
+See [v1 Portfolio Demo](docs/demo/v1-portfolio-demo.md).
+
+## Authentication
+
+Production mode:
+
+```text
+TELEMETRYFORGE_AUTH_MODE=api_key
+TELEMETRYFORGE_API_KEYS_FILE=/run/secrets/api-keys.json
+```
+
+Example API-key document:
+
+```json
+{
+  "keys": [
+    {
+      "name": "checkout-ingest",
+      "sha256": "<sha256-of-raw-key>",
+      "tenant_id": "acme",
+      "scopes": ["ingest"]
+    }
+  ]
+}
+```
+
+Clients **must omit** `tenant_id` from the event envelope. The gateway assigns
+tenant identity from the authenticated key.
+
+## Evidence Graph
+
+API:
+
+```text
+GET /api/v1/incidents/{id}/evidence-graph
+```
+
+CLI:
 
 ```bash
-make demo-cardinality
+go run ./cmd/telemetryctl incident graph \
+  --id <INCIDENT_ID> \
+  --tenant default
 ```
 
-## Incident Replay
+The graph stores its relationship basis and contradictory evidence rather than
+reducing the incident to a single unsupported "root cause."
 
-Replay a frozen incident through the active and shadow policies:
+## Replay and cost analysis
 
 ```bash
 go run ./cmd/telemetryctl incident replay \
-  --id INC-2026-0042 \
-  --policy policies/active.json \
-  --shadow-policy policies/shadow.json
-```
+  --id <INCIDENT_ID> \
+  --tenant default
 
-Default replay is **analysis-only**. It does not write to the primary telemetry
-table, Flight Recorder, or production ingestion topics.
-
-Optional Kafka publication requires an explicit isolated replay namespace:
-
-```bash
-go run ./cmd/telemetryctl incident replay \
-  --id INC-2026-0042 \
-  --publish-topic telemetry.replay.policy-test
-```
-
-The replay library and CLI both reject production ingest topics.
-
-Read [Incident Replay](docs/incidents/replay.md).
-
-## Telemetry Cost Simulator
-
-Compare the frozen incident sample before/after policy:
-
-```bash
 go run ./cmd/telemetryctl cost simulate \
-  --incident INC-2026-0042 \
-  --policy policies/active.json \
-  --shadow-policy policies/shadow.json
+  --incident <INCIDENT_ID> \
+  --tenant default
 ```
-
-Without pricing inputs, TelemetryForge reports measurable telemetry effects:
-
-- sample canonical JSON bytes
-- exact distinct sample series
-- active/shadow changed events
-- projected monthly volume
-
-It **does not invent a dollar figure**.
-
-Dollar estimates require an explicitly reviewed pricing JSON file:
-
-```bash
-go run ./cmd/telemetryctl cost simulate \
-  --incident INC-2026-0042 \
-  --pricing pricing/my-reviewed-model.json
-```
-
-The checked-in [`pricing/example.json`](pricing/example.json) intentionally uses
-zero prices.
-
-Read [Telemetry Cost Simulator](docs/cost/cost-simulator.md).
 
 ## Self-observability
 
-Gateway metrics:
+Gateway:
 
 ```text
-GET http://localhost:8080/metrics
+GET :8080/metrics
 ```
 
-Worker metrics:
+Worker:
 
 ```text
-GET http://localhost:8081/metrics
+GET :8081/metrics
 ```
 
-The local stack provisions:
+In `api_key` mode `/metrics` requires an `admin` credential.
 
-- Prometheus 3.13.3
-- Grafana 13.2.1
-- OpenTelemetry Collector 0.160.0
-- Tempo 3.0.2
+Kafka lag is broker-derived from committed group offsets versus broker end
+offsets.
 
-Prometheus labels deliberately avoid event IDs, incident IDs, correlation IDs,
-arbitrary source names, raw URL paths, and arbitrary telemetry tags.
-
-HTTP metrics use registered route patterns such as:
+OpenTelemetry Trace Context propagates through Kafka headers, connecting:
 
 ```text
-GET /api/v1/incidents/{id}/events
+HTTP request -> Kafka publish -> worker.process -> worker.stage
 ```
 
-rather than the raw incident ID.
+## Production Kubernetes profile
 
-Trace Context/Baggage is propagated through Kafka record headers so an ingest
-request can be followed into worker processing.
+Base:
 
-Read:
+```bash
+kubectl kustomize deployments/kubernetes/base
+```
 
-- [Self-observability](docs/observability/self-observability.md)
-- [Metrics catalog](docs/observability/metrics.md)
-- [Tracing](docs/observability/tracing.md)
+Production overlay:
 
-## Real Kafka consumer lag
+```bash
+kubectl kustomize deployments/kubernetes/overlays/production
+```
 
-`telemetryforge_kafka_consumer_lag` is broker-derived group lag:
+The overlay turns on:
+
+- API-key auth
+- payload redaction
+- Kafka TLS/SCRAM
+- secret-mounted API-key hashes
+- server-side dashboard read credential
+- authenticated metrics model
+
+See [Production Profile](docs/deployment/production-profile.md).
+
+## Terraform
+
+AWS EKS foundation:
 
 ```text
-broker end offset - committed consumer-group offset
+infra/terraform/aws/
 ```
 
-It is not the old local fetch-size estimate.
+Current project baseline:
 
-The worker queries Kafka independently of the main processing loop every 15
-seconds and exposes partition and total lag to Prometheus/Grafana.
+```text
+Terraform 1.16.2
+AWS provider 6.62.0
+EKS Kubernetes 1.36
+```
 
-See ADR 0020 in [`docs/adr/`](docs/adr/).
-
-## k6 load methodology
-
-The repository includes reproducible scenarios but **no manufactured benchmark
-number**.
+## k6 methodology
 
 ```bash
 make load-smoke
@@ -298,231 +323,72 @@ make load-sustained
 make load-backpressure
 ```
 
-Override the sustained/backpressure defaults:
+TelemetryForge intentionally does not publish a universal throughput number
+without a checked-in environment/result artifact.
 
-```bash
-RATE=250 DURATION=5m make load-sustained
-```
+See [Benchmark Methodology](docs/performance/benchmark-methodology.md).
 
-The backpressure scenario is intended to make Kafka lag visible on modest
-development hardware.
+## Operations
 
-Before publishing a performance result, record the environment, worker count,
-partition count, queue capacity, HTTP latency/error rate, maximum broker lag,
-and whether the backlog drains after load stops.
+Upgrade:
 
-Read [Benchmark Methodology](docs/performance/benchmark-methodology.md).
+[Upgrade to v1.0.0](docs/operations/upgrade-v1.md)
 
-## Policy-as-Code
+Rollback:
 
-Active:
+[v1.0.0 Rollback Runbook](docs/operations/rollback-v1.md)
 
-```text
-policies/active.json
-```
+CLI:
 
-Candidate:
-
-```text
-policies/shadow.json
-```
-
-Validate:
-
-```bash
-go run ./cmd/telemetryctl policy validate \
-  --file policies/active.json
-```
-
-The shadow policy never mutates the active event path.
-
-Read:
-
-- [Cardinality Firewall](docs/policy/cardinality-firewall.md)
-- [Policy-as-Code](docs/policy/policy-as-code.md)
-- [Shadow Pipeline](docs/policy/shadow-pipeline.md)
-
-## Kubernetes
-
-Render:
-
-```bash
-kubectl kustomize deployments/kubernetes/base
-```
-
-The base includes:
-
-- gateway/worker/dashboard Deployments and Services
-- gateway/worker `/metrics` scrape annotations
-- dependency-aware readiness probes
-- liveness probes
-- HPA examples
-- PodDisruptionBudgets
-- policy ConfigMap
-- Secret template
-- example Ingress
-
-The example worker HPA is capped against useful Kafka partition concurrency.
-
-See [Kubernetes deployment](docs/deployment/kubernetes.md).
-
-## Terraform
-
-AWS foundation:
-
-```text
-infra/terraform/aws/
-```
-
-Validate:
-
-```bash
-terraform -chdir=infra/terraform/aws init -backend=false
-terraform -chdir=infra/terraform/aws validate
-```
-
-Current project baseline:
-
-- Terraform 1.16.2
-- AWS provider 6.62.0
-- EKS Kubernetes 1.36
-
-See [Terraform deployment](docs/deployment/terraform.md).
-
-## API additions in v0.9.0
-
-Replay history:
-
-```text
-GET /api/v1/replays?limit=100
-```
-
-Cost simulation history:
-
-```text
-GET /api/v1/cost-simulations?limit=100
-```
-
-Metrics:
-
-```text
-GET /metrics
-```
-
-The complete API map is in
-[docs/api/http-api.md](docs/api/http-api.md).
-
-## Documentation
-
-Start with [`docs/README.md`](docs/README.md).
-
-Particularly useful for v0.9.0:
-
-- [Architecture](ARCHITECTURE.md)
-- [Incident Replay](docs/incidents/replay.md)
-- [Telemetry Cost Simulator](docs/cost/cost-simulator.md)
-- [Self-observability](docs/observability/self-observability.md)
-- [Prometheus Metrics](docs/observability/metrics.md)
-- [OpenTelemetry Tracing](docs/observability/tracing.md)
-- [Benchmark Methodology](docs/performance/benchmark-methodology.md)
-- [Kafka Delivery Semantics](docs/kafka/delivery-semantics.md)
-- [Cardinality Firewall](docs/policy/cardinality-firewall.md)
-- [Configuration Reference](docs/reference/configuration.md)
-- [Testing Strategy](docs/development/testing.md)
-- [Troubleshooting](docs/operations/troubleshooting.md)
-
-Architecture decisions live under [`docs/adr/`](docs/adr/).
+[telemetryctl](docs/operations/telemetryctl.md)
 
 ## Repository layout
 
 ```text
 cmd/                         gateway, worker, telemetryctl
-dashboard/                   Next.js operations UI
+dashboard/                   Next.js dashboard + server-side API proxy
 internal/api/                REST + SSE
 internal/costsim/            Telemetry Cost Simulator
-internal/domain/             canonical telemetry envelope
+internal/domain/             canonical tenant-aware envelope
+internal/evidence/           Evidence Graph
 internal/health/             worker health/readiness
-internal/incident/           automatic incident capture
-internal/observability/      Prometheus + OpenTelemetry instrumentation
-internal/policy/             Cardinality Firewall + active/shadow policy
-internal/reliability/        retry/error classification
+internal/incident/           automatic incident detection
+internal/observability/      Prometheus/OpenTelemetry
+internal/policy/             Cardinality Firewall + shadow policy
+internal/reliability/        retries/error classification
 internal/replay/             isolated Incident Replay
+internal/security/           auth, tenant context, redaction
 internal/storage/            PostgreSQL/TimescaleDB
-internal/stream/             Kafka producer/consumer/lag/offset coordination
+internal/stream/             Kafka producer/consumer/TLS/SASL/lag
 internal/worker/             bounded processing pipeline
 
-deployments/observability/   Prometheus/Grafana/Tempo/Collector configs
-deployments/kubernetes/      Kustomize deployment base
-infra/terraform/aws/         Terraform EKS foundation
-load/k6/                     reproducible load scenarios
-migrations/                  idempotent SQL migrations
+deployments/kubernetes/      base + production overlay
+deployments/observability/   Prometheus/Grafana/Tempo/Collector
+infra/terraform/aws/         EKS foundation
+load/k6/                     reproducible load methodology
+migrations/                  schema migrations
 policies/                    active/shadow policy-as-code
-pricing/                     explicit cost-model examples
-scripts/                     demos and repository checks
-tests/integration/           Kafka/TimescaleDB integration tests
-docs/                        human-readable engineering documentation
+pricing/                     explicit cost assumptions
+security/                    hash-only demo API-key document
+docs/                        human-readable engineering docs
 ```
-
-## Validation
-
-Backend:
-
-```bash
-make check
-```
-
-Documentation:
-
-```bash
-make docs-check
-```
-
-Policy:
-
-```bash
-make policy-check
-```
-
-Kubernetes:
-
-```bash
-make k8s-render
-```
-
-Terraform:
-
-```bash
-make terraform-check
-```
-
-Load harness:
-
-```bash
-make load-smoke
-```
-
-CI additionally validates observability configuration, inspects all checked-in
-k6 scenarios, runs Kafka/TimescaleDB integration tests, builds the dashboard,
-and builds both containers.
 
 ## Security status
 
-TelemetryForge remains pre-1.0. The local observability stack, replay tooling,
-and metrics endpoints add administrative surfaces that must not be exposed
-blindly to untrusted networks.
+v1.0.0 closes the major portfolio security gaps, but no repository can make a
+deployment "secure" without the environment around it.
 
-Authentication, tenant isolation, production Kafka TLS/SASL configuration,
-full PII redaction, and hardened observability access remain v1.0 work.
+Operators remain responsible for:
+
+- HTTPS/ingress TLS;
+- broker/database network controls;
+- secret-manager policy;
+- PostgreSQL backup/access policy;
+- Prometheus/Grafana/Tempo authentication;
+- tenant-specific legal/PII requirements;
+- production key rotation.
 
 See [SECURITY.md](SECURITY.md).
-
-## Performance claims
-
-v0.9.0 includes a reproducible methodology and instrumentation required to
-measure performance.
-
-It intentionally **does not publish a throughput claim** without a checked-in
-environment description and result artifact.
 
 ## License
 

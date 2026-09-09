@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/security"
 )
 
 const defaultMaxTrackedSources = 10000
@@ -93,13 +94,16 @@ func NewDetector(freezer Freezer, config Config) *Detector {
 func (detector *Detector) Observe(ctx context.Context, event domain.Event) error {
 	now := time.Now().UTC()
 
+	tenantCtx := security.WithTenant(ctx, event.TenantID)
+	sourceKey := event.TenantID + "|" + event.Source
+
 	if reason, ok := detector.latencyBreach(event); ok {
-		return detector.trigger(ctx, event.Source, reason, now)
+		return detector.trigger(tenantCtx, sourceKey, event.Source, reason, now)
 	}
 
 	if isError(event) {
-		if reason, ok := detector.recordError(event.Source, now); ok {
-			return detector.trigger(ctx, event.Source, reason, now)
+		if reason, ok := detector.recordError(sourceKey, now); ok {
+			return detector.trigger(tenantCtx, sourceKey, event.Source, reason, now)
 		}
 	}
 
@@ -161,9 +165,15 @@ func (detector *Detector) recordError(source string, now time.Time) (string, boo
 	), true
 }
 
-func (detector *Detector) trigger(ctx context.Context, source, reason string, now time.Time) error {
+func (detector *Detector) trigger(
+	ctx context.Context,
+	sourceKey string,
+	displaySource string,
+	reason string,
+	now time.Time,
+) error {
 	category := reasonCategory(reason)
-	key := source + "|" + category
+	key := sourceKey + "|" + category
 
 	detector.mu.Lock()
 	detector.pruneExpiredTriggersLocked(now)
@@ -189,10 +199,10 @@ func (detector *Detector) trigger(ctx context.Context, source, reason string, no
 	incidentID := fmt.Sprintf(
 		"AUTO-%d-%s-%s",
 		now.UnixMilli(),
-		slug(source),
+		slug(displaySource),
 		category,
 	)
-	title := fmt.Sprintf("Automatic incident: %s", source)
+	title := fmt.Sprintf("Automatic incident: %s", displaySource)
 	from := now.Add(-detector.config.FreezeLookback)
 
 	if _, err := detector.freezer.FreezeIncident(ctx, incidentID, title, from, now); err != nil {

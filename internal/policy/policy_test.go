@@ -131,6 +131,7 @@ func TestTrackerStateIsBounded(t *testing.T) {
 	tracker := NewTracker(3)
 	for index := 0; index < 20; index++ {
 		tracker.Observe(
+			"tenant-a",
 			"source",
 			"metric",
 			string(rune('a'+index)),
@@ -216,5 +217,24 @@ func TestEvaluateAtUsesExplicitObservationTimeline(t *testing.T) {
 
 	if len(recorder.findings) == 0 {
 		t.Fatal("expected explicit replay timeline to permit projected-cardinality finding")
+	}
+}
+
+func TestCardinalityStateIsTenantIsolated(t *testing.T) {
+	tracker := NewTracker(100)
+	now := time.Now().UTC()
+
+	alpha, _, _, _, _ := tracker.Observe(
+		"alpha", "checkout", "request.duration", "request_id", "same-id", now,
+	)
+	beta, _, _, _, _ := tracker.Observe(
+		"beta", "checkout", "request.duration", "request_id", "different-id", now,
+	)
+
+	if alpha != 1 || beta != 1 {
+		t.Fatalf("tenant counts alpha=%d beta=%d, want 1/1", alpha, beta)
+	}
+	if len(tracker.states) != 2 {
+		t.Fatalf("tracked states=%d, want separate state per tenant", len(tracker.states))
 	}
 }

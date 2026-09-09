@@ -46,3 +46,17 @@ Future capabilities may justify separate topics such as:
 They should not be created until their delivery, retention, and ownership
 semantics are implemented and documented. Creating speculative topics early
 would make the architecture look more complete than it actually is.
+
+
+## v1 tenant-aware partition key
+
+Normal telemetry records use:
+
+```text
+tenant_id | source
+```
+
+as the Kafka record key.
+
+This preserves ordering for one source inside one tenant while keeping two
+tenants with the same service name logically distinct.

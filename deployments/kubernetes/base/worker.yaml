@@ -21,10 +21,14 @@ spec:
         app.kubernetes.io/name: telemetryforge-worker
         app.kubernetes.io/part-of: telemetryforge
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       terminationGracePeriodSeconds: 45
       containers:
         - name: worker
-          image: ghcr.io/fuhrdan/telemetryforge:v0.8.0
+          image: ghcr.io/fuhrdan/telemetryforge:v1.0.0
           imagePullPolicy: IfNotPresent
           command: ["/usr/local/bin/telemetryforge-worker"]
           ports:
@@ -61,6 +65,7 @@ spec:
               cpu: "2"
               memory: 1Gi
           securityContext:
+            runAsNonRoot: true
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
@@ -76,6 +81,8 @@ kind: Service
 metadata:
   name: worker-admin
   namespace: telemetryforge
+  labels:
+    app.kubernetes.io/name: telemetryforge-worker
 spec:
   selector:
     app.kubernetes.io/name: telemetryforge-worker

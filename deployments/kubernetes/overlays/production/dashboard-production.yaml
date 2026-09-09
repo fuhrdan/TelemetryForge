@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: telemetryforge
+spec:
+  template:
+    spec:
+      containers:
+        - name: dashboard
+          env:
+            - name: TELEMETRYFORGE_API_BASE
+              value: "http://gateway.telemetryforge.svc.cluster.local:8080"
+            - name: TELEMETRYFORGE_DASHBOARD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: telemetryforge-dashboard-auth
+                  key: api-key

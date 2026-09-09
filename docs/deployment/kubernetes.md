@@ -107,3 +107,26 @@ production recommendations.
 
 They exist so scheduling/HPA behavior is explicit. v0.9.0 load testing will
 produce measured sizing guidance.
+
+
+## Production overlay
+
+v1.0.0 adds:
+
+```text
+deployments/kubernetes/overlays/production/
+```
+
+Render:
+
+```bash
+kubectl kustomize deployments/kubernetes/overlays/production
+```
+
+The overlay enables API-key authentication, payload redaction, Kafka
+TLS/SCRAM, and secret-mounted credentials.
+
+It also disables anonymous scrape annotations because `/metrics` requires
+`admin` when authentication is enabled.
+
+See [Production Profile](production-profile.md).

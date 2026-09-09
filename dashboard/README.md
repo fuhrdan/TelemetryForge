@@ -1,7 +1,7 @@
 # TelemetryForge Dashboard
 
-**Package version:** `0.9.0`
-**Release:** `v0.9.0`
+**Package version:** `1.0.0`
+**Release:** `v1.0.0`
 
 The dashboard is intentionally small and readable.
 
@@ -75,3 +75,19 @@ The dashboard now also renders:
 
 Deep runtime metrics/traces live in the provisioned Grafana dashboard on
 `http://localhost:3001`.
+
+
+## v1.0.0 additions
+
+- Evidence Graph investigation surface
+- supporting/contradicting evidence and hypotheses
+- server-side authenticated `/telemetry-api/*` proxy
+
+Production runtime settings:
+
+```text
+TELEMETRYFORGE_API_BASE
+TELEMETRYFORGE_DASHBOARD_API_KEY
+```
+
+The raw dashboard key remains server-side and should have `read` scope only.

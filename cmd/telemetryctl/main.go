@@ -17,9 +17,11 @@ import (
 
 	"github.com/fuhrdan/TelemetryForge/internal/costsim"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/evidence"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
+	"github.com/fuhrdan/TelemetryForge/internal/security"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
 )
@@ -40,6 +42,10 @@ func main() {
 			}
 		case "replay":
 			if err := incidentReplay(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "graph":
+			if err := incidentGraph(ctx, os.Args[3:]); err != nil {
 				exitErr(err)
 			}
 		default:
@@ -91,9 +97,11 @@ func incidentFreeze(ctx context.Context, args []string) error {
 	fromRaw := set.String("from", "", "RFC3339 capture-window start")
 	toRaw := set.String("to", "", "RFC3339 capture-window end")
 	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
 	if err := set.Parse(args); err != nil {
 		return err
 	}
+	ctx = security.WithTenant(ctx, *tenant)
 
 	from, err := time.Parse(time.RFC3339, *fromRaw)
 	if err != nil {
@@ -154,6 +162,7 @@ func dlqReplay(ctx context.Context, args []string) error {
 	publisher, err := stream.NewKafkaPublisher(stream.KafkaConfig{
 		Brokers:  splitCSV(*brokersRaw),
 		ClientID: "telemetryctl-replay",
+		Security: stream.KafkaSecurityFromEnv(),
 	}, logging.New())
 	if err != nil {
 		return err
@@ -171,9 +180,11 @@ func dedupPrune(ctx context.Context, args []string) error {
 	set := flag.NewFlagSet("dedup prune", flag.ContinueOnError)
 	olderThan := set.Duration("older-than", 35*24*time.Hour, "minimum age to remove")
 	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
 	if err := set.Parse(args); err != nil {
 		return err
 	}
+	ctx = security.WithTenant(ctx, *tenant)
 	if *olderThan < 30*24*time.Hour {
 		return errors.New("--older-than must be at least 30 days")
 	}
@@ -201,9 +212,11 @@ func incidentReplay(ctx context.Context, args []string) error {
 	maxEvents := set.Int("max-events", 10000, "maximum frozen events to replay")
 	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
 	brokersRaw := set.String("brokers", env("TELEMETRYFORGE_KAFKA_BROKERS", "localhost:9092"), "Kafka brokers used only with --publish-topic")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
 	if err := set.Parse(args); err != nil {
 		return err
 	}
+	ctx = security.WithTenant(ctx, *tenant)
 	if strings.TrimSpace(*incidentID) == "" {
 		return errors.New("--id is required")
 	}
@@ -235,6 +248,7 @@ func incidentReplay(ctx context.Context, args []string) error {
 		}
 		publisher, err = stream.NewKafkaPublisher(stream.KafkaConfig{
 			Brokers: splitCSV(*brokersRaw), ClientID: "telemetryctl-incident-replay",
+			Security: stream.KafkaSecurityFromEnv(),
 		}, logging.New())
 		if err != nil {
 			return err
@@ -265,9 +279,11 @@ func costSimulate(ctx context.Context, args []string) error {
 	pricingFile := set.String("pricing", "", "optional pricing JSON; omit for volume/series-only simulation")
 	maxEvents := set.Int("max-events", 10000, "maximum frozen events to simulate")
 	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
 	if err := set.Parse(args); err != nil {
 		return err
 	}
+	ctx = security.WithTenant(ctx, *tenant)
 	if strings.TrimSpace(*incidentID) == "" {
 		return errors.New("--incident is required")
 	}
@@ -309,6 +325,53 @@ func costSimulate(ctx context.Context, args []string) error {
 	return nil
 }
 
+func incidentGraph(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("incident graph", flag.ContinueOnError)
+	incidentID := set.String("id", "", "frozen incident identifier")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	maxEvents := set.Int("max-events", 1000, "maximum frozen events to include")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*incidentID) == "" {
+		return errors.New("--id is required")
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	events, err := store.IncidentEvents(ctx, *incidentID, *maxEvents)
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		return fmt.Errorf("incident %q not found or contains no events for tenant %q", *incidentID, *tenant)
+	}
+
+	runs, err := store.ListReplayRuns(ctx, 200)
+	if err != nil {
+		return err
+	}
+	simulations, err := store.ListCostSimulations(ctx, 200)
+	if err != nil {
+		return err
+	}
+
+	graph := evidence.Build(*tenant, *incidentID, events, runs, simulations)
+	if err := store.SaveEvidenceGraph(ctx, graph); err != nil {
+		return err
+	}
+
+	payload, _ := json.MarshalIndent(graph, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
 func policyValidate(args []string) error {
 	set := flag.NewFlagSet("policy validate", flag.ContinueOnError)
 	file := set.String("file", "", "policy JSON file")
@@ -338,8 +401,9 @@ func policyValidate(args []string) error {
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   telemetryctl incident freeze --id INC-42 --title "Checkout latency" --from <RFC3339> --to <RFC3339>
-  telemetryctl incident replay --id INC-42 [--policy policies/active.json] [--shadow-policy policies/shadow.json]
-  telemetryctl cost simulate --incident INC-42 [--pricing pricing/vendor.json]
+  telemetryctl incident replay --id INC-42 [--tenant default] [--policy policies/active.json] [--shadow-policy policies/shadow.json]
+  telemetryctl incident graph --id INC-42 [--tenant default]
+  telemetryctl cost simulate --incident INC-42 [--tenant default] [--pricing pricing/vendor.json]
   telemetryctl dlq replay --file dead-letter.json [--topic telemetry.raw]
   telemetryctl dedup prune [--older-than 840h]
   telemetryctl policy validate --file policies/active.json`)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/security"
 )
 
 // Summary is the compact operational snapshot shown at the top of the
@@ -40,7 +41,7 @@ type LiveRecord struct {
 	IngestedAt time.Time
 }
 
-// DashboardReader is the extra read contract used by the v0.6.0 UI.
+// DashboardReader is the tenant-scoped read contract used by the operations UI.
 type DashboardReader interface {
 	Reader
 	Summary(ctx context.Context, window time.Duration) (Summary, error)
@@ -51,9 +52,9 @@ type DashboardReader interface {
 
 // Summary aggregates recent stored telemetry.
 //
-// Error identification deliberately uses a small, documented convention for
-// v0.6.0: event types containing "error" or tags with severity/error values.
-// Later schema/policy releases will make this configurable per source.
+// Error identification deliberately uses a small, documented convention:
+// event types containing "error" or tags with severity/error values. A future
+// incident-policy revision can make this configurable per source.
 func (store *PostgresStore) Summary(ctx context.Context, window time.Duration) (Summary, error) {
 	if window <= 0 {
 		window = 5 * time.Minute
@@ -84,8 +85,9 @@ func (store *PostgresStore) Summary(ctx context.Context, window time.Duration) (
 				0
 			)::double precision
 		FROM telemetry_events
-		WHERE event_time >= now() - ($1 * interval '1 second')`,
-		summary.WindowSeconds,
+		WHERE tenant_id = $1
+		  AND event_time >= now() - ($2 * interval '1 second')`,
+		security.TenantID(ctx), summary.WindowSeconds,
 	).Scan(&summary.Events, &summary.ActiveSources, &summary.ErrorCount, &summary.P95LatencyMS)
 	if err != nil {
 		return Summary{}, fmt.Errorf("query dashboard summary: %w", err)
@@ -117,11 +119,14 @@ func (store *PostgresStore) ListIncidents(ctx context.Context, limit int) ([]Inc
 		       i.detected_at,
 		       COUNT(DISTINCT e.event_id)::bigint
 		  FROM incidents i
-		  LEFT JOIN incident_events e ON e.incident_id = i.incident_id
+		  LEFT JOIN incident_events e
+		    ON e.incident_id = i.incident_id
+		   AND e.tenant_id = i.tenant_id
+		 WHERE i.tenant_id = $1
 		 GROUP BY i.incident_id, i.title, i.status, i.trigger_reason,
 		          i.frozen_from, i.frozen_to, i.detected_at
 		 ORDER BY i.detected_at DESC
-		 LIMIT $1`, limit)
+		 LIMIT $2`, security.TenantID(ctx), limit)
 	if err != nil {
 		return nil, fmt.Errorf("query incidents: %w", err)
 	}
@@ -154,10 +159,11 @@ func (store *PostgresStore) ListIncidents(ctx context.Context, limit int) ([]Inc
 func (store *PostgresStore) AnnotateIncident(ctx context.Context, incidentID, reason string) error {
 	_, err := store.pool.Exec(ctx, `
 		UPDATE incidents
-		   SET trigger_reason = $2,
+		   SET trigger_reason = $3,
 		       detected_at = now()
-		 WHERE incident_id = $1`,
-		incidentID, reason)
+		 WHERE tenant_id = $1
+		   AND incident_id = $2`,
+		security.TenantID(ctx), incidentID, reason)
 	if err != nil {
 		return fmt.Errorf("annotate incident: %w", err)
 	}
@@ -176,12 +182,13 @@ func (store *PostgresStore) IncidentEvents(ctx context.Context, incidentID strin
 			SELECT DISTINCT ON (event_id)
 			       event_id, event_time, captured_at, envelope
 			  FROM incident_events
-			 WHERE incident_id = $1
+			 WHERE tenant_id = $1
+			   AND incident_id = $2
 			 ORDER BY event_id, captured_at ASC
 		  ) AS captured
 		 ORDER BY event_time ASC, event_id ASC
-		 LIMIT $2`,
-		incidentID, limit)
+		 LIMIT $3`,
+		security.TenantID(ctx), incidentID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query incident events: %w", err)
 	}
@@ -196,6 +203,9 @@ func (store *PostgresStore) IncidentEvents(ctx context.Context, incidentID strin
 		var event domain.Event
 		if err := json.Unmarshal(raw, &event); err != nil {
 			return nil, fmt.Errorf("decode incident envelope: %w", err)
+		}
+		if event.TenantID == "" {
+			event.TenantID = security.TenantID(ctx)
 		}
 		events = append(events, event)
 	}
@@ -216,14 +226,15 @@ func (store *PostgresStore) LiveEvents(ctx context.Context, after time.Time, aft
 	}
 
 	rows, err := store.pool.Query(ctx, `
-		SELECT event_id, source, event_type, event_time, tags, payload,
+		SELECT tenant_id, event_id, source, event_type, event_time, tags, payload,
 		       metric_value, COALESCE(metric_unit, ''), schema_version,
 		       COALESCE(correlation_id, ''), ingested_at
 		  FROM telemetry_events
-		 WHERE (ingested_at, event_id) > ($1, $2)
+		 WHERE tenant_id = $1
+		   AND (ingested_at, event_id) > ($2, $3)
 		 ORDER BY ingested_at ASC, event_id ASC
-		 LIMIT $3`,
-		after.UTC(), afterID, limit)
+		 LIMIT $4`,
+		security.TenantID(ctx), after.UTC(), afterID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query live telemetry: %w", err)
 	}
@@ -235,6 +246,7 @@ func (store *PostgresStore) LiveEvents(ctx context.Context, after time.Time, aft
 		var tags []byte
 		var payload []byte
 		if err := rows.Scan(
+			&record.Event.TenantID,
 			&record.Event.ID,
 			&record.Event.Source,
 			&record.Event.Type,

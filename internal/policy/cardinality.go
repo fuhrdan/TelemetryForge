@@ -16,6 +16,7 @@ const (
 
 // Finding is one cardinality observation worth surfacing operationally.
 type Finding struct {
+	TenantID         string    `json:"tenant_id,omitempty"`
 	PolicyName       string    `json:"policy_name"`
 	PolicyVersion    string    `json:"policy_version"`
 	Mode             string    `json:"mode"`
@@ -34,6 +35,7 @@ type Finding struct {
 // dimensionKey identifies one source/event/tag stream without retaining a raw
 // dimension value.
 type dimensionKey struct {
+	tenant    string
 	source    string
 	eventType string
 	dimension string
@@ -82,10 +84,12 @@ func NewTracker(maxDimensions int) *Tracker {
 // scaled by elapsed time up to a one-hour horizon. It is a warning heuristic,
 // not a billing forecast.
 func (tracker *Tracker) Observe(
-	source, eventType, dimension, value string,
+	tenant, source, eventType, dimension, value string,
 	now time.Time,
 ) (observed, projected uint64, firstSeen, lastSeen time.Time, fingerprint string) {
-	key := dimensionKey{source: source, eventType: eventType, dimension: dimension}
+	key := dimensionKey{
+		tenant: tenant, source: source, eventType: eventType, dimension: dimension,
+	}
 	hash := hashValue(value)
 
 	tracker.mu.Lock()

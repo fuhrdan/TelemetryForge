@@ -21,6 +21,7 @@ type Recorder interface {
 
 // Diff captures an active-versus-shadow policy disagreement.
 type Diff struct {
+	TenantID      string    `json:"tenant_id,omitempty"`
 	ObservedAt    time.Time `json:"observed_at"`
 	Source        string    `json:"source"`
 	EventType     string    `json:"event_type"`
@@ -51,6 +52,7 @@ type Engine struct {
 }
 
 type reportKey struct {
+	tenant    string
 	mode      string
 	source    string
 	eventType string
@@ -189,6 +191,7 @@ func (engine *Engine) EvaluateAt(
 				engine.shouldReportDiff(event, dimension, shadowAction, now) {
 				reason := "shadow policy would change the active action"
 				if err := engine.recorder.RecordPolicyDiff(ctx, Diff{
+					TenantID:      event.TenantID,
 					ObservedAt:    now,
 					Source:        event.Source,
 					EventType:     event.Type,
@@ -237,6 +240,7 @@ func (engine *Engine) evaluate(
 ) *Finding {
 	threshold, action, dangerous := policy.Decision(event.Source, event.Type, dimension)
 	observed, projected, firstSeen, lastSeen, fingerprint := tracker.Observe(
+		event.TenantID,
 		event.Source,
 		event.Type,
 		dimension,
@@ -275,6 +279,7 @@ func (engine *Engine) evaluate(
 	}
 
 	return &Finding{
+		TenantID:         event.TenantID,
 		PolicyName:       policy.Name,
 		PolicyVersion:    policy.Version,
 		Mode:             mode,
@@ -317,6 +322,7 @@ func IsQuarantined(event domain.Event) bool {
 
 func (engine *Engine) shouldReport(finding Finding, now time.Time) bool {
 	key := reportKey{
+		tenant:    finding.TenantID,
 		mode:      finding.Mode,
 		source:    finding.Source,
 		eventType: finding.EventType,
@@ -333,6 +339,7 @@ func (engine *Engine) shouldReportDiff(
 	now time.Time,
 ) bool {
 	return engine.reserveReport(reportKey{
+		tenant:    event.TenantID,
 		mode:      "diff",
 		source:    event.Source,
 		eventType: event.Type,

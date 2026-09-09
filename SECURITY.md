@@ -1,139 +1,128 @@
 # Security Policy
 
-## v0.9.0 security posture
+## v1.0.0 security posture
 
-TelemetryForge v0.9.0 has strong durability/policy/replay boundaries, but it is
-still a pre-1.0 engineering/portfolio release rather than a fully hardened
-Internet-facing multi-tenant service.
+v1.0.0 implements the major application-level portfolio security boundaries:
 
-Not yet implemented end to end:
+- scoped API-key authentication
+- authentication-derived tenant identity
+- tenant-scoped storage and in-memory policy state
+- server-side dashboard credentials
+- read/export redaction
+- Kafka TLS/mTLS/SASL
+- protected metrics in authenticated mode
+- hardened Kubernetes pod defaults
+- production deployment overlay
 
-- ingestion/dashboard authentication
-- tenant isolation and authorization
-- production Kafka TLS/SASL profiles
-- production secret-manager integration
-- full PII classification/redaction
-- per-tenant policy/retention
-- hardened observability authentication
-- Kubernetes NetworkPolicy/service-mesh controls
-- signed policy/pricing bundles
+Security still depends on the deployment around the application.
 
-## Incident Replay safety
+## Authentication
 
-Replay is analysis-only by default.
-
-It does not write to:
-
-- primary telemetry storage
-- Flight Recorder
-- automatic incident capture
-- production Kafka ingest topics
-
-Optional Kafka output is restricted by both the replay library and
-`telemetryctl` to:
+Production should use:
 
 ```text
-telemetry.replay
-telemetry.replay.<suffix>
+TELEMETRYFORGE_AUTH_MODE=api_key
 ```
 
-No normal checked-in worker consumes that namespace.
+The API-key document stores SHA-256 digests only.
 
-A future connector must preserve this isolation rather than treating replay
-records as ordinary production telemetry.
+Scopes:
 
-## Cost pricing input
+```text
+ingest
+read
+admin
+```
 
-Pricing JSON is operational/configuration input, not trusted telemetry.
+`admin` implies all scopes.
 
-Dollar projections occur only with explicit non-zero pricing fields and a
-currency.
+The raw dashboard read key belongs only in the dashboard server secret.
 
-Pricing models should be reviewed/versioned because they can influence business
-decisions even though they do not affect telemetry execution.
+## Tenant isolation
 
-## Cardinality Firewall privacy
+Clients cannot choose their tenant.
 
-The Cardinality Firewall does not persist the raw high-cardinality tag value in
-its finding table.
+Any input event containing `tenant_id` is rejected; the gateway assigns the
+tenant from authentication.
 
-It stores a short SHA-256-derived fingerprint. That reduces unnecessary copying
-but is **not anonymization**; low-entropy values can still be guessable.
+The tenant then follows the event through Kafka and tenant-scoped persistence.
 
-Full identifiers can exist in:
+Tests cover:
 
-- original telemetry
-- Flight Recorder
-- frozen incidents
+- client tenant spoof rejection;
+- same event ID used independently by two tenants;
+- separate in-memory Cardinality Firewall state.
+
+## Full-fidelity evidence
+
+Presentation-time redaction does **not** erase stored Flight Recorder/incident
+evidence.
+
+Protect:
+
+- PostgreSQL/TimescaleDB
+- backups
+- direct SQL access
 - quarantine evidence
+- frozen incidents
 
-Those data paths require strict access controls.
+Organizations prohibited from storing specific PII need an ingestion-time
+redaction policy before those fields reach TelemetryForge.
 
-## Metrics endpoints
+## Dashboard
 
-The gateway `/metrics` and worker admin `/metrics` endpoints expose operational
-state.
+The browser does not receive the gateway API key.
 
-The checked-in Prometheus configuration is a local development example and does
-not authenticate these endpoints.
+Next.js proxies `/telemetry-api/*` server-side and injects a read-only key.
 
-Do not expose them directly to untrusted networks.
+Do not use an admin key for the dashboard.
 
-Prometheus labels intentionally avoid event IDs, incident IDs, correlation IDs,
-raw URL paths, and arbitrary telemetry tags.
+## Kafka
 
-## OpenTelemetry / Tempo
+Supported security configuration:
 
-The local Collector and Tempo endpoints are unauthenticated development
-services.
+- TLS 1.2+
+- custom CA
+- optional mTLS
+- SASL PLAIN
+- SCRAM-SHA-256
+- SCRAM-SHA-512
 
-Docker Compose publishes OTLP ports to localhost for convenient testing. Tempo
-uses local filesystem storage.
+Production should prefer encrypted transport and the broker's approved
+authentication mechanism.
 
-Production should use authenticated/encrypted telemetry transport, restricted
-network paths, and an appropriate production trace backend/object store.
+## Metrics and tracing
 
-Trace attributes can still contain telemetry source/event type. Traces remain
-operationally sensitive even though those attributes are not Prometheus labels.
-
-## Grafana
-
-Local credentials:
+When gateway auth is enabled:
 
 ```text
-admin / telemetryforge
+GET /metrics
 ```
 
-They are intentionally obvious development credentials and must never be reused
-outside local/demo environments.
+requires `admin`.
 
-## Kubernetes secrets
+The production overlay disables anonymous scrape annotations. Configure
+Prometheus with a bearer credential or equivalent cluster-specific mechanism.
 
-`deployments/kubernetes/base/secret.example.yaml` contains placeholders only.
+OTLP/Tempo/Grafana examples in local Compose are development surfaces, not
+production authentication examples.
 
-Real `secret.yaml` is Git-ignored. Production should use the organization's
-approved secret-management mechanism.
+## Secrets
 
-## Terraform
+Do not commit:
 
-Terraform creates billable resources and state can contain sensitive
-infrastructure metadata.
+- raw API keys
+- database URLs containing credentials
+- Kafka SASL passwords
+- private keys/client certificates
+- Terraform state
 
-Production review should include:
+Use the organization's approved secret manager.
 
-- remote encrypted state
-- access control
-- EKS endpoint exposure
-- IAM access entries
-- KMS/encryption requirements
-- VPC endpoints/network policy
-- audit logging
-- availability design
+## Reporting
 
-## Reporting a vulnerability
-
-Do not open a public issue containing exploit details, credentials, or real
+Do not open a public issue containing credentials, exploit details, or real
 telemetry.
 
-Use GitHub private security reporting when enabled, or contact the repository
-owner privately with reproduction information.
+Use GitHub private security reporting when enabled or contact the repository
+owner privately.

@@ -8,6 +8,7 @@ Cardinality Firewall and shadow-policy comparison.
 """
 
 import argparse
+import os
 import json
 import random
 import time
@@ -17,11 +18,14 @@ import uuid
 from datetime import datetime, timezone
 
 
-def post(base_url: str, route: str, body: dict) -> None:
+def post(base_url: str, route: str, body: dict, api_key: str = "") -> None:
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     request = urllib.request.Request(
         f"{base_url}{route}",
         data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=5) as response:
@@ -40,17 +44,21 @@ def envelope(source: str, event_type: str) -> dict:
     }
 
 
-def metric(base_url: str, source: str, value: float) -> None:
+def metric(base_url: str, source: str, value: float, api_key: str = "", tags: dict | None = None) -> None:
     body = envelope(source, "request.duration")
+    if tags:
+        body["tags"].update(tags)
     body.update({"value": value, "unit": "ms"})
-    post(base_url, "/api/v1/metrics", body)
+    post(base_url, "/api/v1/metrics", body, api_key)
 
 
-def error(base_url: str, source: str) -> None:
+def error(base_url: str, source: str, api_key: str = "", tags: dict | None = None) -> None:
     body = envelope(source, "checkout.error")
     body["tags"]["severity"] = "error"
+    if tags:
+        body["tags"].update(tags)
     body["payload"] = {"message": "simulated checkout dependency failure"}
-    post(base_url, "/api/v1/events", body)
+    post(base_url, "/api/v1/events", body, api_key)
 
 
 def main() -> None:
@@ -58,6 +66,8 @@ def main() -> None:
     parser.add_argument("--base-url", default="http://localhost:8080")
     parser.add_argument("--incident", action="store_true")
     parser.add_argument("--cardinality", action="store_true")
+    parser.add_argument("--evidence-demo", action="store_true")
+    parser.add_argument("--api-key", default=os.getenv("TELEMETRYFORGE_DEMO_API_KEY", ""))
     parser.add_argument("--count", type=int, default=120)
     parser.add_argument("--interval", type=float, default=0.25)
     args = parser.parse_args()
@@ -69,6 +79,20 @@ def main() -> None:
         print("Incident mode enabled: latency/error thresholds will be crossed.")
     if args.cardinality:
         print("Cardinality mode enabled: unique request_id/session_id tags will grow.")
+    if args.evidence_demo:
+        print("Evidence demo enabled: deployment -> latency -> errors -> recovery.")
+
+    trace_id = f"demo-trace-{uuid.uuid4()}"
+
+    if args.evidence_demo:
+        deploy = envelope("checkout-api", "deployment.completed")
+        deploy["correlation_id"] = "demo-checkout-flow"
+        deploy["tags"].update({
+            "deployment_id": f"deploy-{uuid.uuid4()}",
+            "version": "v1-demo-change",
+            "trace_id": trace_id,
+        })
+        post(args.base_url, "/api/v1/events", deploy, args.api_key)
 
     for index in range(args.count):
         source = sources[index % len(sources)]
@@ -84,12 +108,36 @@ def main() -> None:
                 body["tags"]["request_id"] = f"req-{uuid.uuid4()}"
                 body["tags"]["session_id"] = f"session-{uuid.uuid4()}"
                 body.update({"value": latency, "unit": "ms"})
-                post(args.base_url, "/api/v1/metrics", body)
+                post(args.base_url, "/api/v1/metrics", body, args.api_key)
+            elif args.evidence_demo and 8 <= index <= 18:
+                metric(
+                    args.base_url,
+                    "checkout-api",
+                    random.uniform(1200.0, 1750.0),
+                    args.api_key,
+                    {"trace_id": trace_id},
+                )
+            elif args.evidence_demo and index >= 28:
+                metric(
+                    args.base_url,
+                    "checkout-api",
+                    random.uniform(90.0, 220.0),
+                    args.api_key,
+                    {"trace_id": trace_id},
+                )
             else:
-                metric(args.base_url, source, latency)
+                metric(args.base_url, source, latency, args.api_key)
 
             if args.incident and 28 <= index <= 33:
-                error(args.base_url, "checkout-api")
+                error(args.base_url, "checkout-api", args.api_key)
+
+            if args.evidence_demo and 19 <= index <= 24:
+                error(
+                    args.base_url,
+                    "checkout-api",
+                    args.api_key,
+                    {"trace_id": trace_id},
+                )
 
         except (urllib.error.URLError, RuntimeError) as exc:
             print(f"request failed: {exc}")

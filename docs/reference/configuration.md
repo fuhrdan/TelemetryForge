@@ -132,3 +132,49 @@ telemetry.replay.<suffix>
 
 The cost simulator accepts pricing only from an explicit `--pricing` JSON file.
 There is no environment-default dollar model.
+
+
+## Authentication / tenant isolation
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TELEMETRYFORGE_AUTH_MODE` | `disabled` | `disabled` or `api_key` |
+| `TELEMETRYFORGE_API_KEYS_FILE` | `security/api-keys.example.json` | Hash-only API-key document |
+| `TELEMETRYFORGE_DEFAULT_TENANT` | `default` | Trusted tenant used only in disabled local mode |
+| `TELEMETRYFORGE_TENANT_ID` | `default` | Trusted tenant default for telemetryctl commands |
+
+In `api_key` mode tenant identity comes from the matching API-key record.
+
+Clients must omit `tenant_id` from ingestion JSON.
+
+## API response redaction
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TELEMETRYFORGE_REDACT_TAG_KEYS` | `authorization,cookie,email,user_email,token,password,api_key` | Comma-separated tag keys redacted on API/SSE output |
+| `TELEMETRYFORGE_REDACT_PAYLOAD` | `false` | Replace API/SSE payload bodies with a redaction marker |
+
+These settings do not destructively modify stored Flight Recorder evidence.
+
+## Kafka transport security
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TELEMETRYFORGE_KAFKA_TLS` | `false` | Enable TLS |
+| `TELEMETRYFORGE_KAFKA_CA_FILE` | empty | Optional custom CA PEM |
+| `TELEMETRYFORGE_KAFKA_CERT_FILE` | empty | Optional mTLS client certificate |
+| `TELEMETRYFORGE_KAFKA_KEY_FILE` | empty | Optional mTLS client private key |
+| `TELEMETRYFORGE_KAFKA_SASL_MECHANISM` | `disabled` | `plain`, `scram-sha-256`, `scram-sha-512`, or disabled |
+| `TELEMETRYFORGE_KAFKA_SASL_USERNAME` | empty | SASL username |
+| `TELEMETRYFORGE_KAFKA_SASL_PASSWORD` | empty | SASL password |
+
+Client certificate/key must be configured together.
+
+## Dashboard server proxy
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TELEMETRYFORGE_API_BASE` | `http://localhost:8080` in direct development | Upstream Go gateway URL used by Next.js server |
+| `TELEMETRYFORGE_DASHBOARD_API_KEY` | empty | Read-only raw gateway key held only by the Next.js server |
+
+Production should use a tenant-scoped `read` key for the dashboard.

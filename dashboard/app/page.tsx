@@ -91,6 +91,40 @@ type CostProfile = {
   changed_events: number;
 };
 
+
+type EvidenceEdge = {
+  from: string;
+  to: string;
+  relation: string;
+  assessment: "supporting" | "contradicting" | "related";
+  reason: string;
+};
+
+type EvidenceHypothesis = {
+  id: string;
+  statement: string;
+  status: string;
+  supporting: number;
+  contradicting: number;
+  notes: string;
+};
+
+type EvidenceGraph = {
+  tenant_id: string;
+  incident_id: string;
+  generated_at: string;
+  disclaimer: string;
+  summary: {
+    node_count: number;
+    edge_count: number;
+    supporting_edges: number;
+    contradicting_edges: number;
+    related_edges: number;
+  };
+  edges: EvidenceEdge[];
+  hypotheses: EvidenceHypothesis[];
+};
+
 type CostSimulation = {
   simulation_id: string;
   incident_id: string;
@@ -166,6 +200,7 @@ export default function Dashboard() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selected, setSelected] = useState<Incident | null>(null);
   const [incidentEvents, setIncidentEvents] = useState<TelemetryEvent[]>([]);
+  const [evidenceGraph, setEvidenceGraph] = useState<EvidenceGraph | null>(null);
   const [streamState, setStreamState] = useState("connecting");
   const [sourceFilter, setSourceFilter] = useState("");
   const [findings, setFindings] = useState<CardinalityFinding[]>([]);
@@ -237,12 +272,25 @@ export default function Dashboard() {
   useEffect(() => {
     if (!selected) {
       setIncidentEvents([]);
+      setEvidenceGraph(null);
       return;
     }
-    fetch(`/telemetry-api/api/v1/incidents/${encodeURIComponent(selected.id)}/events`)
-      .then((response) => (response.ok ? response.json() : Promise.reject()))
-      .then((payload) => setIncidentEvents(payload.events ?? []))
-      .catch(() => setIncidentEvents([]));
+
+    const incidentID = encodeURIComponent(selected.id);
+    Promise.all([
+      fetch(`/telemetry-api/api/v1/incidents/${incidentID}/events`, { cache: "no-store" }),
+      fetch(`/telemetry-api/api/v1/incidents/${incidentID}/evidence-graph`, { cache: "no-store" }),
+    ])
+      .then(async ([eventsResponse, graphResponse]) => {
+        const eventsPayload = eventsResponse.ok ? await eventsResponse.json() : { events: [] };
+        const graphPayload = graphResponse.ok ? await graphResponse.json() : null;
+        setIncidentEvents(eventsPayload.events ?? []);
+        setEvidenceGraph(graphPayload);
+      })
+      .catch(() => {
+        setIncidentEvents([]);
+        setEvidenceGraph(null);
+      });
   }, [selected]);
 
   const sources = useMemo(
@@ -374,6 +422,67 @@ export default function Dashboard() {
                   </div>
                 ))}
                 {incidentEvents.length === 0 && <div className="empty">No captured events in this window.</div>}
+              </div>
+            </>
+          )}
+        </article>
+      </section>
+
+      <section className="evidence-graph-section">
+        <article className="panel evidence-graph-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">EVIDENCE GRAPH</div>
+              <h2>{selected ? `Evidence for ${selected.id}` : "Select an incident"}</h2>
+            </div>
+            {evidenceGraph && (
+              <span className="count-badge">
+                {evidenceGraph.summary.supporting_edges} / {evidenceGraph.summary.contradicting_edges}
+              </span>
+            )}
+          </div>
+
+          {!evidenceGraph && (
+            <div className="empty graph-empty">
+              Select a frozen incident to build supporting, contradicting, and contextual evidence relationships.
+            </div>
+          )}
+
+          {evidenceGraph && (
+            <>
+              <div className="graph-disclaimer">{evidenceGraph.disclaimer}</div>
+              <div className="graph-summary">
+                <span><strong>{evidenceGraph.summary.node_count}</strong> nodes</span>
+                <span className="supporting"><strong>{evidenceGraph.summary.supporting_edges}</strong> supporting</span>
+                <span className="contradicting"><strong>{evidenceGraph.summary.contradicting_edges}</strong> contradicting</span>
+                <span><strong>{evidenceGraph.summary.related_edges}</strong> contextual</span>
+              </div>
+
+              <div className="hypothesis-grid">
+                {evidenceGraph.hypotheses.map((hypothesis) => (
+                  <div className={`hypothesis ${hypothesis.status}`} key={hypothesis.id}>
+                    <div className="hypothesis-status">{hypothesis.status}</div>
+                    <strong>{hypothesis.statement}</strong>
+                    <span>{hypothesis.supporting} support · {hypothesis.contradicting} contradict</span>
+                    <small>{hypothesis.notes}</small>
+                  </div>
+                ))}
+              </div>
+
+              <div className="edge-table">
+                <div className="edge-header">
+                  <span>Assessment</span><span>Relationship</span><span>Reason</span>
+                </div>
+                {evidenceGraph.edges
+                  .filter((edge) => edge.assessment !== "related")
+                  .slice(0, 16)
+                  .map((edge, index) => (
+                    <div className="edge-row" key={`${edge.from}-${edge.to}-${edge.relation}-${index}`}>
+                      <span className={`edge-assessment ${edge.assessment}`}>{edge.assessment}</span>
+                      <span>{edge.relation}</span>
+                      <span>{edge.reason}</span>
+                    </div>
+                  ))}
               </div>
             </>
           )}

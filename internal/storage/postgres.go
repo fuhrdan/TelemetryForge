@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/security"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -51,9 +53,10 @@ func NewPostgresStore(ctx context.Context, databaseURL string) (*PostgresStore, 
 // WriteEvent stores one event exactly once by canonical event ID.
 //
 // TimescaleDB requires unique indexes on hypertables to include the partition
-// column. TelemetryForge therefore keeps global event-ID uniqueness in the
-// ordinary `event_dedup` PostgreSQL table and writes the hypertable row in the
-// same transaction. A duplicate Kafka delivery becomes a safe no-op.
+// column. TelemetryForge therefore keeps tenant-scoped event-ID uniqueness in
+// the ordinary `event_dedup` PostgreSQL table and writes the hypertable row in
+// the same transaction. A duplicate Kafka delivery becomes a safe no-op without
+// allowing one tenant's event ID to suppress another tenant's event.
 func (store *PostgresStore) WriteEvent(ctx context.Context, event domain.Event) error {
 	tags, err := json.Marshal(event.Tags)
 	if err != nil {
@@ -67,10 +70,10 @@ func (store *PostgresStore) WriteEvent(ctx context.Context, event domain.Event) 
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
 	result, err := tx.Exec(ctx,
-		`INSERT INTO event_dedup (event_id, first_seen_at)
-		 VALUES ($1, now())
-		 ON CONFLICT (event_id) DO NOTHING`,
-		event.ID,
+		`INSERT INTO event_dedup (tenant_id, event_id, first_seen_at)
+		 VALUES ($1, $2, now())
+		 ON CONFLICT (tenant_id, event_id) DO NOTHING`,
+		tenantForEvent(ctx, event), event.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("reserve event id: %w", err)
@@ -82,9 +85,10 @@ func (store *PostgresStore) WriteEvent(ctx context.Context, event domain.Event) 
 
 	_, err = tx.Exec(ctx, `
 		INSERT INTO telemetry_events
-			(event_id, source, event_type, event_time, tags, payload, metric_value,
-			 metric_unit, schema_version, correlation_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+			(tenant_id, event_id, source, event_type, event_time, tags, payload,
+			 metric_value, metric_unit, schema_version, correlation_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		tenantForEvent(ctx, event),
 		event.ID,
 		event.Source,
 		event.Type,
@@ -114,18 +118,20 @@ func (store *PostgresStore) QueryEvents(ctx context.Context, query Query) ([]dom
 	}
 
 	rows, err := store.pool.Query(ctx, `
-		SELECT event_id, source, event_type, event_time, tags, payload,
+		SELECT tenant_id, event_id, source, event_type, event_time, tags, payload,
 		       metric_value, COALESCE(metric_unit, ''), schema_version,
 		       COALESCE(correlation_id, '')
 		  FROM telemetry_events
-		 WHERE ($1 = '' OR source = $1)
-		   AND ($2 = '' OR event_type = $2)
-		   AND ($3::timestamptz IS NULL OR event_time >= $3)
-		   AND ($4::timestamptz IS NULL OR event_time <= $4)
-		   AND ($5 = FALSE OR metric_value IS NOT NULL)
+		 WHERE tenant_id = $1
+		   AND ($2 = '' OR source = $2)
+		   AND ($3 = '' OR event_type = $3)
+		   AND ($4::timestamptz IS NULL OR event_time >= $4)
+		   AND ($5::timestamptz IS NULL OR event_time <= $5)
+		   AND ($6 = FALSE OR metric_value IS NOT NULL)
 		 ORDER BY event_time DESC
-		 LIMIT $6`,
-		query.Source, query.Type, nullableTime(query.From), nullableTime(query.To), query.MetricsOnly, limit)
+		 LIMIT $7`,
+		queryTenant(ctx, query.TenantID), query.Source, query.Type,
+		nullableTime(query.From), nullableTime(query.To), query.MetricsOnly, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query telemetry events: %w", err)
 	}
@@ -137,7 +143,7 @@ func (store *PostgresStore) QueryEvents(ctx context.Context, query Query) ([]dom
 		var tags []byte
 		var payload []byte
 		if err := rows.Scan(
-			&event.ID, &event.Source, &event.Type, &event.Timestamp, &tags, &payload,
+			&event.TenantID, &event.ID, &event.Source, &event.Type, &event.Timestamp, &tags, &payload,
 			&event.Value, &event.Unit, &event.SchemaVersion, &event.CorrelationID,
 		); err != nil {
 			return nil, fmt.Errorf("scan telemetry event: %w", err)
@@ -167,7 +173,10 @@ func (store *PostgresStore) PruneDedupBefore(ctx context.Context, before time.Ti
 		return 0, errors.New("deduplication cutoff is required")
 	}
 	result, err := store.pool.Exec(ctx,
-		`DELETE FROM event_dedup WHERE first_seen_at < $1`, before.UTC())
+		`DELETE FROM event_dedup
+		  WHERE tenant_id = $1
+		    AND first_seen_at < $2`,
+		security.TenantID(ctx), before.UTC())
 	if err != nil {
 		return 0, fmt.Errorf("prune event deduplication rows: %w", err)
 	}
@@ -182,6 +191,27 @@ func (store *PostgresStore) Ready(ctx context.Context) error {
 // Close releases all database connections.
 func (store *PostgresStore) Close() {
 	store.pool.Close()
+}
+
+func tenantForEvent(ctx context.Context, event domain.Event) string {
+	if tenant := strings.TrimSpace(event.TenantID); tenant != "" {
+		return tenant
+	}
+	return security.TenantID(ctx)
+}
+
+func queryTenant(ctx context.Context, configured string) string {
+	// An authenticated/trusted principal always wins. Query structs cannot be
+	// used to escape the authorization boundary by supplying another tenant.
+	if principal, ok := security.PrincipalFrom(ctx); ok {
+		if tenant := strings.TrimSpace(principal.TenantID); tenant != "" {
+			return tenant
+		}
+	}
+	if tenant := strings.TrimSpace(configured); tenant != "" {
+		return tenant
+	}
+	return "default"
 }
 
 func nullableJSON(value json.RawMessage) any {

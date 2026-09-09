@@ -14,6 +14,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/config"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
 	"github.com/fuhrdan/TelemetryForge/internal/observability"
+	"github.com/fuhrdan/TelemetryForge/internal/security"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
 )
@@ -25,7 +26,7 @@ func main() {
 	traceShutdown, err := observability.InitTracing(
 		context.Background(),
 		"telemetryforge-gateway",
-		"0.9.0",
+		"1.0.0",
 		os.Getenv("TELEMETRYFORGE_OTLP_TRACES_ENDPOINT"),
 	)
 	if err != nil {
@@ -38,10 +39,26 @@ func main() {
 		_ = traceShutdown(shutdownCtx)
 	}()
 
+	var authenticator *security.Authenticator
+	switch cfg.AuthMode {
+	case "", "disabled":
+		authenticator = security.Disabled(cfg.DefaultTenant)
+	case "api_key":
+		authenticator, err = security.LoadAPIKeys(cfg.APIKeysFile)
+		if err != nil {
+			logger.Error("API key authentication initialization failed", "error", err)
+			os.Exit(1)
+		}
+	default:
+		logger.Error("unsupported authentication mode", "mode", cfg.AuthMode)
+		os.Exit(1)
+	}
+
 	publisher, err := stream.NewKafkaPublisher(stream.KafkaConfig{
 		Brokers:        cfg.KafkaBrokers,
 		ClientID:       cfg.KafkaClientID,
 		ProduceTimeout: cfg.KafkaTimeout,
+		Security:       stream.KafkaSecurityFromEnv(),
 	}, logger)
 	if err != nil {
 		logger.Error("Kafka publisher initialization failed", "error", err)
@@ -60,13 +77,14 @@ func main() {
 		Raw:    cfg.KafkaRawTopic,
 		Metric: cfg.KafkaMetricTopic,
 	}, store, metrics)
+	apiHandler.SetRedactor(security.NewRedactor(cfg.RedactTags, cfg.RedactPayload))
 	root := http.NewServeMux()
 	root.Handle("GET /metrics", metrics.Handler())
 	root.Handle("/", apiHandler)
 
 	httpServer := &http.Server{
 		Addr:         cfg.Address,
-		Handler:      metrics.Middleware(root),
+		Handler:      authenticator.Middleware(metrics.Middleware(root)),
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
 	}
@@ -79,6 +97,7 @@ func main() {
 			"kafka_brokers", cfg.KafkaBrokers,
 			"raw_topic", cfg.KafkaRawTopic,
 			"metric_topic", cfg.KafkaMetricTopic,
+			"auth_mode", cfg.AuthMode,
 		)
 		errorChannel <- httpServer.ListenAndServe()
 	}()

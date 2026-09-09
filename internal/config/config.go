@@ -19,6 +19,11 @@ type Config struct {
 	KafkaMetricTopic string
 	KafkaTimeout     time.Duration
 	DatabaseURL      string
+	AuthMode         string
+	APIKeysFile      string
+	DefaultTenant    string
+	RedactTags       string
+	RedactPayload    bool
 }
 
 // Load reads gateway configuration from environment variables and applies
@@ -35,6 +40,11 @@ func Load() Config {
 		KafkaMetricTopic: envOrDefault("TELEMETRYFORGE_KAFKA_METRIC_TOPIC", "telemetry.metrics"),
 		KafkaTimeout:     5 * time.Second,
 		DatabaseURL:      envOrDefault("TELEMETRYFORGE_DATABASE_URL", "postgres://telemetryforge:telemetryforge@localhost:5432/telemetryforge?sslmode=disable"),
+		AuthMode:         strings.ToLower(envOrDefault("TELEMETRYFORGE_AUTH_MODE", "disabled")),
+		APIKeysFile:      envOrDefault("TELEMETRYFORGE_API_KEYS_FILE", "security/api-keys.example.json"),
+		DefaultTenant:    envOrDefault("TELEMETRYFORGE_DEFAULT_TENANT", "default"),
+		RedactTags:       envOrDefault("TELEMETRYFORGE_REDACT_TAG_KEYS", "authorization,cookie,email,user_email,token,password,api_key"),
+		RedactPayload:    envOrDefault("TELEMETRYFORGE_REDACT_PAYLOAD", "false") == "true",
 	}
 }
 

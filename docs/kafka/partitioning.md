@@ -20,7 +20,7 @@ This gives two useful properties:
    parallel.
 
 The choice is intentionally simple. A future multi-tenant deployment may use a
-compound tenant/source key to avoid letting one tenant's source naming affect
+compound tenant/tenant/source key to avoid letting one tenant's source naming affect
 another tenant's ordering domain.
 
 ## Consumer-group scale

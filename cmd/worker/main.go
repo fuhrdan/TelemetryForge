@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
 	"github.com/fuhrdan/TelemetryForge/internal/observability"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
+	"github.com/fuhrdan/TelemetryForge/internal/security"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
 	"github.com/fuhrdan/TelemetryForge/internal/worker"
@@ -28,7 +30,7 @@ func main() {
 	traceShutdown, err := observability.InitTracing(
 		ctx,
 		"telemetryforge-worker",
-		"0.9.0",
+		"1.0.0",
 		os.Getenv("TELEMETRYFORGE_OTLP_TRACES_ENDPOINT"),
 	)
 	if err != nil {
@@ -125,6 +127,7 @@ func main() {
 		Topics:   topics,
 		DLQTopic: env("TELEMETRYFORGE_WORKER_DLQ_TOPIC", "telemetry.dlq"),
 		Observer: metrics,
+		Security: stream.KafkaSecurityFromEnv(),
 	}, logger)
 	if err != nil {
 		logger.Error("create Kafka consumer", "error", err)
@@ -133,10 +136,22 @@ func main() {
 	defer consumer.Close()
 
 	adminAddress := env("TELEMETRYFORGE_WORKER_ADMIN_ADDRESS", ":8081")
+	metricsHandler := http.Handler(metrics.Handler())
+	if strings.EqualFold(env("TELEMETRYFORGE_AUTH_MODE", "disabled"), "api_key") {
+		authenticator, err := security.LoadAPIKeys(
+			env("TELEMETRYFORGE_API_KEYS_FILE", "security/api-keys.example.json"),
+		)
+		if err != nil {
+			logger.Error("worker metrics authentication initialization failed", "error", err)
+			os.Exit(1)
+		}
+		metricsHandler = authenticator.Middleware(metricsHandler)
+	}
+
 	healthServer := health.New(adminAddress, logger, map[string]health.Checker{
 		"kafka":    consumer,
 		"database": store,
-	}, metrics.Handler())
+	}, metricsHandler)
 	go func() {
 		if err := healthServer.Start(); err != nil {
 			logger.Error("worker health server stopped", "error", err)
