@@ -1,11 +1,11 @@
 # Local Development
 
-## Prerequisites
+## Requirements
 
-- Go 1.25+
-- Docker with Docker Compose v2
+- Docker with Docker Compose, or
+- Go 1.25+ plus a reachable Kafka broker.
 
-## Full stack
+## Easiest path
 
 ```bash
 docker compose up --build
@@ -13,53 +13,57 @@ docker compose up --build
 
 Compose starts:
 
-1. Apache Kafka in single-node KRaft mode.
-2. A one-shot `kafka-init` service that creates the v0.2.0 topics.
-3. The TelemetryForge gateway after topic initialization succeeds.
+1. Kafka in KRaft mode.
+2. `kafka-init`, which creates the telemetry topics.
+3. the HTTP gateway.
+4. the v0.3.0 processing worker.
 
-Verify:
+The gateway is available on `http://localhost:8080`.
 
-```bash
-curl http://localhost:8080/health
-curl http://localhost:8080/ready
-```
+## Run services directly
 
-List topics:
-
-```bash
-make kafka-topics
-```
-
-## Run the gateway directly
-
-Start Kafka first:
-
-```bash
-docker compose up -d kafka kafka-init
-```
-
-Then:
+With Kafka already running:
 
 ```bash
 go run ./cmd/gateway
 ```
 
-The default direct-run broker is `localhost:9092`.
-
-## Unit tests
+In another terminal:
 
 ```bash
-make test
+go run ./cmd/worker
 ```
 
-The HTTP tests use an in-memory Publisher implementation, so Kafka is not required.
+## Watch the consumer group
 
-## Kafka integration test
+```bash
+make kafka-groups
+```
 
-With the Compose broker running:
+Kafka reports partitions, current offsets, log-end offsets, and lag. Lag is an
+important v0.3.0 operational signal because the worker queue is deliberately
+bounded.
+
+## Tune the worker
+
+```bash
+TELEMETRYFORGE_WORKER_COUNT=8 \
+TELEMETRYFORGE_WORKER_QUEUE_CAPACITY=512 \
+go run ./cmd/worker
+```
+
+Increase worker count when processing is CPU-bound or safely parallelizable.
+Increase queue capacity only to absorb short bursts; Kafka should remain the
+durable place for sustained backlog.
+
+## Verification
+
+```bash
+make check
+```
+
+With Kafka running:
 
 ```bash
 make integration-test
 ```
-
-The integration test verifies broker readiness and performs a real produce operation to `telemetry.raw`.

@@ -1,10 +1,13 @@
-.PHONY: build run test integration-test fmt vet check docker-up docker-down kafka-topics
+.PHONY: build run run-worker test integration-test fmt vet check docker-up docker-down kafka-topics kafka-groups
 
 build:
 	go build ./...
 
 run:
 	go run ./cmd/gateway
+
+run-worker:
+	go run ./cmd/worker
 
 test:
 	go test ./...
@@ -28,3 +31,6 @@ docker-down:
 
 kafka-topics:
 	docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+
+kafka-groups:
+	docker compose exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group telemetryforge-processors

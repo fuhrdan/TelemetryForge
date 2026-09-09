@@ -1,25 +1,26 @@
 # Security Policy
 
-TelemetryForge is under active development.
+## v0.3.0 security posture
 
-## v0.2.0 security posture
+TelemetryForge is still a development/portfolio release. The gateway and worker
+pipeline demonstrate distributed processing behavior, not a finished public
+multi-tenant security boundary.
 
-This release does **not** yet provide:
+Not yet implemented:
 
-- client authentication
-- API authorization
-- tenant isolation
-- API rate limiting
-- Kafka SASL/TLS configuration
-- secret-management integration
-- payload-level PII redaction
+- ingestion authentication
+- tenant isolation and authorization
+- rate limiting
+- TLS termination in the application
+- Kafka TLS/SASL configuration
+- secrets management
+- payload-level PII classification/redaction
 
-The bundled Kafka Compose configuration uses plaintext listeners and is intended only for local development.
+**Do not expose v0.3.0 directly to an untrusted network or the public Internet.**
 
-**Do not expose v0.2.0 directly to an untrusted network or public Internet.**
+The worker consumes whatever records its Kafka credentials can access.
+Production deployments must therefore apply least-privilege topic ACLs and
+encrypted/authenticated broker connections.
 
-Security controls will be introduced incrementally and documented in the release where their behavior becomes part of the supported architecture.
-
-## Reporting
-
-Please report suspected vulnerabilities privately to the repository owner rather than opening a public issue containing exploit details or secrets.
+Security controls will be introduced as the project reaches persistence,
+policy-as-code, and production deployment milestones.

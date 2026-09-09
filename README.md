@@ -2,66 +2,70 @@
 
 **Distributed, event-driven telemetry control plane and observability gateway.**
 
-TelemetryForge is a horizontally scalable layer between applications and observability backends. Its long-term goal is to make telemetry safer, cheaper, replayable, portable, and easier to reason about before it reaches systems such as Datadog, Grafana, Splunk, or Honeycomb.
+TelemetryForge sits between applications and observability backends. The project
+is being built in small, documented releases so the repository shows not only
+*what* the system does, but *why* each distributed-systems decision was made.
 
-> **Current release: v0.2.0 — Kafka Streaming & Durable Publishing**
+> **Current release: v0.3.0 — Consumer Groups, Worker Pools & Backpressure**
 
-## Signature direction
+## What v0.3.0 adds
 
-The roadmap centers on five differentiating capabilities:
+v0.2.0 made Kafka the durable handoff point. v0.3.0 adds the first downstream
+processing service:
 
-- **Incident Flight Recorder** — preserve full-fidelity telemetry around anomalies.
-- **Incident Replay** — replay historical incidents through new rules safely.
-- **Cardinality Firewall** — detect dangerous dimensions before they explode downstream cost.
-- **Telemetry Cost Simulator** — estimate savings alongside the visibility a policy removes.
-- **Evidence Graph** — connect incident conclusions to supporting and contradicting evidence.
-
-v0.2.0 establishes the durable streaming backbone required by those later capabilities.
+- Kafka consumer group `telemetryforge-processors`
+- separate Go `worker` executable
+- bounded worker pool with configurable concurrency
+- deliberate backpressure when the worker queue fills
+- manual Kafka offset commits after successful processing
+- cooperative consumer-group balancing
+- normalization stage separated from Kafka transport
+- failure logging that leaves failed records uncommitted
+- local backlog/lag estimate groundwork
+- Docker Compose worker service
+- unit tests for processing, acknowledgement, and failure behavior
+- human-readable architecture, backpressure, failure, and ADR documentation
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[Applications / Webhooks] -->|HTTP JSON| G[Go Ingestion Gateway]
-    G --> V[Canonical Envelope Validation]
-    V -->|generic event| R[telemetry.raw]
-    V -->|numeric metric| M[telemetry.metrics]
-    R --> K[(Apache Kafka)]
-    M --> K
+    A[Applications / Webhooks] --> G[Go Ingestion Gateway]
+    G --> K[(Apache Kafka)]
+    K -->|consumer group| C[Kafka Consumer]
+    C --> Q[Bounded Queue]
+    Q --> W1[Worker 1]
+    Q --> W2[Worker 2]
+    Q --> WN[Worker N]
+    W1 --> P[Normalizer]
+    W2 --> P
+    WN --> P
 
-    style G stroke-width:2px
     style K stroke-width:2px
+    style Q stroke-width:2px
 ```
 
-The next release adds consumer groups and bounded worker pools downstream of Kafka.
+The bounded queue is important: if processing becomes slow, TelemetryForge
+allows Kafka lag to grow instead of allowing worker memory to grow without
+limit.
 
-## What's new in v0.2.0
+## Quickstart
 
-- Apache Kafka 4.3.1 local development environment using KRaft
-- Kafka-backed Go Publisher abstraction
-- Synchronous broker acknowledgement before HTTP 202
-- `telemetry.raw` and `telemetry.metrics` topics
-- Six partitions per development topic
-- Source-keyed partitioning for per-source ordering
-- Kafka connectivity integrated into `/ready`
-- `503 Service Unavailable` when durable publishing fails
-- Event ID, schema version, and correlation ID Kafka headers
-- Snappy producer compression
-- Environment-driven broker/topic configuration
-- Real Kafka integration-test target
-- CI job for Kafka integration testing
-- ADRs and detailed delivery/partition documentation
+```bash
+docker compose up --build
+```
 
-## API
+This starts Kafka, creates the topics, starts the ingestion gateway, and starts
+one processing service containing four Go workers.
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/health` | Process liveness probe |
-| GET | `/ready` | Kafka-aware readiness probe |
-| POST | `/api/v1/events` | Generic telemetry ingestion → `telemetry.raw` |
-| POST | `/api/v1/metrics` | Numeric metric ingestion → `telemetry.metrics` |
+Check the gateway:
 
-### Submit a metric
+```bash
+curl http://localhost:8080/health
+curl http://localhost:8080/ready
+```
+
+Submit a metric:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/metrics \
@@ -78,86 +82,94 @@ curl -X POST http://localhost:8080/api/v1/metrics \
   }'
 ```
 
-A successful `202 Accepted` means the event passed gateway validation **and Kafka acknowledged the produce request**.
-
-## Quickstart
+Inspect the consumer group:
 
 ```bash
-docker compose up --build
+make kafka-groups
 ```
 
-Then:
+## Processing guarantee
 
-```bash
-curl http://localhost:8080/health
-curl http://localhost:8080/ready
-```
+v0.3.0 uses **at-least-once processing**.
 
-List Kafka topics:
+Kafka auto-commit is disabled. A record is committed after its processor
+succeeds. If a worker fails before the commit, Kafka can deliver the record
+again. This favors avoiding telemetry loss over avoiding duplicates.
 
-```bash
-make kafka-topics
-```
+Persistence added in later releases must therefore use event IDs for
+idempotency.
+
+## Backpressure in plain English
+
+Imagine Kafka is a warehouse and the worker queue is a loading dock.
+
+The loading dock has a fixed number of spaces. If all spaces are occupied, the
+consumer waits instead of piling boxes into RAM forever. Kafka safely keeps the
+remaining boxes in the warehouse until workers catch up.
+
+That behavior is intentional and testable.
 
 ## Runtime configuration
 
-| Variable | Default |
-|---|---|
-| `TELEMETRYFORGE_ADDRESS` | `:8080` |
-| `TELEMETRYFORGE_KAFKA_BROKERS` | `localhost:9092` |
-| `TELEMETRYFORGE_KAFKA_CLIENT_ID` | `telemetryforge-gateway` |
-| `TELEMETRYFORGE_KAFKA_RAW_TOPIC` | `telemetry.raw` |
-| `TELEMETRYFORGE_KAFKA_METRIC_TOPIC` | `telemetry.metrics` |
-
-## Verify the build
-
-```bash
-make check
-```
-
-Run the real Kafka integration test after starting the broker:
-
-```bash
-make integration-test
-```
+| Variable | Default | Purpose |
+|---|---|---|
+| `TELEMETRYFORGE_ADDRESS` | `:8080` | Gateway listen address |
+| `TELEMETRYFORGE_KAFKA_BROKERS` | `localhost:9092` | Kafka bootstrap brokers |
+| `TELEMETRYFORGE_WORKER_GROUP_ID` | `telemetryforge-processors` | Consumer group |
+| `TELEMETRYFORGE_WORKER_TOPICS` | `telemetry.raw,telemetry.metrics` | Consumed topics |
+| `TELEMETRYFORGE_WORKER_COUNT` | `4` | Concurrent processors |
+| `TELEMETRYFORGE_WORKER_QUEUE_CAPACITY` | `256` | Maximum queued jobs in process |
 
 ## Repository layout
 
 ```text
-cmd/gateway/              Gateway executable
+cmd/gateway/              HTTP ingestion executable
+cmd/worker/               Kafka processing executable
 internal/api/             HTTP transport
-internal/config/          Runtime configuration
 internal/domain/          Canonical telemetry model
-internal/stream/          Kafka / publishing boundary
+internal/stream/          Kafka producer and consumer boundary
+internal/worker/          Bounded worker pool and processors
 
-docs/architecture/       System design
-docs/api/                Event/API contract
-docs/adr/                Architecture Decision Records
-docs/kafka/              Kafka operational/design docs
-docs/development/        Local workflows
-
+docs/architecture/        Human-readable system design
+docs/adr/                 Architecture Decision Records
+docs/kafka/               Kafka design and operations
 tests/integration/        Broker-backed integration tests
-deployments/              Future container/K8s/Terraform assets
-.github/workflows/        CI/CD automation
 ```
 
-## Engineering principles
+## Human-readable documentation
 
-1. **Validate at the edge.** Invalid telemetry should not poison downstream pipelines.
-2. **Do not lie about durability.** A request is accepted only after the streaming layer acknowledges it.
-3. **Keep ingestion stateless.** Horizontal scaling must not require shared gateway memory.
-4. **Preserve useful ordering.** Partition by stable producer identity rather than random event ID.
-5. **Bound resources.** Future worker queues will apply backpressure rather than growing without limit.
-6. **Document decisions while building.** Every architectural milestone includes ADRs and operational documentation.
-7. **Evidence over magic.** Future incident conclusions must expose their supporting evidence.
+The code contains GoDoc comments on public types and comments explaining
+non-obvious concurrency decisions. Longer explanations live in Markdown so a
+reviewer does not need to reverse-engineer the code.
+
+Start with:
+
+- `docs/architecture/worker-model.md`
+- `docs/architecture/backpressure.md`
+- `docs/architecture/failure-handling.md`
+- `docs/adr/0005-bounded-worker-pool.md`
+- `docs/adr/0006-manual-offset-commit.md`
+
+## Signature direction
+
+TelemetryForge's long-term differentiators remain:
+
+- **Incident Flight Recorder**
+- **Incident Replay**
+- **Cardinality Firewall**
+- **Telemetry Cost Simulator**
+- **Evidence Graph**
+
+The consumer/worker architecture in this release is the execution layer those
+features will eventually use.
 
 ## Roadmap
 
 | Version | Milestone |
 |---|---|
 | **0.1.0** | Foundation and ingestion API |
-| **0.2.0** | **Kafka streaming and durable publishing** |
-| **0.3.0** | Consumer groups, bounded workers, backpressure |
+| **0.2.0** | Kafka streaming and durable publishing |
+| **0.3.0** | **Consumer groups, bounded workers, backpressure** |
 | **0.4.0** | PostgreSQL / TimescaleDB persistence |
 | **0.5.0** | Reliability, DLQ, idempotency, Flight Recorder foundation |
 | **0.6.0** | Real-time dashboard and incident capture |
@@ -166,22 +178,11 @@ deployments/              Future container/K8s/Terraform assets
 | **0.9.0** | Incident Replay, cost simulation, observability and load testing |
 | **1.0.0** | Evidence Graph and production-grade portfolio release |
 
-## Documentation
-
-Recommended starting points:
-
-- `docs/architecture/overview.md`
-- `docs/architecture/event-flow.md`
-- `docs/api/event-format.md`
-- `docs/kafka/topic-strategy.md`
-- `docs/kafka/partitioning.md`
-- `docs/kafka/delivery-semantics.md`
-- `docs/adr/0003-use-kafka.md`
-- `docs/adr/0004-partition-by-source.md`
-
 ## Security status
 
-v0.2.0 is still a development release. Authentication, tenant isolation, TLS/SASL Kafka configuration, rate limiting, and authorization are not implemented. Do not expose this release to untrusted networks. See `SECURITY.md`.
+v0.3.0 remains a development release. Authentication, tenant isolation,
+TLS/SASL Kafka configuration, rate limiting, and authorization are not yet
+implemented. Do not expose this release to untrusted networks.
 
 ## License
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.3.0] - 2026-09-09
+
+### Added
+- Kafka consumer group processing service.
+- Bounded Go worker pool with configurable concurrency and queue capacity.
+- Manual post-processing offset acknowledgement.
+- Cooperative consumer-group balancing.
+- Initial normalization processor.
+- Docker Compose worker service.
+- `make run-worker` and consumer-group inspection target.
+- Worker-pool unit tests.
+- Human-readable worker model, backpressure, and failure documentation.
+- ADR 0005 for bounded worker pools.
+- ADR 0006 for manual offset commits.
+
+### Changed
+- TelemetryForge now has independently scalable ingestion and processing tiers.
+
+### Reliability
+- Failed processing does not acknowledge the Kafka record.
+- Queue capacity is bounded so sustained downstream slowness produces Kafka
+  backlog instead of unbounded process-memory growth.
+
 All notable changes to TelemetryForge are documented here.
 
 ## [0.2.0] - 2026-09-09

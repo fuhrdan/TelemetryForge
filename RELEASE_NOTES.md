@@ -1,22 +1,47 @@
-# TelemetryForge v0.2.0 — Kafka Streaming & Durable Publishing
+# TelemetryForge v0.3.0 Release Notes
 
-v0.2.0 changes TelemetryForge from an HTTP validation demo into an event-driven system with a durable streaming boundary.
+## Consumer Groups, Worker Pools & Backpressure
 
-## Highlights
+v0.3.0 turns the durable Kafka stream introduced in v0.2.0 into a real
+processing pipeline.
 
-- Accepted telemetry is now published to Apache Kafka.
-- Generic events route to `telemetry.raw`; numeric metrics route to `telemetry.metrics`.
-- The gateway returns `202 Accepted` only after Kafka acknowledges the record.
-- Kafka failures surface as `503 Service Unavailable` rather than false acceptance.
-- Events are keyed by source to preserve source-local order within Kafka partitions.
-- `/ready` now reflects real Kafka reachability.
-- Docker Compose boots a complete single-node KRaft Kafka environment and initializes topics automatically.
-- CI includes a broker-backed Kafka integration test.
+### Highlights
 
-## Portfolio signal
+- Added a standalone Go worker service.
+- Added Kafka consumer group `telemetryforge-processors`.
+- Added a configurable, bounded worker pool.
+- Disabled Kafka auto-commit and commit records after successful processing.
+- Added cooperative group balancing for friendlier horizontal scaling.
+- Added the first processor: a small source/type normalizer.
+- Added explicit failure behavior and groundwork for poison-event handling.
+- Added worker service to Docker Compose.
+- Added `make run-worker` and `make kafka-groups`.
+- Added human-readable worker, backpressure, and failure documentation.
+- Added ADRs for bounded queues and post-processing offset commits.
 
-This release demonstrates event-driven architecture, durable producer semantics, Kafka partitioning decisions, operational readiness checks, dependency abstraction, and infrastructure-backed testing.
+### Why this release matters
 
-## Next
+Kafka is now more than a producer destination. It is the durable buffer between
+independently scalable ingestion and processing tiers.
 
-v0.3.0 will add consumer groups, bounded Go worker pools, explicit backpressure behavior, graceful partition rebalancing, lag visibility, and the first downstream stream-processing pipeline.
+When processing slows, the bounded queue stops unlimited memory growth and
+allows backlog to remain in Kafka. This creates a measurable scaling signal:
+consumer lag.
+
+### Delivery semantics
+
+Processing is at least once. A successfully processed record is explicitly
+committed. Failed work remains uncommitted and can be retried. Future
+persistence will use event IDs to make side effects idempotent.
+
+### Known limitations
+
+- Poison records do not yet have a dead-letter queue.
+- Retry ceilings and exponential backoff arrive in the reliability milestone.
+- The lag value in code is a local estimate; broker-derived lag metrics arrive
+  with full observability instrumentation.
+- No durable processed-event database exists yet.
+- Authentication and tenant isolation are not implemented.
+
+These limitations are documented intentionally rather than hidden behind a
+"production ready" claim.

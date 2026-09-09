@@ -1,21 +1,20 @@
-# Event Flow — v0.2.0
+# Event Flow — v0.3.0
 
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant G as Gateway
-    participant V as Validator
-    participant K as Kafka
+1. A client sends an event or metric to the gateway.
+2. The gateway validates and canonicalizes the envelope.
+3. Kafka acknowledges the published record.
+4. The gateway returns HTTP `202 Accepted`.
+5. A member of `telemetryforge-processors` receives the record.
+6. The consumer decodes it into the canonical Go domain type.
+7. The record waits in the bounded worker queue if all workers are busy.
+8. A worker runs the processing pipeline.
+9. On success, the Kafka offset is explicitly committed.
+10. On processing failure, the record is not acknowledged.
 
-    C->>G: POST /api/v1/events
-    G->>V: Validate envelope
-    V-->>G: Valid
-    G->>G: Generate event ID
-    G->>K: Produce telemetry.raw
-    K-->>G: Broker acknowledgement
-    G-->>C: 202 Accepted
-```
+This creates two useful guarantees:
 
-If Kafka is unavailable or the produce operation exceeds the configured timeout, the gateway returns `503 Service Unavailable` and does not claim the event was accepted.
+- the gateway does not claim durable acceptance before Kafka acknowledges;
+- the worker does not claim successful consumption before processing succeeds.
 
-This behavior is intentional: the HTTP boundary should not lie about durability.
+The overall processing model is at least once, so later database writes must be
+idempotent.

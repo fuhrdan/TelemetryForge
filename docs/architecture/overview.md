@@ -1,31 +1,52 @@
-# TelemetryForge Architecture — v0.2.0
+# TelemetryForge Architecture — v0.3.0
 
-TelemetryForge v0.2.0 establishes a durable event-streaming boundary between HTTP ingestion and future stream-processing workers.
+TelemetryForge is split into two independently scalable runtime services.
 
-```mermaid
-flowchart LR
-    C[Clients / Webhooks] --> G[Go Gateway]
-    G --> V[Canonical Envelope Validation]
-    V --> R[telemetry.raw]
-    V --> M[telemetry.metrics]
-    R --> K[(Apache Kafka)]
-    M --> K
+## Ingestion tier
+
+The Go gateway validates the canonical event envelope and publishes accepted
+events to Kafka. It stays stateless so additional gateway instances can be
+placed behind a load balancer.
+
+## Processing tier
+
+The Go worker joins the `telemetryforge-processors` Kafka consumer group.
+Records are decoded and submitted to a bounded worker pool. Workers run
+processors and acknowledge records only after successful processing.
+
+```text
+HTTP clients
+    |
+    v
+Gateway replicas
+    |
+    v
+Apache Kafka
+    |
+    v
+telemetryforge-processors consumer group
+    |
+    v
+bounded worker queues
+    |
+    v
+processors
 ```
 
-## Gateway responsibilities
+## Why split the services?
 
-The gateway remains stateless. It is responsible for request-size enforcement, strict JSON decoding, domain validation, event-ID assignment, topic routing, and durable publication to Kafka.
+Traffic does not arrive and process at identical rates. Kafka provides a
+durable boundary between the two. Gateways can scale for HTTP concurrency while
+workers scale for processing throughput.
 
-The gateway does **not** perform business aggregation, persistence, retry orchestration, or incident analysis. Those responsibilities are intentionally downstream so the ingestion tier can scale independently.
+## Current processing stage
 
-## Streaming boundary
+The first processor normalizes source and event-type whitespace. The behavior
+is deliberately modest; v0.3.0 proves the concurrency, acknowledgement, and
+backpressure architecture before persistence is introduced.
 
-Kafka decouples request concurrency from future worker throughput. In v0.2.0, the gateway waits for the producer acknowledgement before returning HTTP 202. In v0.3.0, consumer groups and bounded worker pools will be added downstream.
+## What comes next?
 
-## Readiness
-
-`/health` reports process liveness. `/ready` verifies Kafka reachability, so an orchestrator can avoid sending traffic to a gateway that cannot durably hand off accepted telemetry.
-
-## Future evolution
-
-The Kafka log will later provide the basis for replay, dead-letter handling, shadow pipelines, incident capture, and backpressure visibility.
+v0.4.0 adds PostgreSQL/TimescaleDB persistence. Because v0.3.0 already commits
+Kafka offsets after successful processing, persistence can be inserted into the
+processor path without changing the ingestion API.
