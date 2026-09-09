@@ -1,0 +1,20 @@
+# Go
+/bin/
+*.test
+*.out
+coverage.out
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Runtime
+*.log
+/tmp/

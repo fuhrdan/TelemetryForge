@@ -1,0 +1,10 @@
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      TELEMETRYFORGE_ADDRESS: ":8080"
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
