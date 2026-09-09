@@ -1,11 +1,13 @@
-FROM golang:1.23-alpine AS build
+FROM golang:1.25-alpine AS build
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge-gateway ./cmd/gateway
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge ./cmd/gateway
 
-FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /out/telemetryforge-gateway /telemetryforge-gateway
+FROM alpine:3.22
+RUN addgroup -S telemetryforge && adduser -S -G telemetryforge telemetryforge
+COPY --from=build /out/telemetryforge /usr/local/bin/telemetryforge
+USER telemetryforge
 EXPOSE 8080
-USER nonroot:nonroot
-ENTRYPOINT ["/telemetryforge-gateway"]
+ENTRYPOINT ["/usr/local/bin/telemetryforge"]

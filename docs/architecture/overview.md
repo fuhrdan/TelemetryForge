@@ -1,22 +1,31 @@
-# TelemetryForge Architecture — v0.1.0
+# TelemetryForge Architecture — v0.2.0
 
-TelemetryForge v0.1.0 establishes the ingestion boundary and canonical telemetry envelope. The release intentionally contains no broker or persistence layer yet; accepted events are validated and emitted as structured logs.
+TelemetryForge v0.2.0 establishes a durable event-streaming boundary between HTTP ingestion and future stream-processing workers.
 
 ```mermaid
 flowchart LR
-    C[Telemetry Producer] -->|HTTP JSON| G[Go Ingestion Gateway]
-    G --> V[Envelope Validation]
-    V --> L[Structured Event Log]
+    C[Clients / Webhooks] --> G[Go Gateway]
+    G --> V[Canonical Envelope Validation]
+    V --> R[telemetry.raw]
+    V --> M[telemetry.metrics]
+    R --> K[(Apache Kafka)]
+    M --> K
 ```
 
-## Design goals
+## Gateway responsibilities
 
-1. Keep the ingestion service stateless so it can be replicated horizontally later.
-2. Keep validation in the domain layer rather than the HTTP layer so Kafka replay, gRPC, and CLI ingestion can reuse the same rules.
-3. Version the event envelope before introducing streaming infrastructure.
-4. Fail malformed input at the edge rather than forwarding invalid telemetry downstream.
-5. Use structured logging from the first release so the gateway is itself observable.
+The gateway remains stateless. It is responsible for request-size enforcement, strict JSON decoding, domain validation, event-ID assignment, topic routing, and durable publication to Kafka.
 
-## Planned evolution
+The gateway does **not** perform business aggregation, persistence, retry orchestration, or incident analysis. Those responsibilities are intentionally downstream so the ingestion tier can scale independently.
 
-v0.2.0 replaces the structured-log sink with Kafka publishing. The HTTP contract and domain validation are expected to remain compatible.
+## Streaming boundary
+
+Kafka decouples request concurrency from future worker throughput. In v0.2.0, the gateway waits for the producer acknowledgement before returning HTTP 202. In v0.3.0, consumer groups and bounded worker pools will be added downstream.
+
+## Readiness
+
+`/health` reports process liveness. `/ready` verifies Kafka reachability, so an orchestrator can avoid sending traffic to a gateway that cannot durably hand off accepted telemetry.
+
+## Future evolution
+
+The Kafka log will later provide the basis for replay, dead-letter handling, shadow pipelines, incident capture, and backpressure visibility.

@@ -12,13 +12,29 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/api"
 	"github.com/fuhrdan/TelemetryForge/internal/config"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
+	"github.com/fuhrdan/TelemetryForge/internal/stream"
 )
 
 func main() {
 	logger := logging.New()
 	cfg := config.Load()
 
-	handler := api.NewServer(logger)
+	publisher, err := stream.NewKafkaPublisher(stream.KafkaConfig{
+		Brokers:        cfg.KafkaBrokers,
+		ClientID:       cfg.KafkaClientID,
+		ProduceTimeout: cfg.KafkaTimeout,
+	}, logger)
+	if err != nil {
+		logger.Error("Kafka publisher initialization failed", "error", err)
+		os.Exit(1)
+	}
+	defer publisher.Close()
+
+	handler := api.NewServer(logger, publisher, api.Topics{
+		Raw:    cfg.KafkaRawTopic,
+		Metric: cfg.KafkaMetricTopic,
+	})
+
 	httpServer := &http.Server{
 		Addr:         cfg.Address,
 		Handler:      handler,
@@ -28,7 +44,13 @@ func main() {
 
 	errorChannel := make(chan error, 1)
 	go func() {
-		logger.Info("TelemetryForge gateway starting", "address", cfg.Address)
+		logger.Info(
+			"TelemetryForge gateway starting",
+			"address", cfg.Address,
+			"kafka_brokers", cfg.KafkaBrokers,
+			"raw_topic", cfg.KafkaRawTopic,
+			"metric_topic", cfg.KafkaMetricTopic,
+		)
 		errorChannel <- httpServer.ListenAndServe()
 	}()
 

@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -9,23 +10,38 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/stream"
 )
 
-const maxRequestBodyBytes int64 = 1 << 20 // 1 MiB
+const (
+	maxRequestBodyBytes int64 = 1 << 20 // 1 MiB
+	readinessTimeout          = 2 * time.Second
+)
+
+// Topics maps API event classes to their Kafka topics.
+type Topics struct {
+	Raw    string
+	Metric string
+}
 
 // Server owns the HTTP routes for the TelemetryForge gateway.
 type Server struct {
-	logger *slog.Logger
-	mux    *http.ServeMux
+	logger    *slog.Logger
+	mux       *http.ServeMux
+	publisher stream.Publisher
+	topics    Topics
 }
 
 // NewServer creates a configured HTTP server handler.
-func NewServer(logger *slog.Logger) *Server {
+func NewServer(logger *slog.Logger, publisher stream.Publisher, topics Topics) *Server {
 	server := &Server{
-		logger: logger,
-		mux:    http.NewServeMux(),
+		logger:    logger,
+		mux:       http.NewServeMux(),
+		publisher: publisher,
+		topics:    topics,
 	}
 
 	server.routes()
@@ -44,13 +60,23 @@ func (server *Server) routes() {
 	server.mux.HandleFunc("POST /api/v1/metrics", server.handleMetric)
 }
 
-func (server *Server) handleHealth(writer http.ResponseWriter, request *http.Request) {
+func (server *Server) handleHealth(writer http.ResponseWriter, _ *http.Request) {
 	writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (server *Server) handleReady(writer http.ResponseWriter, request *http.Request) {
-	// v0.1.0 has no downstream dependencies yet. Later releases will extend
-	// readiness checks to Kafka, storage, and other required infrastructure.
+	ctx, cancel := context.WithTimeout(request.Context(), readinessTimeout)
+	defer cancel()
+
+	if err := server.publisher.Ready(ctx); err != nil {
+		server.logger.Warn("gateway not ready", "dependency", "kafka", "error", err)
+		writeJSON(writer, http.StatusServiceUnavailable, map[string]string{
+			"status":     "not_ready",
+			"dependency": "kafka",
+		})
+		return
+	}
+
 	writeJSON(writer, http.StatusOK, map[string]string{"status": "ready"})
 }
 
@@ -61,13 +87,16 @@ func (server *Server) handleEvent(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 
-	if event.ID == "" {
-		event.ID, err = newEventID()
-		if err != nil {
-			server.logger.Error("event id generation failed", "error", err)
-			writeError(writer, http.StatusInternalServerError, "unable to accept event")
-			return
-		}
+	if err := ensureEventID(&event); err != nil {
+		server.logger.Error("event id generation failed", "error", err)
+		writeError(writer, http.StatusInternalServerError, "unable to accept event")
+		return
+	}
+
+	if err := server.publisher.Publish(request.Context(), server.topics.Raw, event); err != nil {
+		server.logger.Error("event publish failed", "event_id", event.ID, "topic", server.topics.Raw, "error", err)
+		writeError(writer, http.StatusServiceUnavailable, "streaming backend unavailable")
+		return
 	}
 
 	server.logger.Info(
@@ -77,12 +106,10 @@ func (server *Server) handleEvent(writer http.ResponseWriter, request *http.Requ
 		"type", event.Type,
 		"schema_version", event.SchemaVersion,
 		"correlation_id", event.CorrelationID,
+		"topic", server.topics.Raw,
 	)
 
-	writeJSON(writer, http.StatusAccepted, map[string]string{
-		"id":     event.ID,
-		"status": "accepted",
-	})
+	writeAccepted(writer, event.ID)
 }
 
 func (server *Server) handleMetric(writer http.ResponseWriter, request *http.Request) {
@@ -97,13 +124,16 @@ func (server *Server) handleMetric(writer http.ResponseWriter, request *http.Req
 		return
 	}
 
-	if event.ID == "" {
-		event.ID, err = newEventID()
-		if err != nil {
-			server.logger.Error("event id generation failed", "error", err)
-			writeError(writer, http.StatusInternalServerError, "unable to accept metric")
-			return
-		}
+	if err := ensureEventID(&event); err != nil {
+		server.logger.Error("event id generation failed", "error", err)
+		writeError(writer, http.StatusInternalServerError, "unable to accept metric")
+		return
+	}
+
+	if err := server.publisher.Publish(request.Context(), server.topics.Metric, event); err != nil {
+		server.logger.Error("metric publish failed", "event_id", event.ID, "topic", server.topics.Metric, "error", err)
+		writeError(writer, http.StatusServiceUnavailable, "streaming backend unavailable")
+		return
 	}
 
 	server.logger.Info(
@@ -113,12 +143,10 @@ func (server *Server) handleMetric(writer http.ResponseWriter, request *http.Req
 		"type", event.Type,
 		"value", *event.Value,
 		"unit", event.Unit,
+		"topic", server.topics.Metric,
 	)
 
-	writeJSON(writer, http.StatusAccepted, map[string]string{
-		"id":     event.ID,
-		"status": "accepted",
-	})
+	writeAccepted(writer, event.ID)
 }
 
 func decodeEvent(writer http.ResponseWriter, request *http.Request) (domain.Event, error) {
@@ -132,7 +160,6 @@ func decodeEvent(writer http.ResponseWriter, request *http.Request) (domain.Even
 		if errors.As(err, &maxBytesError) {
 			return domain.Event{}, errors.New("request body exceeds 1 MiB")
 		}
-
 		return domain.Event{}, errors.New("invalid JSON payload")
 	}
 
@@ -147,14 +174,25 @@ func decodeEvent(writer http.ResponseWriter, request *http.Request) (domain.Even
 	return event, nil
 }
 
+func ensureEventID(event *domain.Event) error {
+	if event.ID != "" {
+		return nil
+	}
+
+	id, err := newEventID()
+	if err != nil {
+		return err
+	}
+	event.ID = id
+	return nil
+}
+
 func newEventID() (string, error) {
 	bytes := make([]byte, 16)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
 
-	// Set UUIDv4-compatible version and variant bits without adding a runtime
-	// dependency solely for identifier generation.
 	bytes[6] = (bytes[6] & 0x0f) | 0x40
 	bytes[8] = (bytes[8] & 0x3f) | 0x80
 
@@ -169,6 +207,10 @@ func newEventID() (string, error) {
 	encoded[23] = '-'
 	hex.Encode(encoded[24:36], bytes[10:16])
 	return string(encoded), nil
+}
+
+func writeAccepted(writer http.ResponseWriter, id string) {
+	writeJSON(writer, http.StatusAccepted, map[string]string{"id": id, "status": "accepted"})
 }
 
 func writeError(writer http.ResponseWriter, status int, message string) {

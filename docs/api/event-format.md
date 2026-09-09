@@ -35,4 +35,4 @@ All TelemetryForge telemetry uses a common versioned envelope.
 | `schema_version` | Yes | Envelope/schema compatibility identifier. |
 | `correlation_id` | No | Identifier used to correlate related telemetry. |
 
-Unknown top-level fields are rejected in v0.1.0. This is intentional: silent schema drift at the ingestion edge creates expensive downstream debugging problems.
+Unknown top-level fields are rejected by the current API contract. This is intentional: silent schema drift at the ingestion edge creates expensive downstream debugging problems.

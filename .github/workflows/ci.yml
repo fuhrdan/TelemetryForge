@@ -16,16 +16,36 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.23.x"
+          go-version: "1.25.x"
           cache: true
+      - name: Download dependencies
+        run: go mod download
       - name: Format check
-        run: test -z "$(gofmt -l cmd internal)"
+        run: test -z "$(gofmt -l cmd internal tests)"
       - name: Vet
         run: go vet ./...
       - name: Test
         run: go test -race -coverprofile=coverage.out ./...
       - name: Build
         run: go build ./...
+
+  kafka-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+      - name: Start Kafka
+        run: docker compose up -d kafka kafka-init
+      - name: Run Kafka integration test
+        env:
+          TELEMETRYFORGE_INTEGRATION_KAFKA_BROKERS: localhost:9092
+        run: go test -count=1 ./tests/integration
+      - name: Show Kafka logs on failure
+        if: failure()
+        run: docker compose logs kafka
 
   container:
     runs-on: ubuntu-latest

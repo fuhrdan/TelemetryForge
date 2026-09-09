@@ -1,21 +1,22 @@
-# TelemetryForge v0.1.0 — Foundation & Ingestion API
+# TelemetryForge v0.2.0 — Kafka Streaming & Durable Publishing
 
-Released: 2026-09-09
-
-v0.1.0 establishes the contract and engineering structure for TelemetryForge. It is deliberately small: the release proves the gateway, canonical telemetry envelope, validation model, documentation discipline, tests, container packaging, and CI foundation before distributed infrastructure is introduced.
+v0.2.0 changes TelemetryForge from an HTTP validation demo into an event-driven system with a durable streaming boundary.
 
 ## Highlights
 
-- High-concurrency Go HTTP gateway based on the standard library.
-- Versioned generic telemetry envelope designed for events, logs, webhooks, and metrics.
-- Separate domain validation so future HTTP, gRPC, Kafka replay, and CLI paths can share rules.
-- Strict unknown-field rejection and a 1 MiB request limit at the ingestion edge.
-- Generated UUIDv4-compatible event IDs.
-- Structured JSON logging and graceful shutdown.
-- Unit and handler tests plus GitHub Actions CI.
-- Docker/Compose packaging and a one-command developer check target.
-- ADRs and code-documentation standards established before the distributed pipeline exists.
+- Accepted telemetry is now published to Apache Kafka.
+- Generic events route to `telemetry.raw`; numeric metrics route to `telemetry.metrics`.
+- The gateway returns `202 Accepted` only after Kafka acknowledges the record.
+- Kafka failures surface as `503 Service Unavailable` rather than false acceptance.
+- Events are keyed by source to preserve source-local order within Kafka partitions.
+- `/ready` now reflects real Kafka reachability.
+- Docker Compose boots a complete single-node KRaft Kafka environment and initializes topics automatically.
+- CI includes a broker-backed Kafka integration test.
 
-## Next release
+## Portfolio signal
 
-v0.2.0 introduces Apache Kafka, durable publishing, topic/partition strategy, producer acknowledgements, correlation propagation, and integration tests while preserving the v0.1 API contract.
+This release demonstrates event-driven architecture, durable producer semantics, Kafka partitioning decisions, operational readiness checks, dependency abstraction, and infrastructure-backed testing.
+
+## Next
+
+v0.3.0 will add consumer groups, bounded Go worker pools, explicit backpressure behavior, graceful partition rebalancing, lag visibility, and the first downstream stream-processing pipeline.

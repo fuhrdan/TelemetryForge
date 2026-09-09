@@ -1,41 +1,65 @@
 # Local Development
 
-## Requirements
+## Prerequisites
 
-- Go 1.23+
-- Docker with Docker Compose (optional)
+- Go 1.25+
+- Docker with Docker Compose v2
 
-## Run locally
+## Full stack
 
 ```bash
-go run ./cmd/gateway
+docker compose up --build
 ```
 
-The gateway listens on `:8080` by default.
+Compose starts:
 
-## Verify health
+1. Apache Kafka in single-node KRaft mode.
+2. A one-shot `kafka-init` service that creates the v0.2.0 topics.
+3. The TelemetryForge gateway after topic initialization succeeds.
+
+Verify:
 
 ```bash
 curl http://localhost:8080/health
 curl http://localhost:8080/ready
 ```
 
-## Submit an event
+List topics:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/events \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source":"checkout-api",
-    "type":"request.duration",
-    "timestamp":"2026-09-09T15:30:00Z",
-    "schema_version":"1.0",
-    "correlation_id":"order-123"
-  }'
+make kafka-topics
 ```
 
-## Run checks
+## Run the gateway directly
+
+Start Kafka first:
 
 ```bash
-make check
+docker compose up -d kafka kafka-init
 ```
+
+Then:
+
+```bash
+go run ./cmd/gateway
+```
+
+The default direct-run broker is `localhost:9092`.
+
+## Unit tests
+
+```bash
+make test
+```
+
+The HTTP tests use an in-memory Publisher implementation, so Kafka is not required.
+
+## Kafka integration test
+
+With the Compose broker running:
+
+```bash
+make integration-test
+```
+
+The integration test verifies broker readiness and performs a real produce operation to `telemetry.raw`.
