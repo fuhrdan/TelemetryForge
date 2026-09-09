@@ -21,6 +21,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
+	"github.com/fuhrdan/TelemetryForge/internal/router"
 	"github.com/fuhrdan/TelemetryForge/internal/schema"
 	"github.com/fuhrdan/TelemetryForge/internal/security"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
@@ -94,6 +95,42 @@ func main() {
 		case "budgets":
 			if err := cardinalityBudgets(ctx, os.Args[3:]); err != nil {
 				exitErr(err)
+			}
+		default:
+			usage()
+			os.Exit(2)
+		}
+	case "routing":
+		switch os.Args[2] {
+		case "validate":
+			if err := routingValidate(os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "destinations":
+			if err := routingDestinations(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "deliveries":
+			if err := routingDeliveries(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "dlq":
+			if len(os.Args) < 4 {
+				usage()
+				os.Exit(2)
+			}
+			switch os.Args[3] {
+			case "list":
+				if err := routingDLQList(ctx, os.Args[4:]); err != nil {
+					exitErr(err)
+				}
+			case "requeue":
+				if err := routingDLQRequeue(ctx, os.Args[4:]); err != nil {
+					exitErr(err)
+				}
+			default:
+				usage()
+				os.Exit(2)
 			}
 		default:
 			usage()
@@ -569,6 +606,117 @@ func schemaPrune(ctx context.Context, args []string) error {
 	return nil
 }
 
+func routingValidate(args []string) error {
+	set := flag.NewFlagSet("routing validate", flag.ContinueOnError)
+	file := set.String("file", "routing/active.json", "routing JSON file")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	config, err := router.Load(*file)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("routing config %s@%s is valid (%d destinations, %d rules, fallback=%q)\n",
+		config.Name, config.Version, len(config.EnabledDestinations()), len(config.Rules), config.FallbackDestination)
+	return nil
+}
+
+func routingDestinations(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("routing destinations", flag.ContinueOnError)
+	limit := set.Int("limit", 100, "maximum destinations to return")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	rows, err := store.ListRoutingDestinationHealth(ctx, *limit)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(map[string]any{"tenant": *tenant, "destinations": rows}, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func routingDeliveries(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("routing deliveries", flag.ContinueOnError)
+	status := set.String("status", "", "optional pending|sending|retry|delivered|dead_letter")
+	limit := set.Int("limit", 100, "maximum rows to return")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	rows, err := store.ListRoutingDeliveries(ctx, *status, *limit)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(map[string]any{"tenant": *tenant, "status": *status, "deliveries": rows}, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func routingDLQList(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("routing dlq list", flag.ContinueOnError)
+	destination := set.String("destination", "", "optional destination filter")
+	limit := set.Int("limit", 100, "maximum rows to return")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	rows, err := store.ListRoutingDeadLetters(ctx, *destination, *limit)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(map[string]any{"tenant": *tenant, "destination": *destination, "dead_letters": rows}, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func routingDLQRequeue(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("routing dlq requeue", flag.ContinueOnError)
+	eventID := set.String("event", "", "event identifier")
+	destination := set.String("destination", "", "destination name")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*eventID) == "" || strings.TrimSpace(*destination) == "" {
+		return errors.New("--event and --destination are required")
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	if err := store.RequeueRoutingDeadLetter(ctx, *eventID, *destination); err != nil {
+		return err
+	}
+	fmt.Printf("requeued routing dead letter event %s for destination %s in tenant %s\n", *eventID, *destination, *tenant)
+	return nil
+}
+
 func policyValidate(args []string) error {
 	set := flag.NewFlagSet("policy validate", flag.ContinueOnError)
 	file := set.String("file", "", "policy JSON file")
@@ -609,7 +757,12 @@ func usage() {
   telemetryctl cardinality budgets [--limit 100] [--tenant default]
   telemetryctl schema inspect --source checkout-api --type request.duration [--tenant default]
   telemetryctl schema diff --source checkout-api --type request.duration --from 1.0 --to 2.0 [--tenant default]
-  telemetryctl schema prune [--older-than 840h] [--tenant default]`)
+  telemetryctl schema prune [--older-than 840h] [--tenant default]
+  telemetryctl routing validate [--file routing/active.json]
+  telemetryctl routing destinations [--tenant default]
+  telemetryctl routing deliveries [--status retry] [--tenant default]
+  telemetryctl routing dlq list [--destination primary] [--tenant default]
+  telemetryctl routing dlq requeue --event EVT --destination primary [--tenant default]`)
 }
 
 func exitErr(err error) {

@@ -144,3 +144,29 @@ arbitrary tag
 raw URL
 error text
 ```
+
+
+## Router
+
+### `telemetryforge_routing_deliveries_total`
+
+Labels:
+
+```text
+service=router
+destination
+outcome
+```
+
+Current outcomes include:
+
+```text
+delivered
+retry
+dead_letter
+fallback_enqueued
+```
+
+Destination names are bounded operator configuration values, not telemetry
+values. They are therefore acceptable Prometheus labels under the project's
+cardinality rules.

@@ -79,10 +79,17 @@ services:
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic telemetry.metrics --partitions 6 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic telemetry.dlq --partitions 6 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic telemetry.replay --partitions 6 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic telemetry.routed.primary --partitions 6 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic telemetry.routed.security --partitions 6 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic telemetry.routed.archive --partitions 6 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --describe --topic telemetry.raw
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --describe --topic telemetry.metrics
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --describe --topic telemetry.dlq
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --describe --topic telemetry.replay
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --describe --topic telemetry.routed.primary
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --describe --topic telemetry.routed.security
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --describe --topic telemetry.routed.archive
+
 
   gateway:
     build:
@@ -133,6 +140,8 @@ services:
       TELEMETRYFORGE_WORKER_ADMIN_ADDRESS: ":8081"
       TELEMETRYFORGE_POLICY_FILE: "/etc/telemetryforge/policies/active.json"
       TELEMETRYFORGE_SHADOW_POLICY_FILE: "/etc/telemetryforge/policies/shadow.json"
+      TELEMETRYFORGE_ROUTING_FILE: "/etc/telemetryforge/routing/active.json"
+      TELEMETRYFORGE_SHADOW_ROUTING_FILE: "/etc/telemetryforge/routing/shadow.json"
       TELEMETRYFORGE_CARDINALITY_MAX_DIMENSIONS: "20000"
       TELEMETRYFORGE_SCHEMA_FAIL_OPEN: "true"
       TELEMETRYFORGE_INCIDENT_LATENCY_MS: "1000"
@@ -141,6 +150,36 @@ services:
       TELEMETRYFORGE_OTLP_TRACES_ENDPOINT: "http://otel-collector:4318/v1/traces"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8081/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      timescaledb:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+
+  router:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["/usr/local/bin/telemetryforge-router"]
+    environment:
+      TELEMETRYFORGE_KAFKA_BROKERS: "kafka:19092"
+      TELEMETRYFORGE_DATABASE_URL: "postgres://telemetryforge:telemetryforge@timescaledb:5432/telemetryforge?sslmode=disable"
+      TELEMETRYFORGE_ROUTING_FILE: "/etc/telemetryforge/routing/active.json"
+      TELEMETRYFORGE_ROUTER_ADMIN_ADDRESS: ":8082"
+      TELEMETRYFORGE_AUTH_MODE: "disabled"
+      TELEMETRYFORGE_OTLP_TRACES_ENDPOINT: "http://otel-collector:4318/v1/traces"
+    ports:
+      - "8082:8082"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8082/ready"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -206,6 +245,8 @@ services:
       gateway:
         condition: service_healthy
       worker:
+        condition: service_healthy
+      router:
         condition: service_healthy
     restart: unless-stopped
 

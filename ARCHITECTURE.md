@@ -1,6 +1,6 @@
 # TelemetryForge Architecture
 
-TelemetryForge v1.2.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v1.3.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
 
@@ -279,3 +279,35 @@ See `docs/deployment/production-profile.md`.
 Any future AI explanation layer should consume Evidence Graph nodes/edges,
 reference its supporting evidence, and preserve contradictory evidence rather
 than replacing the graph with an opaque root-cause score.
+
+
+## Telemetry Router
+
+The primary worker records post-policy delivery intent in `routing_deliveries`
+after primary persistence. External backend I/O is owned by the separate
+`telemetryforge-router` process.
+
+```text
+Kafka processing worker
+  -> primary persistence
+  -> routing outbox
+  -> source ack
+
+routing outbox
+  -> destination-specific leased workers
+       -> delivered
+       -> retry
+       -> per-destination DLQ
+       -> optional failure fallback
+```
+
+Each destination advances independently. Router replicas use
+`FOR UPDATE SKIP LOCKED` plus an expiring lease so one claimed delivery can be
+recovered after process failure.
+
+Shadow routing evaluates candidate destination sets but never writes candidate
+outbox rows.
+
+Delivery to external backends is at-least-once. Kafka destination keys retain
+`tenant_id|source`; HTTP destinations receive the event ID as an idempotency
+key.

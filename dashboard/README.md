@@ -1,7 +1,7 @@
 # TelemetryForge Dashboard
 
-**Package version:** `1.2.0`
-**Release:** `v1.2.0`
+**Package version:** `1.3.0`
+**Release:** `v1.3.0`
 
 The dashboard is intentionally small and readable.
 
@@ -118,3 +118,12 @@ The dashboard now includes **Distributed Cardinality Intelligence**:
 
 Production worker replicas merge the same hourly HLL state; the dashboard is not
 summing replica-local estimates.
+
+
+## v1.3.0 additions
+
+- Telemetry Router destination health and isolated queue panel
+- shadow-routing destination differences
+- recent per-destination DLQ count
+
+The browser still reaches these APIs through the server-side authenticated proxy.

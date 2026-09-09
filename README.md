@@ -10,9 +10,9 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current development release:** `v1.2.0` — Distributed Cardinality Intelligence,
-> cluster-shared hourly HLL state, tenant/source series budgets, trend
-> forecasting, and top exploding-dimension visibility.
+> **Current development release:** `v1.3.0` — Telemetry Router, durable multi-destination
+> fan-out, destination-isolated retry/DLQ/fallback, and non-destructive shadow
+> routing.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -73,6 +73,30 @@ Read:
 
 - [Distributed Cardinality Intelligence](docs/cardinality/distributed-cardinality.md)
 - [Cardinality Budgets](docs/cardinality/budgets.md)
+
+### Telemetry Router
+
+Routes the post-policy canonical event to multiple independent backends without
+putting external destination I/O inside the primary Kafka worker.
+
+Routing can match authenticated tenant, source, event type, severity, and tag
+patterns. Matching rules fan out to a deduplicated destination set.
+
+v1.3.0 includes:
+
+- Kafka destinations;
+- HTTP/webhook destinations;
+- unmatched-event fallback;
+- per-destination bounded retry;
+- per-destination DLQ;
+- terminal failure fallback;
+- multi-replica leased outbox dispatch; and
+- candidate shadow routing that never performs candidate I/O.
+
+Read:
+
+- [Telemetry Router](docs/routing/telemetry-router.md)
+- [Shadow Routing](docs/routing/shadow-routing.md)
 
 ### Policy-as-Code + Shadow Pipeline
 
@@ -187,6 +211,11 @@ flowchart LR
     CF --> CS[(Shared Hourly HLL / Budgets)]
     CS --> DB[(TimescaleDB)]
     CF -. candidate .-> SP[Shadow Policy]
+    DB --> O[(Routing Outbox)]
+    O --> RT[Router Service]
+    RT --> D1[Primary Backend]
+    RT --> D2[Security Backend]
+    RT --> D3[Archive / HTTP]
 
     DB --> I[Frozen Incidents]
     I --> R[Incident Replay]
@@ -225,6 +254,7 @@ Open:
 ```text
 TelemetryForge: http://localhost:3000
 Gateway:        http://localhost:8080
+Router admin:   http://localhost:8082
 Grafana:        http://localhost:3001
 Prometheus:     http://localhost:9090
 Tempo:          http://localhost:3200
@@ -280,6 +310,19 @@ go run ./cmd/telemetryctl cardinality budgets --tenant default
 
 See [v1 Portfolio Demo](docs/demo/v1-portfolio-demo.md) and
 [Schema Intelligence](docs/schema/schema-intelligence.md).
+
+Validate and inspect v1.3 routing:
+
+```bash
+go run ./cmd/telemetryctl routing validate --file routing/active.json
+go run ./cmd/telemetryctl routing destinations --tenant default
+go run ./cmd/telemetryctl routing deliveries --status retry --tenant default
+go run ./cmd/telemetryctl routing dlq list --tenant default
+```
+
+The local active configuration routes unmatched events to `primary`, fans
+production errors to `primary + security`, and uses `archive` as a terminal
+failure fallback.
 
 ## Authentication
 
@@ -378,6 +421,12 @@ Worker:
 GET :8081/metrics
 ```
 
+Router:
+
+```text
+GET :8082/metrics
+```
+
 In `api_key` mode `/metrics` requires an `admin` credential.
 
 Kafka lag is broker-derived from committed group offsets versus broker end
@@ -460,7 +509,7 @@ CLI:
 ## Repository layout
 
 ```text
-cmd/                         gateway, worker, telemetryctl
+cmd/                         gateway, worker, router, telemetryctl
 dashboard/                   Next.js dashboard + server-side API proxy
 internal/api/                REST + SSE
 internal/costsim/            Telemetry Cost Simulator
@@ -472,6 +521,7 @@ internal/observability/      Prometheus/OpenTelemetry
 internal/policy/             Cardinality Firewall, budgets + shadow policy
 internal/reliability/        retries/error classification
 internal/replay/             isolated Incident Replay
+internal/router/             routing policy + destination dispatcher
 internal/security/           auth, tenant context, redaction
 internal/schema/             schema derivation, semantic conventions, diffs
 internal/storage/            PostgreSQL/TimescaleDB + shared cardinality state
@@ -485,13 +535,14 @@ load/k6/                     reproducible load methodology
 migrations/                  schema migrations
 policies/                    active/shadow policy-as-code
 pricing/                     explicit cost assumptions
+routing/                     active/shadow routing policy
 security/                    hash-only demo API-key document
 docs/                        human-readable engineering docs
 ```
 
 ## Security status
 
-The v1 security boundary remains unchanged in v1.2.0. No repository can make a
+The v1 security boundary remains in force in v1.3.0. No repository can make a
 deployment "secure" without the environment around it.
 
 Operators remain responsible for:

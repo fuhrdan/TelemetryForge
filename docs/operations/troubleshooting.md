@@ -109,3 +109,23 @@ make docker-down
 
 `make docker-down` uses `docker compose down -v`; do not use it against data you
 intend to keep.
+
+
+## Routing destination backlog
+
+Inspect:
+
+```bash
+telemetryctl routing destinations --tenant default
+telemetryctl routing deliveries --status retry --tenant default
+telemetryctl routing dlq list --tenant default
+```
+
+Interpret separately:
+
+- **worker DLQ**: primary processing failed before successful completion;
+- **routing DLQ**: primary processing/persistence succeeded, but one destination
+  exhausted its delivery attempts.
+
+Do not restart the entire router repeatedly just because one backend is down.
+Healthy destination lanes are designed to continue draining.

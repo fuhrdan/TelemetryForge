@@ -328,3 +328,38 @@ tenant.
 
 Fields include budget scope, policy/version, series limit, observed/projected
 unique series, percentage consumed, and status.
+
+
+## Telemetry Router
+
+### `GET /api/v1/routing/destinations`
+
+Returns tenant-visible destination health plus pending/retry/DLQ counts.
+
+### `GET /api/v1/routing/deliveries`
+
+Optional query parameters:
+
+```text
+status=pending|sending|retry|delivered|dead_letter
+limit=1..500
+```
+
+Returned event envelopes pass through the normal API redactor.
+
+### `GET /api/v1/routing/shadow-diffs`
+
+Returns recent active-versus-candidate destination-set differences. The table
+does not duplicate event payloads.
+
+### `GET /api/v1/routing/dead-letters`
+
+Optional:
+
+```text
+destination=<name>
+limit=1..500
+```
+
+Dead-letter envelopes are redacted on API output; stored recovery evidence is
+full fidelity.

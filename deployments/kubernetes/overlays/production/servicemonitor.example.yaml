@@ -1,6 +1,6 @@
 # Optional Prometheus Operator example; not included by kustomization.yaml.
 #
-# The production gateway/worker protect /metrics with admin scope. Create a
+# The production gateway/worker/router protect /metrics with admin scope. Create a
 # Secret containing a raw admin API key and reference it from your Prometheus
 # Operator resource. Adapt labels/namespaces to your cluster.
 
@@ -32,6 +32,25 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: telemetryforge-worker
+  endpoints:
+    - port: admin
+      path: /metrics
+      interval: 15s
+      authorization:
+        type: Bearer
+        credentials:
+          name: telemetryforge-prometheus-auth
+          key: api-key
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: telemetryforge-router
+  namespace: telemetryforge
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: telemetryforge-router
   endpoints:
     - port: admin
       path: /metrics

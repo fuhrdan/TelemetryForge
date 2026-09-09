@@ -16,6 +16,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
 	"github.com/fuhrdan/TelemetryForge/internal/observability"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
+	"github.com/fuhrdan/TelemetryForge/internal/router"
 	"github.com/fuhrdan/TelemetryForge/internal/security"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
@@ -30,7 +31,7 @@ func main() {
 	traceShutdown, err := observability.InitTracing(
 		ctx,
 		"telemetryforge-worker",
-		"1.2.0",
+		"1.3.0",
 		os.Getenv("TELEMETRYFORGE_OTLP_TRACES_ENDPOINT"),
 	)
 	if err != nil {
@@ -76,6 +77,37 @@ func main() {
 			os.Exit(1)
 		}
 		shadowPolicy = &loadedShadow
+	}
+
+	routingPath := env("TELEMETRYFORGE_ROUTING_FILE", "routing/active.json")
+	activeRouting, err := router.Load(routingPath)
+	if err != nil {
+		logger.Error("load active routing config", "path", routingPath, "error", err)
+		os.Exit(1)
+	}
+
+	var shadowRouting *router.Config
+	shadowRoutingPath := env("TELEMETRYFORGE_SHADOW_ROUTING_FILE", "routing/shadow.json")
+	if strings.EqualFold(shadowRoutingPath, "disabled") {
+		shadowRoutingPath = ""
+	}
+	if shadowRoutingPath != "" {
+		loadedRouting, err := router.Load(shadowRoutingPath)
+		if err != nil {
+			logger.Error("load shadow routing config", "path", shadowRoutingPath, "error", err)
+			os.Exit(1)
+		}
+		shadowRouting = &loadedRouting
+	}
+	routingPlanner, err := router.NewPlanner(activeRouting, shadowRouting, store)
+	if err != nil {
+		logger.Error("create routing planner", "error", err)
+		os.Exit(1)
+	}
+	routingProcessor, err := worker.NewRouterPlanner(routingPlanner)
+	if err != nil {
+		logger.Error("create routing processor", "error", err)
+		os.Exit(1)
 	}
 
 	activeTracker := storage.NewDistributedCardinalityTracker(store, "active")
@@ -127,6 +159,7 @@ func main() {
 		schemaInspector,
 		worker.NewPolicyProcessor(policyEngine),
 		persister,
+		routingProcessor,
 		worker.NewIncidentDetector(detector, logger),
 	)
 	if err != nil {
@@ -197,6 +230,8 @@ func main() {
 		"flight_recorder", "enabled",
 		"schema_intelligence", "enabled",
 		"distributed_cardinality", "timescaledb-hourly",
+		"telemetry_router", activeRouting.Name+"@"+activeRouting.Version,
+		"shadow_routing", shadowRouting != nil,
 		"policy", activePolicy.Name+"@"+activePolicy.Version,
 		"shadow_policy", shadowPolicyPath != "",
 		"admin_address", adminAddress)

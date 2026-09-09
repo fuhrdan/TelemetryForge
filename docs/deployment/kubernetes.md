@@ -130,3 +130,21 @@ It also disables anonymous scrape annotations because `/metrics` requires
 `admin` when authentication is enabled.
 
 See [Production Profile](production-profile.md).
+
+
+## Router Deployment
+
+The base now includes `router.yaml` with two replicas and admin port `8082`.
+
+Routing configuration is generated as `telemetryforge-routing` from:
+
+```text
+deployments/kubernetes/base/routing/active.json
+deployments/kubernetes/base/routing/shadow.json
+```
+
+Multiple router replicas safely share the PostgreSQL outbox through leased
+`FOR UPDATE SKIP LOCKED` claims.
+
+The production overlay mounts the API-key hash document so `/metrics` can use
+the same admin-scope authentication model as worker/gateway.

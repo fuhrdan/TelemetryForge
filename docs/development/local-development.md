@@ -207,3 +207,28 @@ Direct CLI inspection:
 ```bash
 go run ./cmd/telemetryctl schema inspect   --source orders-api   --type order.created
 ```
+
+
+## Telemetry Router
+
+The full Compose stack runs the router automatically:
+
+```text
+Router admin / metrics: http://localhost:8082
+```
+
+Local routed Kafka topics:
+
+```text
+telemetry.routed.primary
+telemetry.routed.security
+telemetry.routed.archive
+```
+
+Inspect them with Kafka console tools or `docker compose exec kafka`.
+
+Validate route policy before restart:
+
+```bash
+make routing-check
+```

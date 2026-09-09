@@ -15,6 +15,7 @@ to reconstruct every decision from implementation details.
 - [Project roadmap](../ROADMAP.md)
 - [v1.1.0 delivered scope](roadmap/v1.1.0.md)
 - [v1.2.0 delivered scope](roadmap/v1.2.0.md)
+- [v1.3.0 delivered scope](roadmap/v1.3.0.md)
 
 ## Architecture
 
@@ -77,6 +78,11 @@ to reconstruct every decision from implementation details.
 
 - [Distributed Cardinality Intelligence](cardinality/distributed-cardinality.md)
 - [Cardinality Budgets](cardinality/budgets.md)
+
+## Telemetry Router
+
+- [Telemetry Router](routing/telemetry-router.md)
+- [Shadow Routing](routing/shadow-routing.md)
 
 ## Policy and cardinality
 

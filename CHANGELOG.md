@@ -4,6 +4,18 @@
 
 _No changes yet._
 
+## [1.3.0-dev] - 2026-09-09
+
+### Telemetry Router
+- Added strict active/shadow routing JSON with tenant/source/type/severity/tag matching.
+- Added durable routing outbox and separate router service.
+- Added Kafka and HTTP/webhook destination types.
+- Added per-destination concurrency, retry, health, DLQ, and failure fallback.
+- Added leased `FOR UPDATE SKIP LOCKED` claims for multi-replica dispatch.
+- Added non-destructive shadow routing with destination-set diffs.
+- Added routing API, CLI, dashboard, Docker Compose, Kubernetes, metrics, migration, tests, and ADRs 0030-0032.
+
+
 ## [1.2.0] - 2026-09-09
 
 ### Distributed Cardinality Intelligence

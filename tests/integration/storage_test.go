@@ -12,6 +12,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
+	"github.com/fuhrdan/TelemetryForge/internal/router"
 	"github.com/fuhrdan/TelemetryForge/internal/schema"
 	"github.com/fuhrdan/TelemetryForge/internal/security"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
@@ -717,5 +718,78 @@ func TestDistributedCardinalityBudgetStatus(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected persisted budget status")
+	}
+}
+
+func TestRoutingOutboxIsolationAndFallback(t *testing.T) {
+	databaseURL := os.Getenv("TELEMETRYFORGE_INTEGRATION_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TELEMETRYFORGE_INTEGRATION_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	ctx = security.WithTenant(ctx, "routing-integration")
+	store, err := storage.NewPostgresStore(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Now().UTC()
+	event := domain.Event{
+		ID: fmt.Sprintf("routing-%d", now.UnixNano()), TenantID: "routing-integration",
+		Source: "checkout-api", Type: "request.error", Timestamp: now,
+		SchemaVersion: "1.0", Tags: map[string]string{"severity": "error"},
+	}
+	plan := []router.Decision{
+		{Destination: "primary", RouteRules: []string{"all"}, MaxAttempts: 3, BaseDelayMS: 100, MaxDelayMS: 1000},
+		{Destination: "security", RouteRules: []string{"errors"}, MaxAttempts: 1, BaseDelayMS: 100, MaxDelayMS: 1000, FailureFallback: "archive"},
+	}
+	if err := store.EnqueueRoutingPlan(ctx, event, plan); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.EnqueueRoutingPlan(ctx, event, plan); err != nil {
+		t.Fatal(err)
+	}
+
+	primary, ok, err := store.ClaimRoutingDelivery(ctx, "primary", 10*time.Second)
+	if err != nil || !ok {
+		t.Fatalf("claim primary ok=%v err=%v", ok, err)
+	}
+	if err := store.MarkRoutingDelivered(ctx, primary); err != nil {
+		t.Fatal(err)
+	}
+
+	securityDelivery, ok, err := store.ClaimRoutingDelivery(ctx, "security", 10*time.Second)
+	if err != nil || !ok {
+		t.Fatalf("claim security ok=%v err=%v", ok, err)
+	}
+	fallback := &router.Decision{Destination: "archive", RouteRules: []string{"failure_fallback:security"}, MaxAttempts: 2, BaseDelayMS: 100, MaxDelayMS: 1000}
+	if err := store.DeadLetterRoutingDelivery(ctx, securityDelivery, "simulated backend failure", fallback); err != nil {
+		t.Fatal(err)
+	}
+
+	archive, ok, err := store.ClaimRoutingDelivery(ctx, "archive", 10*time.Second)
+	if err != nil || !ok {
+		t.Fatalf("claim fallback ok=%v err=%v", ok, err)
+	}
+	if archive.EventID != event.ID {
+		t.Fatalf("fallback event=%q want %q", archive.EventID, event.ID)
+	}
+
+	letters, err := store.ListRoutingDeadLetters(ctx, "security", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, letter := range letters {
+		if letter.EventID == event.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected per-destination routing dead letter")
 	}
 }

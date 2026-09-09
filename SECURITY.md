@@ -176,3 +176,28 @@ Database access should remain restricted.
 Series-budget identities are assembled in process and hashed before shared
 state persistence; the full series string is not stored in the cardinality
 state table.
+
+
+## Telemetry Router destinations
+
+Routing policy is operational configuration and should be reviewed like policy.
+
+HTTP destination secrets must not be stored directly in routing JSON. Static
+`Authorization` and `Cookie` headers are rejected. Use `bearer_token_env` and a
+secret manager/environment injection for bearer credentials.
+
+The router sends the canonical post-policy event, which may still contain
+sensitive telemetry. Destination access, TLS, retention, and downstream tenant
+isolation remain deployment responsibilities.
+
+Per-destination dead letters persist the event envelope for recovery and are
+therefore sensitive operational evidence.
+
+
+## Telemetry Router destination credentials
+
+HTTP destination credentials must not be embedded directly in routing JSON.
+Credential-shaped static headers are rejected. Use `header_env` or
+`bearer_token_env` and supply their values through the deployment secret
+mechanism. Routing dead letters retain full event envelopes and therefore require
+the same access controls as frozen incident evidence.

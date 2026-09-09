@@ -178,3 +178,27 @@ New coverage includes:
 
 The TimescaleDB integration job is the authoritative test that the atomic
 `set_byte(max(...))` HLL update works against real PostgreSQL/TimescaleDB.
+
+
+## v1.3.0 Telemetry Router coverage
+
+New unit/integration checks cover:
+
+- tenant/source/type/severity/tag route matching
+- fan-out destination deduplication
+- unmatched fallback routing
+- shadow routing with no candidate enqueue
+- failure-fallback cycle rejection
+- HTTP idempotency/tenant headers
+- environment-backed generic secret headers and static-secret rejection
+- non-2xx HTTP delivery failure
+- bounded retry delay
+- independent destination failure versus healthy delivery
+- routing outbox idempotency
+- independent destination claim/delivery
+- per-destination dead-letter persistence
+- atomic failure fallback enqueue
+- routing API/CLI compile surfaces
+- router Docker/Kubernetes configuration
+
+The storage integration test uses the real PostgreSQL migration in CI.

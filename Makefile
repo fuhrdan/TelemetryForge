@@ -1,4 +1,4 @@
-.PHONY: build run run-worker telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence demo-schema test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check
+.PHONY: build run run-worker run-router routing-check telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence demo-schema demo-routing test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check
 
 build:
 	go build ./...
@@ -8,6 +8,9 @@ run:
 
 run-worker:
 	go run ./cmd/worker
+
+run-router:
+	go run ./cmd/router
 
 telemetryctl:
 	go run ./cmd/telemetryctl
@@ -43,6 +46,10 @@ docs-check:
 policy-check:
 	go run ./cmd/telemetryctl policy validate --file policies/active.json
 	go run ./cmd/telemetryctl policy validate --file policies/shadow.json
+
+routing-check:
+	go run ./cmd/telemetryctl routing validate --file routing/active.json
+	go run ./cmd/telemetryctl routing validate --file routing/shadow.json
 
 k8s-render:
 	kubectl kustomize deployments/kubernetes/base >/dev/null
@@ -88,6 +95,9 @@ demo-evidence:
 
 demo-schema:
 	python3 scripts/demo-traffic.py --schema-demo --interval 0.05
+
+demo-routing:
+	python3 scripts/demo-traffic.py --routing-demo --count 80 --interval 0.08
 
 observability-check:
 	docker run --rm --entrypoint /bin/promtool \

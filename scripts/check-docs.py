@@ -56,6 +56,9 @@ REQUIRED = [
     ROOT / "docs" / "roadmap" / "v1.2.0.md",
     ROOT / "docs" / "cardinality" / "distributed-cardinality.md",
     ROOT / "docs" / "cardinality" / "budgets.md",
+    ROOT / "docs" / "routing" / "telemetry-router.md",
+    ROOT / "docs" / "routing" / "shadow-routing.md",
+    ROOT / "docs" / "roadmap" / "v1.3.0.md",
 ]
 
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

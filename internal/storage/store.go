@@ -14,6 +14,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/evidence"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
+	"github.com/fuhrdan/TelemetryForge/internal/router"
 	"github.com/fuhrdan/TelemetryForge/internal/schema"
 )
 
@@ -64,4 +65,12 @@ type SchemaReader interface {
 	SchemaHistory(ctx context.Context, source, eventType string) ([]schema.RegistryEntry, error)
 	ListSchemaDrifts(ctx context.Context, limit int) ([]schema.Drift, error)
 	SchemaDiff(ctx context.Context, source, eventType, fromVersion, toVersion string) (schema.VersionDiff, error)
+}
+
+// RoutingReader exposes tenant-scoped Telemetry Router state.
+type RoutingReader interface {
+	ListRoutingDeliveries(ctx context.Context, status string, limit int) ([]router.Delivery, error)
+	ListRoutingShadowDiffs(ctx context.Context, limit int) ([]router.ShadowDiff, error)
+	ListRoutingDeadLetters(ctx context.Context, destination string, limit int) ([]router.DeadLetter, error)
+	ListRoutingDestinationHealth(ctx context.Context, limit int) ([]router.DestinationHealth, error)
 }

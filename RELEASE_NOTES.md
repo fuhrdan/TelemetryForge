@@ -1,158 +1,164 @@
-# TelemetryForge v1.2.0 Release Notes
+# TelemetryForge v1.3.0 Development Release Notes
 
-## Distributed Cardinality Intelligence
+## Telemetry Router
 
-v1.2.0 turns the Cardinality Firewall from a replica-local warning mechanism
-into a shared cluster control.
+v1.3.0 separates **routing intent** from **destination delivery**. The primary
+Kafka worker records a durable destination plan after primary persistence; a
+separate router service performs external I/O.
 
-Production workers now merge cardinality observations through fixed-size hourly
-state in PostgreSQL/TimescaleDB. A dimension therefore sees the same shared
-estimate regardless of which Kafka partition/worker replica observed the value.
+This means one broken observability backend cannot hold a healthy destination or
+the core Kafka processing partition hostage.
 
-## Shared estimator
+## Routing policy
 
-The cluster key is:
-
-```text
-tenant_id
-active/shadow mode
-source
-event_type
-dimension
-hourly window
-```
-
-Each row stores:
-
-- 64 HLL registers;
-- up to 16 SHA-256-derived hashes for exact low-cardinality counting;
-- first/last observation timestamps; and
-- sample count.
-
-Raw tag values are never persisted in shared cardinality state.
-
-Each observation atomically raises one HLL register with
-`max(existing,incoming)`, which is the merge operation required to combine
-replica observations safely.
-
-## Hourly policy semantics
-
-Dimension thresholds now apply to the current one-hour UTC window.
-
-Projection still requires at least ten samples and thirty seconds before
-scaling observed unique values to the one-hour horizon.
-
-Incident Replay and the Cost Simulator use local bounded trackers with the same
-hourly window semantics. Historical analysis never writes production
-cardinality state.
-
-## Series budgets
-
-Policy JSON can now define versioned hourly series budgets.
-
-Example:
-
-```json
-{
-  "name": "tenant-hourly-series",
-  "source": "*",
-  "type": "*",
-  "series_limit": 50000,
-  "warning_percent": 70,
-  "critical_percent": 90
-}
-```
-
-Budget identity hashes the full telemetry series:
+Routing JSON can match:
 
 ```text
-source + event type + sorted non-TelemetryForge tags
+authenticated tenant
+source glob
+event-type glob
+severity
+tag key/value globs
 ```
 
-This measures distinct series shapes rather than incorrectly summing individual
-label cardinalities.
+Matching rules fan out to the union of their destinations. `stop: true` allows
+deliberate first-match termination.
 
-Statuses:
+If no rule matches, `fallback_destination` can receive the event.
+
+## Durable outbox
+
+Migration `010_telemetry_router.sql` adds:
+
+- `routing_deliveries`
+- `routing_shadow_diffs`
+- `routing_dead_letters`
+- `routing_destination_health`
+
+Outbox uniqueness is:
 
 ```text
-healthy
-warning
-critical
-exceeded
+tenant_id + event_id + destination
 ```
 
-Budgets are advisory. They do not drop, quarantine, or sample telemetry.
-Explicit dimension policy remains the mutation mechanism.
+so bounded worker retry cannot duplicate one destination intent.
 
-## Dashboard
+## Router service
 
-Added **Distributed Cardinality** and **Series Budgets** panels showing:
+New binary:
 
-- top projected-growth dimensions;
-- observed/projected uniques;
-- unique growth per minute;
-- active hourly window;
-- budget scope;
-- active/shadow policy version;
-- budget consumption percentage; and
-- healthy/warning/critical/exceeded state.
+```text
+telemetryforge-router
+```
+
+Admin surface:
+
+```text
+:8082/health
+:8082/ready
+:8082/metrics
+```
+
+Each destination gets its own concurrency lanes. Multiple router replicas claim
+work with PostgreSQL `FOR UPDATE SKIP LOCKED` and expiring leases.
+
+Router readiness intentionally does **not** fail because one external destination
+is unavailable; that would defeat destination isolation. Backend health is
+reported separately.
+
+## Destination types
+
+### Kafka
+
+Uses the same Kafka TLS/SASL environment contract as the rest of TelemetryForge.
+Destination brokers can optionally override the cluster default.
+
+### HTTP/webhook
+
+Posts the canonical post-policy event and includes event/tenant/idempotency
+headers.
+
+Credential-shaped static headers (`Authorization`, cookies, API keys, tokens,
+and secrets) are rejected in routing JSON. Use `bearer_token_env` for Bearer
+authentication or `header_env` for generic secret-backed HTTP headers.
+
+## Retry, DLQ, and failure fallback
+
+Each destination stores:
+
+- max attempts
+- base/max backoff
+- current attempts/status
+- next attempt time
+- last error
+
+After terminal failure TelemetryForge records a **per-destination routing DLQ**.
+An optional `failure_fallback` can atomically enqueue the same event to another
+destination such as `archive`. Fallback cycles are rejected.
+
+This routing DLQ is separate from `telemetry.dlq`, which represents failures in
+the primary processing pipeline.
+
+## Shadow routing
+
+The candidate routing file is evaluated against the same post-policy event but
+never creates destination I/O. Only added/removed destination names are stored.
 
 ## API
 
-Added:
+Added tenant-scoped:
 
 ```text
-GET /api/v1/cardinality/state?mode=active&limit=30
-GET /api/v1/cardinality/budgets?limit=100
+GET /api/v1/routing/destinations
+GET /api/v1/routing/deliveries
+GET /api/v1/routing/shadow-diffs
+GET /api/v1/routing/dead-letters
 ```
-
-Both remain tenant-scoped through the v1 authentication boundary.
 
 ## CLI
 
 Added:
 
 ```bash
-telemetryctl cardinality top --mode active --limit 25 --tenant default
-telemetryctl cardinality budgets --tenant default
+telemetryctl routing validate --file routing/active.json
+telemetryctl routing destinations --tenant default
+telemetryctl routing deliveries --status retry --tenant default
+telemetryctl routing dlq list --destination security --tenant default
+telemetryctl routing dlq requeue --event EVT --destination security --tenant default
 ```
 
-`telemetryctl policy validate` now reports configured budget count and validates
-budget names/limits/threshold percentages.
+## Dashboard
 
-## Database
+Added:
 
-Migration `009_distributed_cardinality.sql` adds:
+- destination health
+- pending/retry/DLQ counts
+- candidate shadow-routing differences
+- recent per-destination DLQ summary
 
-- `cardinality_cluster_state` TimescaleDB hypertable;
-- seven-day shared-state retention; and
-- `cardinality_budget_status` current-status table.
+## Local demo destinations
 
-## Policy defaults
+Compose creates:
 
-The checked-in active/shadow policies now include:
+```text
+telemetry.routed.primary
+telemetry.routed.security
+telemetry.routed.archive
+```
 
-- a tenant-wide hourly series budget; and
-- a narrower checkout-source hourly series budget.
-
-The shadow policy intentionally uses lower candidate budgets so operators can
-compare pressure before promotion.
-
-## Failure behavior
-
-TelemetryForge does not silently fall back from distributed production state to
-replica-local state during a database outage.
-
-A shared-state write failure is treated as a transient policy dependency
-failure and goes through normal bounded retry/DLQ handling if it does not
-recover.
+The checked-in active route sends unmatched telemetry to `primary`, production
+errors to `primary + security`, and uses `archive` as the failure fallback.
 
 ## Known limitations
 
-- Shared cardinality consistency adds database write pressure: one atomic state
-  update per tracked dimension and matching budget.
-- HLL remains approximate after the first 16 unique hashes.
-- Forecasting is intentionally a simple one-hour linear trend heuristic.
-- Budget status is advisory and not a vendor billing model.
-- Cross-region database latency/partition behavior is not yet the v1.9 HA
-  architecture.
+- External destination delivery is at-least-once, not exactly-once.
+- HTTP destinations should implement idempotency using the canonical event ID.
+- v1.3 establishes routing semantics but intentionally does not freeze a public
+  third-party connector SDK; the connector/plugin platform remains v1.8 work.
+- Destination configuration is deployment-global while delivery/health history
+  is tenant-scoped.
+- The routing outbox uses PostgreSQL; cross-region HA semantics remain v1.9 work.
+- Delivered outbox rows and shadow-routing differences do not yet have automatic
+  pruning; production operators should define retention before sustained high-volume use.
+- A destination should be drained before it is removed/disabled; removing it also
+  removes the active dispatch lane for outstanding rows.

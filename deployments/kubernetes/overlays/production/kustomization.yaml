@@ -9,4 +9,5 @@ patches:
   - path: configmap-production.yaml
   - path: gateway-production.yaml
   - path: worker-production.yaml
+  - path: router-production.yaml
   - path: dashboard-production.yaml

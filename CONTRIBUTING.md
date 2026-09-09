@@ -171,6 +171,16 @@ Do not:
 A semantic-convention catalog update should cite the upstream OpenTelemetry
 version it was reviewed against.
 
+### Telemetry Router invariants
+
+Routing changes must preserve these release guarantees:
+
+- external destination I/O never runs inside the primary Kafka processing worker;
+- one destination's retry/DLQ state cannot block an unrelated destination;
+- shadow routing records candidate decisions but performs no candidate I/O;
+- routing outbox writes remain idempotent by tenant/event/destination;
+- destination credentials come from environment/secret-manager inputs rather than committed routing JSON.
+
 ## Documentation standards
 
 Human-readable documentation is a project requirement.

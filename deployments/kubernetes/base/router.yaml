@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: router
+  namespace: telemetryforge
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: telemetryforge-router
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8082"
+      labels:
+        app.kubernetes.io/name: telemetryforge-router
+        app.kubernetes.io/part-of: telemetryforge
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: router
+          image: ghcr.io/fuhrdan/telemetryforge:v1.3.0
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/telemetryforge-router"]
+          ports:
+            - name: admin
+              containerPort: 8082
+          envFrom:
+            - configMapRef:
+                name: telemetryforge-config
+            - secretRef:
+                name: telemetryforge-secrets
+          volumeMounts:
+            - name: routing
+              mountPath: /etc/telemetryforge/routing
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: admin
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: admin
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: routing
+          configMap:
+            name: telemetryforge-routing
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: router-admin
+  namespace: telemetryforge
+  labels:
+    app.kubernetes.io/name: telemetryforge-router
+spec:
+  selector:
+    app.kubernetes.io/name: telemetryforge-router
+  ports:
+    - name: admin
+      port: 8082
+      targetPort: admin

@@ -15,6 +15,7 @@ TelemetryForge tags are intended to be immutable snapshots.
 make docs-check
 make check
 make policy-check
+make routing-check
 make integration-test
 make dashboard-build
 make k8s-render
@@ -26,7 +27,7 @@ make observability-check
 6. Run the complete Docker Compose stack and the healthy/incident demos.
 7. Confirm no development credentials or local artifact paths were committed.
 8. Commit the release with a conventional commit message.
-9. Create an annotated or lightweight semantic-version tag such as `v1.2.0`.
+9. Create an annotated or lightweight semantic-version tag such as `v1.3.0`.
 
 ## Development branches
 

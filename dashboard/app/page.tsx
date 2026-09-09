@@ -79,6 +79,41 @@ type CardinalityBudgetStatus = {
   observed_at: string;
 };
 
+
+type RoutingDestinationHealth = {
+  destination: string;
+  state: "unknown" | "healthy" | "degraded" | "unhealthy";
+  consecutive_failures: number;
+  last_success_at?: string;
+  last_failure_at?: string;
+  last_error?: string;
+  updated_at: string;
+  pending: number;
+  retrying: number;
+  dead_letters: number;
+};
+
+type RoutingShadowDiff = {
+  event_id: string;
+  observed_at: string;
+  active_config: string;
+  active_version: string;
+  shadow_config: string;
+  shadow_version: string;
+  active_destinations: string[];
+  shadow_destinations: string[];
+  added: string[];
+  removed: string[];
+};
+
+type RoutingDeadLetter = {
+  event_id: string;
+  destination: string;
+  attempts: number;
+  error: string;
+  failed_at: string;
+};
+
 type PolicyDiff = {
   observed_at: string;
   source: string;
@@ -272,6 +307,9 @@ export default function Dashboard() {
   const [findings, setFindings] = useState<CardinalityFinding[]>([]);
   const [cardinalityStates, setCardinalityStates] = useState<DistributedCardinalityState[]>([]);
   const [cardinalityBudgets, setCardinalityBudgets] = useState<CardinalityBudgetStatus[]>([]);
+  const [routingDestinations, setRoutingDestinations] = useState<RoutingDestinationHealth[]>([]);
+  const [routingDiffs, setRoutingDiffs] = useState<RoutingShadowDiff[]>([]);
+  const [routingDeadLetters, setRoutingDeadLetters] = useState<RoutingDeadLetter[]>([]);
   const [policyDiffs, setPolicyDiffs] = useState<PolicyDiff[]>([]);
   const [replayRuns, setReplayRuns] = useState<ReplayRun[]>([]);
   const [costSimulations, setCostSimulations] = useState<CostSimulation[]>([]);
@@ -287,6 +325,9 @@ export default function Dashboard() {
       findingResponse,
       cardinalityStateResponse,
       cardinalityBudgetResponse,
+      routingDestinationResponse,
+      routingDiffResponse,
+      routingDeadLetterResponse,
       diffResponse,
       replayResponse,
       costResponse,
@@ -298,6 +339,9 @@ export default function Dashboard() {
       fetch("/telemetry-api/api/v1/cardinality/findings?limit=30", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/cardinality/state?mode=active&limit=30", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/cardinality/budgets?limit=30", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/routing/destinations?limit=30", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/routing/shadow-diffs?limit=20", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/routing/dead-letters?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/policy/shadow-diffs?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/replays?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/cost-simulations?limit=20", { cache: "no-store" }),
@@ -323,6 +367,18 @@ export default function Dashboard() {
     if (cardinalityBudgetResponse.ok) {
       const payload = await cardinalityBudgetResponse.json();
       setCardinalityBudgets(payload.budgets ?? []);
+    }
+    if (routingDestinationResponse.ok) {
+      const payload = await routingDestinationResponse.json();
+      setRoutingDestinations(payload.destinations ?? []);
+    }
+    if (routingDiffResponse.ok) {
+      const payload = await routingDiffResponse.json();
+      setRoutingDiffs(payload.diffs ?? []);
+    }
+    if (routingDeadLetterResponse.ok) {
+      const payload = await routingDeadLetterResponse.json();
+      setRoutingDeadLetters(payload.dead_letters ?? []);
     }
     if (diffResponse.ok) {
       const payload = await diffResponse.json();
@@ -743,6 +799,67 @@ export default function Dashboard() {
             {cardinalityBudgets.length === 0 && (
               <div className="empty cardinality-empty">No budget observations yet. Budgets populate as matching telemetry arrives.</div>
             )}
+          </div>
+        </article>
+      </section>
+
+      <section className="routing-grid">
+        <article className="panel routing-destination-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">TELEMETRY ROUTER</div>
+              <h2>Destination health & isolated queues</h2>
+            </div>
+            <span className="count-badge">{routingDestinations.length}</span>
+          </div>
+          <div className="routing-list">
+            {routingDestinations.map((destination) => (
+              <div className="routing-row" key={destination.destination}>
+                <div>
+                  <strong>{destination.destination}</strong>
+                  <span>{destination.consecutive_failures} consecutive failures</span>
+                </div>
+                <div className="routing-queues">
+                  <span>{destination.pending} pending</span>
+                  <span>{destination.retrying} retry</span>
+                  <span>{destination.dead_letters} DLQ</span>
+                </div>
+                <span className={`routing-health ${destination.state}`}>{destination.state}</span>
+              </div>
+            ))}
+            {routingDestinations.length === 0 && (
+              <div className="empty routing-empty">No routing deliveries have been observed yet.</div>
+            )}
+          </div>
+        </article>
+
+        <article className="panel routing-shadow-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">SHADOW ROUTING</div>
+              <h2>Candidate destination changes</h2>
+            </div>
+            <span className="count-badge">{routingDiffs.length}</span>
+          </div>
+          <div className="routing-diff-list">
+            {routingDiffs.slice(0, 10).map((diff) => (
+              <div className="routing-diff-row" key={`${diff.event_id}-${diff.observed_at}`}>
+                <div>
+                  <strong>{diff.event_id}</strong>
+                  <span>{diff.active_config}@{diff.active_version} → {diff.shadow_config}@{diff.shadow_version}</span>
+                </div>
+                <div className="routing-change added">+ {diff.added.length ? diff.added.join(", ") : "none"}</div>
+                <div className="routing-change removed">− {diff.removed.length ? diff.removed.join(", ") : "none"}</div>
+              </div>
+            ))}
+            {routingDiffs.length === 0 && (
+              <div className="empty routing-empty">Active and shadow routing currently agree.</div>
+            )}
+          </div>
+          <div className="routing-dlq-summary">
+            <span>Per-destination DLQ</span>
+            <strong>{routingDeadLetters.length}</strong>
+            <small>recent terminal delivery failures</small>
           </div>
         </article>
       </section>

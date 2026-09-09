@@ -167,3 +167,38 @@ telemetryctl cardinality budgets --tenant default
 
 Budget output is advisory and includes the policy name/version/mode that
 produced the status.
+
+
+## Telemetry Router
+
+Validate routing JSON:
+
+```bash
+telemetryctl routing validate --file routing/active.json
+telemetryctl routing validate --file routing/shadow.json
+```
+
+Inspect destination health/queues:
+
+```bash
+telemetryctl routing destinations --tenant default
+telemetryctl routing deliveries --status retry --tenant default
+```
+
+Inspect destination DLQ:
+
+```bash
+telemetryctl routing dlq list --destination security --tenant default
+```
+
+Explicitly requeue one terminal delivery after the destination problem is fixed:
+
+```bash
+telemetryctl routing dlq requeue \
+  --event EVT-123 \
+  --destination security \
+  --tenant default
+```
+
+This routing DLQ is distinct from `telemetryctl dlq replay`, which operates on
+the primary Kafka processing DLQ.

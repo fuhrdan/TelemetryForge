@@ -25,18 +25,19 @@ import (
 type Metrics struct {
 	registry *prometheus.Registry
 
-	httpRequests     *prometheus.CounterVec
-	httpDuration     *prometheus.HistogramVec
-	accepted         *prometheus.CounterVec
-	publishFailure   *prometheus.CounterVec
-	workerCompleted  *prometheus.CounterVec
-	workerDuration   prometheus.Histogram
-	workerRetries    *prometheus.CounterVec
-	queueDepth       prometheus.Gauge
-	queueCapacity    prometheus.Gauge
-	consumerLag      *prometheus.GaugeVec
-	consumerLagTotal prometheus.Gauge
-	deadLetters      *prometheus.CounterVec
+	httpRequests      *prometheus.CounterVec
+	httpDuration      *prometheus.HistogramVec
+	accepted          *prometheus.CounterVec
+	publishFailure    *prometheus.CounterVec
+	workerCompleted   *prometheus.CounterVec
+	workerDuration    prometheus.Histogram
+	workerRetries     *prometheus.CounterVec
+	queueDepth        prometheus.Gauge
+	queueCapacity     prometheus.Gauge
+	consumerLag       *prometheus.GaugeVec
+	consumerLagTotal  prometheus.Gauge
+	deadLetters       *prometheus.CounterVec
+	routingDeliveries *prometheus.CounterVec
 }
 
 // NewMetrics creates a registry with low-cardinality TelemetryForge metrics.
@@ -82,12 +83,15 @@ func NewMetrics(service string) *Metrics {
 	metrics.deadLetters = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace, Name: "dead_letters_total", Help: "Events published to the DLQ by failure classification.", ConstLabels: labels,
 	}, []string{"classification"})
+	metrics.routingDeliveries = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace, Name: "routing_deliveries_total", Help: "Telemetry Router delivery outcomes by configured destination.", ConstLabels: labels,
+	}, []string{"destination", "outcome"})
 
 	metrics.registry.MustRegister(
 		metrics.httpRequests, metrics.httpDuration, metrics.accepted,
 		metrics.publishFailure, metrics.workerCompleted, metrics.workerDuration,
 		metrics.workerRetries, metrics.queueDepth, metrics.queueCapacity,
-		metrics.consumerLag, metrics.consumerLagTotal, metrics.deadLetters,
+		metrics.consumerLag, metrics.consumerLagTotal, metrics.deadLetters, metrics.routingDeliveries,
 		collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
 	return metrics
@@ -137,6 +141,12 @@ func (metrics *Metrics) SetConsumerLagTotal(lag int64) {
 }
 func (metrics *Metrics) DeadLetter(classification string) {
 	metrics.deadLetters.WithLabelValues(classification).Inc()
+}
+
+// RoutingDelivery records a bounded destination/outcome routing metric.
+// Destination names come only from reviewed routing configuration.
+func (metrics *Metrics) RoutingDelivery(destination, outcome string) {
+	metrics.routingDeliveries.WithLabelValues(destination, outcome).Inc()
 }
 
 // Middleware records Prometheus HTTP metrics and OpenTelemetry spans.

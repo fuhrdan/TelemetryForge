@@ -230,3 +230,29 @@ than configuration knobs:
 
 The limits prevent hostile or accidental dynamic field-name generation from
 turning schema observation into unbounded application/database state.
+
+
+## Telemetry Router
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TELEMETRYFORGE_ROUTING_FILE` | `routing/active.json` | Active routing policy/destination catalog |
+| `TELEMETRYFORGE_SHADOW_ROUTING_FILE` | `routing/shadow.json` | Candidate routing policy; use `disabled` to turn off |
+| `TELEMETRYFORGE_ROUTER_ADMIN_ADDRESS` | `:8082` | Router health/readiness/metrics listener |
+
+Kafka destinations reuse the existing `TELEMETRYFORGE_KAFKA_*` TLS/SASL
+variables.
+
+HTTP destinations may reference a secret by environment variable name through
+`bearer_token_env`. The environment variable must be present when the router
+starts.
+
+Routing JSON retry defaults when omitted:
+
+```text
+timeout_ms     5000
+max_attempts   5
+base_delay_ms  500
+max_delay_ms   30000
+concurrency    2
+```

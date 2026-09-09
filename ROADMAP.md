@@ -13,8 +13,8 @@
 | v0.9.0 | Released | Incident Replay, Cost Simulator, self-observability, real Kafka lag, k6 methodology |
 | v1.0.0 | Released | Evidence Graph, auth/tenant isolation, redaction, Kafka security, production profile/runbooks |
 | v1.1.0 | Delivered development milestone | Schema Intelligence, schema history/drift, OpenTelemetry semantic-convention awareness |
-| **v1.2.0** | **Current development release** | **Distributed Cardinality Intelligence, hourly series budgets, forecasting** |
-| v1.3.0 | Planned | Multi-destination Telemetry Router |
+| v1.2.0 | Delivered development milestone | Distributed Cardinality Intelligence, hourly series budgets, forecasting |
+| **v1.3.0** | **Current development release** | **Multi-destination Telemetry Router, isolated retry/DLQ/fallback, shadow routing** |
 | v1.4.0 | Planned | Adaptive Sampling & Telemetry Shaping |
 | v1.5.0 | Planned | Portable `.tfincident` incident archives |
 | v1.6.0 | Planned | Policy lifecycle, approvals, promotion, rollback |
@@ -59,7 +59,42 @@
 - integration coverage for shared state across independent tracker instances
 - ADRs 0028-0029
 
-## v1.3.0 next
+## v1.3.0 delivered
 
-Build a multi-destination Telemetry Router with destination-isolated retry,
-health, DLQ, fan-out, fallback, and shadow routing policy.
+### Routing policy
+
+- tenant/source/type/severity/tag matching
+- multi-rule fan-out with destination deduplication
+- unmatched-event fallback
+- strict JSON validation
+
+### Delivery isolation
+
+- durable routing outbox
+- separate router service
+- per-destination concurrency lanes
+- bounded exponential retry
+- per-destination DLQ
+- optional terminal failure fallback
+- leased `FOR UPDATE SKIP LOCKED` claims for multiple router replicas
+
+### Destination types
+
+- Kafka
+- HTTP/webhook
+- secret-backed HTTP bearer token environment references
+
+### Safety / operations
+
+- shadow routing records added/removed destinations without candidate I/O
+- destination health and queue API/dashboard
+- routing CLI validation/inspection/DLQ requeue
+- router health/metrics endpoint
+- Docker Compose and Kubernetes router service
+- ADRs 0030-0032
+
+## v1.4.0 next
+
+Build Adaptive Sampling & Telemetry Shaping on top of the router and replay
+foundation: protect errors/incident traces, transform/drop/rename attributes,
+preview visibility loss, and test sampling changes against historical incidents.
