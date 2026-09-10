@@ -10,9 +10,7 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current development release:** `v1.5.0` — Portable `.tfincident` archives,
-> integrity verification, optional AES-256-GCM encryption, tenant-aware import
-> provenance, and standalone offline incident reports.
+> **Current development release:** `v1.7.0` — Change Intelligence, structured deployment/rollback evidence, before/after regression analysis, observed blast radius, and Evidence Graph change correlation.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -116,6 +114,21 @@ v1.4 adds:
 Sampled-out events are successful processing outcomes, not DLQ failures.
 
 Read [Adaptive Sampling](docs/shaping/adaptive-sampling.md).
+
+### Change Intelligence
+
+v1.7 makes operational changes first-class evidence. CI/CD systems can record deployments, rollbacks, releases, feature flags, configuration, and infrastructure changes through an authenticated API.
+
+TelemetryForge records version/previous-version, Git SHA, build ID, environment, actor, and explicit rollback relationships before lossy shaping. It can then compare bounded telemetry windows before/after a selected change and calculate an **observed blast radius** across assessable sources.
+
+```bash
+telemetryctl change list --tenant production
+telemetryctl change analyze --id DEP-1042 --before 15m --after 15m
+```
+
+The result is evidence, not a causal verdict. A deployment preceding errors or a rollback preceding recovery is surfaced with explicit non-causality wording.
+
+Read [Change Intelligence](docs/change-intelligence/change-intelligence.md).
 
 ### Portable Incident Archive
 
@@ -271,6 +284,7 @@ flowchart LR
     I --> R[Incident Replay]
     I --> C[Cost Simulator]
     I --> EG[Evidence Graph]
+    CI[Change Intelligence] --> EG
     I --> IA[Portable .tfincident Archive]
 
     DB --> API[Tenant-scoped Query / SSE API]
@@ -321,6 +335,7 @@ Generate the v1 investigation scenario:
 
 ```bash
 make demo-evidence
+make demo-change
 ```
 
 The evidence scenario emits:

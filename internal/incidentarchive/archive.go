@@ -222,6 +222,11 @@ func Read(payload []byte) (Bundle, error) {
 			return Bundle{}, fmt.Errorf("decode schema drift snapshot: %w", err)
 		}
 	}
+	if data := members["change/markers.json"]; len(data) > 0 {
+		if err := decodeStrict(data, &bundle.Changes); err != nil {
+			return Bundle{}, fmt.Errorf("decode change marker snapshot: %w", err)
+		}
+	}
 
 	if manifest.IncidentID != bundle.Incident.ID {
 		return Bundle{}, errors.New("manifest incident ID does not match incident metadata")
@@ -338,6 +343,13 @@ Important:
 			return nil, nil, err
 		}
 		entries["schema/drift.json"] = payload
+	}
+	if len(bundle.Changes) > 0 {
+		payload, err := marshalPretty(bundle.Changes)
+		if err != nil {
+			return nil, nil, err
+		}
+		entries["change/markers.json"] = payload
 	}
 
 	meta := make([]ConfigurationMeta, 0, len(bundle.Configurations))

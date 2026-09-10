@@ -246,3 +246,20 @@ CI/full environments should also run:
 go test ./internal/incidentarchive
 go test ./tests/integration
 ```
+
+
+## v1.7.0 Change Intelligence coverage
+
+Checks include:
+
+- deployment/change marker normalization;
+- insufficient-evidence guardrails;
+- material error/latency regression classification;
+- observed blast-radius calculation;
+- change recorder only capturing operational changes;
+- authenticated change ingestion canonicalization;
+- change analysis API behavior;
+- structured Evidence Graph change and rollback relationships;
+- `.tfincident` change marker serialization/count verification;
+- TimescaleDB before/after regression plus rollback integration scenario;
+- dashboard TypeScript compilation.

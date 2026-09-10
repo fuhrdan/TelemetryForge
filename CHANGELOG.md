@@ -4,6 +4,20 @@
 
 _No changes yet._
 
+## [1.7.0-dev] - 2026-09-10
+
+### Change Intelligence
+- Added authenticated structured change ingestion for deployments, rollbacks, releases, feature flags, configuration, and infrastructure changes.
+- Added tenant-scoped normalized change markers with version/Git/build/environment/rollback metadata.
+- Added conservative before/after error-rate and p95 analysis with observed blast-radius estimates.
+- Added rollback/recovery evidence and persisted analysis snapshots.
+- Added change list/analysis/incident-change APIs and telemetryctl change commands.
+- Enriched Evidence Graph with structured change, explicit rollback, and recovery-after-rollback relationships.
+- Extended `.tfincident` format v1 with optional structured change markers.
+- Added dashboard Change Intelligence view and `make demo-change`.
+- Corrected worker order so Adaptive Shaping runs before Cardinality Firewall while full evidence/schema/change capture remains before shaping.
+- Added migration 014, integration coverage, ADRs 0040-0042, and operator documentation.
+
 ## [1.5.0-dev] - 2026-09-09
 
 ### Portable Incident Archive

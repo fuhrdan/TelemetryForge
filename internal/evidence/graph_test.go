@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fuhrdan/TelemetryForge/internal/changeintel"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 )
 
@@ -81,6 +82,31 @@ func TestGraphDoesNotExportCorrelationOrTraceIdentifiers(t *testing.T) {
 				value == "sensitive-correlation" || value == "sensitive-trace" {
 				t.Fatalf("sensitive relationship identifier leaked through graph attributes: %#v", node.Attributes)
 			}
+		}
+	}
+}
+
+func TestStructuredChangeAndRollbackEnrichGraph(t *testing.T) {
+	start := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	high := 1600.0
+	normal := 150.0
+	events := []domain.Event{
+		{ID: "slow", Source: "checkout", Type: "request.duration", Timestamp: start.Add(2 * time.Minute), Value: &high, Unit: "ms"},
+		{ID: "err", Source: "checkout", Type: "request.error", Timestamp: start.Add(3 * time.Minute), Tags: map[string]string{"severity": "error"}},
+		{ID: "recover", Source: "checkout", Type: "request.duration", Timestamp: start.Add(8 * time.Minute), Value: &normal, Unit: "ms"},
+	}
+	changes := []changeintel.Marker{
+		{TenantID: "alpha", ChangeID: "chg-1", EventID: "outside-deploy", Source: "checkout", Kind: changeintel.KindDeployment, Version: "2.0", GitSHA: "abc", ChangedAt: start},
+		{TenantID: "alpha", ChangeID: "rb-1", EventID: "outside-rollback", Source: "checkout", Kind: changeintel.KindRollback, RollbackOf: "chg-1", Version: "1.9", ChangedAt: start.Add(6 * time.Minute)},
+	}
+	graph := BuildWithChanges("alpha", "INC", events, nil, nil, changes)
+	relations := map[string]bool{}
+	for _, edge := range graph.Edges {
+		relations[edge.Relation] = true
+	}
+	for _, relation := range []string{"change-near-incident", "structured-change-precedes-error", "explicit-rollback-of", "recovery-after-rollback"} {
+		if !relations[relation] {
+			t.Fatalf("missing relation %s: %#v", relation, relations)
 		}
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fuhrdan/TelemetryForge/internal/changeintel"
 	"github.com/fuhrdan/TelemetryForge/internal/costsim"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
@@ -81,6 +82,19 @@ func Build(
 	runs []replay.Run,
 	simulations []costsim.Result,
 ) Graph {
+	return BuildWithChanges(tenantID, incidentID, events, runs, simulations, nil)
+}
+
+// BuildWithChanges enriches the graph with structured deployment/change markers
+// captured just outside or inside the frozen incident window.
+func BuildWithChanges(
+	tenantID string,
+	incidentID string,
+	events []domain.Event,
+	runs []replay.Run,
+	simulations []costsim.Result,
+	changes []changeintel.Marker,
+) Graph {
 	graph := Graph{
 		TenantID:    tenantID,
 		IncidentID:  incidentID,
@@ -109,7 +123,13 @@ func Build(
 		// Correlation/trace values are used internally to construct relationships
 		// but are deliberately not copied into the graph response. The edge basis
 		// is useful without creating a second export of potentially sensitive IDs.
-		for _, key := range []string{"deployment_id", "version", "release"} {
+		for _, key := range []string{
+			"deployment_id", "version", "release", "git_sha", "build_id",
+			"telemetryforge.change_id", "telemetryforge.change_kind",
+			"telemetryforge.environment", "telemetryforge.version",
+			"telemetryforge.git_sha", "telemetryforge.build_id",
+			"telemetryforge.rollback_of",
+		} {
 			if value := strings.TrimSpace(event.Tags[key]); value != "" {
 				attributes[key] = value
 			}
@@ -179,6 +199,7 @@ func Build(
 	builder.addSourceSequenceEdges(sorted)
 	builder.addSymptomEdges(sorted)
 	builder.addChangeEdges(sorted)
+	builder.addStructuredChanges(rootID, changes, sorted)
 
 	graph.Hypotheses = buildHypotheses(graph.Edges)
 	for _, edge := range graph.Edges {
@@ -338,6 +359,78 @@ func (builder *relationshipBuilder) addChangeEdges(events []domain.Event) {
 	}
 }
 
+func (builder *relationshipBuilder) addStructuredChanges(rootID string, changes []changeintel.Marker, events []domain.Event) {
+	if len(changes) == 0 {
+		return
+	}
+
+	nodeByChange := make(map[string]string, len(changes))
+	for _, marker := range changes {
+		nodeID := builder.nodeByEvent[marker.EventID]
+		if nodeID == "" {
+			nodeID = "change:" + marker.ChangeID
+			attributes := map[string]string{
+				"change_id": marker.ChangeID,
+				"kind":      marker.Kind,
+			}
+			for key, value := range map[string]string{
+				"environment": marker.Environment, "version": marker.Version,
+				"previous_version": marker.PreviousVersion, "git_sha": marker.GitSHA,
+				"build_id": marker.BuildID, "rollback_of": marker.RollbackOf,
+			} {
+				if strings.TrimSpace(value) != "" {
+					attributes[key] = value
+				}
+			}
+			builder.graph.Nodes = append(builder.graph.Nodes, Node{
+				ID: nodeID, Kind: "change", Label: marker.Source + " · " + marker.Kind,
+				Source: marker.Source, EventType: marker.Kind, Timestamp: marker.ChangedAt,
+				Attributes: attributes,
+			})
+			builder.add(Edge{From: rootID, To: nodeID, Relation: "change-near-incident", Assessment: AssessmentRelated,
+				Reason: "A structured operational change occurred near the frozen incident window."})
+		}
+		nodeByChange[marker.ChangeID] = nodeID
+
+		for _, event := range events {
+			if event.Source != marker.Source || !isError(event) || event.Timestamp.Before(marker.ChangedAt) {
+				continue
+			}
+			delta := event.Timestamp.Sub(marker.ChangedAt)
+			if delta > 10*time.Minute {
+				break
+			}
+			builder.add(Edge{From: nodeID, To: builder.nodeByEvent[event.ID], Relation: "structured-change-precedes-error", Assessment: AssessmentSupporting,
+				Reason: "A structured change marker preceded an error on the same source within ten minutes. Temporal association does not prove the change caused the error."})
+		}
+	}
+
+	for _, marker := range changes {
+		if marker.Kind != changeintel.KindRollback || marker.RollbackOf == "" {
+			continue
+		}
+		rollbackNode := nodeByChange[marker.ChangeID]
+		originalNode := nodeByChange[marker.RollbackOf]
+		if rollbackNode != "" && originalNode != "" {
+			builder.add(Edge{From: originalNode, To: rollbackNode, Relation: "explicit-rollback-of", Assessment: AssessmentRelated,
+				Reason: "The rollback marker explicitly references the earlier change ID."})
+		}
+		for _, event := range events {
+			if event.Source != marker.Source || event.Timestamp.Before(marker.ChangedAt) {
+				continue
+			}
+			if event.Timestamp.Sub(marker.ChangedAt) > 10*time.Minute {
+				break
+			}
+			if normalLatency(event) {
+				builder.add(Edge{From: rollbackNode, To: builder.nodeByEvent[event.ID], Relation: "recovery-after-rollback", Assessment: AssessmentContradicting,
+					Reason: "A normal-latency signal followed the rollback. This contradicts uninterrupted degradation but does not prove the rollback caused recovery."})
+				break
+			}
+		}
+	}
+}
+
 func (builder *relationshipBuilder) linkConsecutive(
 	group []domain.Event,
 	relation string,
@@ -364,12 +457,12 @@ func buildHypotheses(edges []Edge) []Hypothesis {
 
 	for _, edge := range edges {
 		switch edge.Relation {
-		case "change-precedes-error":
+		case "change-precedes-error", "structured-change-precedes-error":
 			change.support++
 		case "latency-precedes-error":
 			latency.support++
 			sustained.support++
-		case "recovery-signal":
+		case "recovery-signal", "recovery-after-rollback":
 			sustained.contradict++
 		}
 	}
@@ -478,11 +571,12 @@ func isError(event domain.Event) bool {
 func isChange(event domain.Event) bool {
 	kind := strings.ToLower(event.Type)
 	if strings.Contains(kind, "deploy") ||
+		strings.Contains(kind, "rollback") ||
 		strings.Contains(kind, "release") ||
 		strings.Contains(kind, "change") {
 		return true
 	}
-	for _, key := range []string{"deployment_id", "release", "version"} {
+	for _, key := range []string{"telemetryforge.change_id", "deployment_id", "rollback_of", "release", "version"} {
 		if strings.TrimSpace(event.Tags[key]) != "" {
 			return true
 		}

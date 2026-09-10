@@ -89,6 +89,7 @@ func (server *Server) routes() {
 	server.mux.HandleFunc("GET /ready", server.handleReady)
 	server.mux.HandleFunc("POST /api/v1/events", server.handleEvent)
 	server.mux.HandleFunc("POST /api/v1/metrics", server.handleMetric)
+	server.mux.HandleFunc("POST /api/v1/changes", server.handleChange)
 	if server.reader != nil {
 		server.mux.HandleFunc("GET /api/v1/events", server.handleQueryEvents)
 		server.mux.HandleFunc("GET /api/v1/metrics", server.handleQueryMetrics)
@@ -96,6 +97,7 @@ func (server *Server) routes() {
 		server.mux.HandleFunc("GET /api/v1/incidents", server.handleIncidents)
 		server.mux.HandleFunc("GET /api/v1/incidents/{id}/events", server.handleIncidentEvents)
 		server.mux.HandleFunc("GET /api/v1/incidents/{id}/evidence-graph", server.handleEvidenceGraph)
+		server.mux.HandleFunc("GET /api/v1/incidents/{id}/changes", server.handleIncidentChanges)
 		server.mux.HandleFunc("GET /api/v1/live", server.handleLive)
 		if _, ok := server.reader.(storage.PolicyReader); ok {
 			server.mux.HandleFunc("GET /api/v1/cardinality/findings", server.handleCardinalityFindings)
@@ -109,6 +111,11 @@ func (server *Server) routes() {
 		}
 		if _, ok := server.reader.(storage.IncidentArchiveReader); ok {
 			server.mux.HandleFunc("GET /api/v1/archive-imports", server.handleArchiveImports)
+		}
+		if _, ok := server.reader.(storage.ChangeIntelligenceReader); ok {
+			server.mux.HandleFunc("GET /api/v1/changes", server.handleChanges)
+			server.mux.HandleFunc("GET /api/v1/changes/{id}/analysis", server.handleChangeAnalysis)
+			server.mux.HandleFunc("POST /api/v1/changes/{id}/analyze", server.handleAnalyzeChange)
 		}
 		if _, ok := server.reader.(storage.SchemaReader); ok {
 			server.mux.HandleFunc("GET /api/v1/schemas", server.handleSchemas)

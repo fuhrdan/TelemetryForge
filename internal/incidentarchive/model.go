@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/fuhrdan/TelemetryForge/internal/changeintel"
 	"github.com/fuhrdan/TelemetryForge/internal/costsim"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/evidence"
@@ -20,7 +21,7 @@ import (
 const (
 	FormatName     = "TelemetryForge Incident Archive"
 	FormatVersion  = 1
-	ProductVersion = "1.5.0"
+	ProductVersion = "1.7.0"
 
 	MaxEntries      = 128
 	MaxArchiveBytes = 512 << 20
@@ -114,5 +115,6 @@ type Bundle struct {
 	CostResults    []costsim.Result
 	Schemas        []schema.RegistryEntry
 	SchemaDrifts   []schema.Drift
+	Changes        []changeintel.Marker
 	Configurations []ConfigurationSnapshot
 }

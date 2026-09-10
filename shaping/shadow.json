@@ -4,8 +4,22 @@
   "default_sample_rate": 1.0,
   "protection": {
     "errors": true,
-    "severities": ["error", "critical", "fatal"],
-    "types": ["audit.*", "deployment.*", "security.*"],
+    "severities": [
+      "error",
+      "critical",
+      "fatal"
+    ],
+    "types": [
+      "audit.*",
+      "deployment.*",
+      "security.*",
+      "rollback.*",
+      "release.*",
+      "change.*",
+      "feature_flag.*",
+      "configuration.*",
+      "infrastructure.*"
+    ],
     "tags": {
       "incident_id": "*",
       "telemetryforge.incident_id": "*"
@@ -27,8 +41,13 @@
       "type": "request.duration",
       "sample_rate": 0.25,
       "min_sample_rate": 0.05,
-      "drop_tags": ["debug_id", "user_agent_raw"],
-      "rename_tags": {"http.method": "http.request.method"},
+      "drop_tags": [
+        "debug_id",
+        "user_agent_raw"
+      ],
+      "rename_tags": {
+        "http.method": "http.request.method"
+      },
       "payload_max_bytes": 16384,
       "payload_action": "drop",
       "stop": true

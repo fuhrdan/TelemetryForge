@@ -1,7 +1,7 @@
 # TelemetryForge Dashboard
 
-**Package version:** `1.5.0`
-**Release:** `v1.5.0`
+**Package version:** `1.7.0`
+**Release:** `v1.7.0`
 
 The dashboard is intentionally small and readable.
 
@@ -147,3 +147,14 @@ non-destructive candidate evaluation.
 Archive export itself remains a `telemetryctl` administrative workflow because
 portable incident packages contain full-fidelity evidence and should not be
 turned into an ordinary browser download endpoint.
+
+
+## v1.7.0 additions
+
+- Change Intelligence panel for deployments, releases, rollbacks, feature flags, configuration, and infrastructure changes
+- before/after error-rate and p95 analysis
+- observed blast-radius estimate
+- rollback/recovery evidence
+- Git SHA, build, environment, and version context
+
+Change analysis is observational evidence; the dashboard does not label temporal proximity as root cause.

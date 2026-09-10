@@ -2,7 +2,9 @@ package api
 
 import (
 	"net/http"
+	"time"
 
+	"github.com/fuhrdan/TelemetryForge/internal/changeintel"
 	"github.com/fuhrdan/TelemetryForge/internal/costsim"
 	"github.com/fuhrdan/TelemetryForge/internal/evidence"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
@@ -41,12 +43,22 @@ func (server *Server) handleEvidenceGraph(writer http.ResponseWriter, request *h
 		simulations, _ = history.ListCostSimulations(request.Context(), 200)
 	}
 
-	graph := evidence.Build(
-		security.TenantID(request.Context()),
-		incidentID,
-		events,
-		runs,
-		simulations,
+	var changes []changeintel.Marker
+	if reader, ok := server.reader.(storage.ChangeIntelligenceReader); ok {
+		from, to := events[0].Timestamp, events[0].Timestamp
+		for _, event := range events[1:] {
+			if event.Timestamp.Before(from) {
+				from = event.Timestamp
+			}
+			if event.Timestamp.After(to) {
+				to = event.Timestamp
+			}
+		}
+		changes, _ = reader.ChangesBetween(request.Context(), from.Add(-15*time.Minute), to.Add(5*time.Minute), 100)
+	}
+
+	graph := evidence.BuildWithChanges(
+		security.TenantID(request.Context()), incidentID, events, runs, simulations, changes,
 	)
 
 	if sink, ok := server.reader.(storage.EvidenceStore); ok {

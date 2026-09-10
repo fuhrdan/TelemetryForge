@@ -1,4 +1,4 @@
-.PHONY: build run run-worker run-router routing-check telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence demo-schema demo-routing test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check demo-shaping archive-check
+.PHONY: build run run-worker run-router routing-check telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence demo-schema demo-routing test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check demo-shaping archive-check demo-change
 
 build:
 	go build ./...
@@ -135,3 +135,6 @@ load-backpressure:
 		grafana/k6:2.2.0 run /scripts/backpressure.js
 archive-check:
 	go test ./internal/incidentarchive
+
+demo-change:
+	python3 scripts/demo-change.py

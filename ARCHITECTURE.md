@@ -1,6 +1,6 @@
 # TelemetryForge Architecture
 
-TelemetryForge v1.5.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v1.7.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
 
@@ -27,6 +27,12 @@ Normalizer
        |
        v
 Schema Intelligence
+       |
+       v
+Change Intelligence
+       |
+       v
+Adaptive Shaping
        |
        v
 Cardinality Firewall
@@ -77,6 +83,7 @@ OpenTelemetry traces.
     assessment, and contradictory evidence.
 12. **Tenant identity comes from authentication.** Client-supplied tenant IDs
     are rejected.
+13. **Change association is not causality.** Deployment-before-failure and rollback-before-recovery relationships remain observational evidence.
 
 ## Authentication / tenant propagation
 
@@ -118,6 +125,7 @@ Tenant-aware data includes:
 - replay history/results
 - cost simulations
 - Evidence Graph snapshots
+- change markers / analysis snapshots
 
 Pre-v1 rows migrate to tenant `default`.
 
@@ -161,6 +169,16 @@ See:
 
 - `docs/cardinality/distributed-cardinality.md`
 - `docs/cardinality/budgets.md`
+
+## Change Intelligence
+
+v1.7 records normalized deployment, rollback, release, feature-flag, configuration, and infrastructure markers before lossy shaping. The change marker carries source, environment, version lineage, Git SHA, build ID, actor, and explicit rollback relationships.
+
+Before/after analysis reads bounded tenant telemetry windows and compares event count, error rate, and p95 latency per observed source. Sources with sparse evidence remain `insufficient`. The reported blast radius is the share of assessable observed sources that materially regressed; it is not a topology-derived causal radius.
+
+Structured changes also enrich the Evidence Graph and portable incident archive. Rollback/recovery relationships preserve explicit non-causality language.
+
+See `docs/change-intelligence/change-intelligence.md`.
 
 ## Evidence Graph
 

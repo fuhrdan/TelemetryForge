@@ -95,6 +95,24 @@ func main() {
 		if err := dedupPrune(ctx, os.Args[3:]); err != nil {
 			exitErr(err)
 		}
+	case "change":
+		switch os.Args[2] {
+		case "list":
+			if err := changeList(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "show":
+			if err := changeShow(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "analyze":
+			if err := changeAnalyze(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		default:
+			usage()
+			os.Exit(2)
+		}
 	case "cost":
 		if os.Args[2] != "simulate" {
 			usage()
@@ -834,12 +852,109 @@ func incidentGraph(ctx context.Context, args []string) error {
 		return err
 	}
 
-	graph := evidence.Build(*tenant, *incidentID, events, runs, simulations)
+	from, to := events[0].Timestamp, events[0].Timestamp
+	for _, event := range events[1:] {
+		if event.Timestamp.Before(from) {
+			from = event.Timestamp
+		}
+		if event.Timestamp.After(to) {
+			to = event.Timestamp
+		}
+	}
+	changes, _ := store.ChangesBetween(ctx, from.Add(-15*time.Minute), to.Add(5*time.Minute), 100)
+	graph := evidence.BuildWithChanges(*tenant, *incidentID, events, runs, simulations, changes)
 	if err := store.SaveEvidenceGraph(ctx, graph); err != nil {
 		return err
 	}
 
 	payload, _ := json.MarshalIndent(graph, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func changeList(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("change list", flag.ContinueOnError)
+	limit := set.Int("limit", 50, "maximum change markers to return (1..200)")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if *limit < 1 || *limit > 200 {
+		return errors.New("--limit must be between 1 and 200")
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	changes, err := store.ListChangeMarkers(ctx, *limit)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(map[string]any{"tenant": *tenant, "changes": changes}, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func changeShow(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("change show", flag.ContinueOnError)
+	id := set.String("id", "", "change identifier")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*id) == "" {
+		return errors.New("--id is required")
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	marker, err := store.ChangeMarker(ctx, *id)
+	if err != nil {
+		return err
+	}
+	analysis, found, err := store.ChangeAnalysis(ctx, *id)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(map[string]any{"change": marker, "analysis_available": found, "analysis": analysis}, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func changeAnalyze(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("change analyze", flag.ContinueOnError)
+	id := set.String("id", "", "change identifier")
+	before := set.Duration("before", 15*time.Minute, "baseline window before change (max 2h)")
+	after := set.Duration("after", 15*time.Minute, "comparison window after change (max 2h)")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*id) == "" {
+		return errors.New("--id is required")
+	}
+	if *before < time.Minute || *before > 2*time.Hour || *after < time.Minute || *after > 2*time.Hour {
+		return errors.New("--before/--after must be between 1m and 2h")
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	analysis, err := store.AnalyzeChange(ctx, *id, *before, *after)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(analysis, "", "  ")
 	fmt.Println(string(payload))
 	return nil
 }
@@ -1273,6 +1388,9 @@ func usage() {
   telemetryctl incident inspect --file INC-42.tfincident [--decrypt-key-file archive.key]
   telemetryctl incident verify --file INC-42.tfincident [--decrypt-key-file archive.key]
   telemetryctl incident report --file INC-42.tfincident --out INC-42.html
+  telemetryctl change list [--limit 50] [--tenant default]
+  telemetryctl change show --id CHG-42 [--tenant default]
+  telemetryctl change analyze --id CHG-42 [--before 15m] [--after 15m] [--tenant default]
   telemetryctl cost simulate --incident INC-42 [--tenant default] [--pricing pricing/vendor.json]
   telemetryctl dlq replay --file dead-letter.json [--topic telemetry.raw]
   telemetryctl dedup prune [--older-than 840h]

@@ -57,6 +57,13 @@ to reconstruct every decision from implementation details.
 - [API redaction](security/redaction.md)
 - [Dashboard server proxy](security/dashboard-proxy.md)
 
+## Change Intelligence
+
+- [Change Intelligence](change-intelligence/change-intelligence.md)
+- [Change Intelligence API](change-intelligence/change-api.md)
+- [Change analysis runbook](operations/change-analysis.md)
+- [v1.7.0 delivered scope](roadmap/v1.7.0.md)
+
 ## Portable incident evidence
 
 - [Portable incident archives](incidents/portable-archive.md)

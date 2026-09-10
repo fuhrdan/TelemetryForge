@@ -32,7 +32,7 @@ func main() {
 	traceShutdown, err := observability.InitTracing(
 		ctx,
 		"telemetryforge-worker",
-		"1.5.0",
+		"1.7.0",
 		os.Getenv("TELEMETRYFORGE_OTLP_TRACES_ENDPOINT"),
 	)
 	if err != nil {
@@ -186,12 +186,19 @@ func main() {
 		envBool("TELEMETRYFORGE_SCHEMA_FAIL_OPEN", true),
 	)
 
+	changeRecorder, err := worker.NewChangeRecorder(store)
+	if err != nil {
+		logger.Error("create change intelligence recorder", "error", err)
+		os.Exit(1)
+	}
+
 	pipeline, err := worker.NewChain(
 		recorder,
 		worker.Normalizer{},
 		schemaInspector,
-		worker.NewPolicyProcessor(policyEngine),
+		changeRecorder,
 		shapingProcessor,
+		worker.NewPolicyProcessor(policyEngine),
 		persister,
 		routingProcessor,
 		worker.NewIncidentDetector(detector, logger),
@@ -264,6 +271,7 @@ func main() {
 		"persistence", "postgresql/timescaledb",
 		"flight_recorder", "enabled",
 		"schema_intelligence", "enabled",
+		"change_intelligence", "enabled",
 		"distributed_cardinality", "timescaledb-hourly",
 		"telemetry_router", activeRouting.Name+"@"+activeRouting.Version,
 		"shadow_routing", shadowRouting != nil,

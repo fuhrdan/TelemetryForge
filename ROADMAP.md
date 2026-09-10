@@ -16,9 +16,9 @@
 | v1.2.0 | Delivered development milestone | Distributed Cardinality Intelligence, hourly series budgets, forecasting |
 | v1.3.0 | Delivered development milestone | Multi-destination Telemetry Router, isolated retry/DLQ/fallback, shadow routing |
 | v1.4.0 | Delivered development milestone | Adaptive Sampling & Telemetry Shaping |
-| **v1.5.0** | **Current development release** | **Portable `.tfincident` archives, encryption, import provenance, offline investigation** |
-| v1.6.0 | Planned | Policy lifecycle, approvals, promotion, rollback |
-| v1.7.0 | Planned | Change / deployment intelligence |
+| v1.5.0 | Delivered development milestone | Portable `.tfincident` archives, encryption, import provenance, offline investigation |
+| v1.6.0 | Delivered development milestone | Policy lifecycle model, approval/evidence gates, managed configuration state foundation |
+| **v1.7.0** | **Current development release** | **Change Intelligence, before/after analysis, observed blast radius, rollback evidence** |
 | v1.8.0 | Planned | Connector and plugin platform |
 | v1.9.0 | Planned | Scale, HA, chaos and operational proof |
 | v2.0.0 | Planned | Evidence-first intelligent telemetry control plane |
@@ -124,3 +124,34 @@
 Turn policy/shaping/routing files into managed lifecycle objects with
 draft/shadow/approved/scheduled/active/retired state, approvals, replay/archive
 evidence gates, promotion, and rollback.
+
+
+## v1.6.0 delivered foundation
+
+- immutable policy/shaping/routing artifact model
+- draft/shadow/approved/scheduled/active/retired states
+- creator self-approval protection
+- approval and evidence activation gates
+- explicit rollback to retired immutable versions
+- dedicated global `control` authorization scope
+- runtime-load/convergence storage model
+- migration 013
+
+## v1.7.0 delivered
+
+- authenticated structured change ingestion
+- tenant-scoped deployment/rollback/release/configuration marker store
+- Git SHA/build/environment/version context
+- conservative before/after error-rate and p95 analysis
+- observed source blast-radius estimate
+- rollback/recovery evidence
+- persisted analysis snapshots
+- API, CLI, dashboard, integration coverage, and demo workflow
+- Evidence Graph structured change/rollback relationships
+- `.tfincident` change marker snapshots
+- corrected shaping-before-cardinality worker ordering
+- ADRs 0040-0042
+
+## v1.8.0 next
+
+Build the Connector Platform around stable destination interfaces: OTLP export, Prometheus remote write, generic HTTP/Kafka connectors, connector health/config validation, and backend-specific adapters without coupling vendor code into the core pipeline.

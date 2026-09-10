@@ -67,6 +67,10 @@ REQUIRED = [
     ROOT / "docs" / "security" / "archive-encryption.md",
     ROOT / "docs" / "operations" / "archive-workflow.md",
     ROOT / "docs" / "roadmap" / "v1.5.0.md",
+    ROOT / "docs" / "change-intelligence" / "change-intelligence.md",
+    ROOT / "docs" / "change-intelligence" / "change-api.md",
+    ROOT / "docs" / "operations" / "change-analysis.md",
+    ROOT / "docs" / "roadmap" / "v1.7.0.md",
 ]
 
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

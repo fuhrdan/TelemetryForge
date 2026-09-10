@@ -24,6 +24,7 @@ analysis/replay-runs.json
 analysis/cost-simulations.json
 schema/registry.json
 schema/drift.json
+change/markers.json
 configuration/policy-active.json
 configuration/policy-shadow.json
 configuration/shaping-active.json
@@ -32,7 +33,7 @@ configuration/routing-active.json
 configuration/routing-shadow.json
 ```
 
-Optional members are omitted when no corresponding evidence exists.
+Optional members are omitted when no corresponding evidence exists. Starting with v1.7, `change/markers.json` carries structured deployment/rollback/release evidence when Change Intelligence is available. The format-v1 manifest schema is unchanged; the optional member is covered by the existing `entries` integrity map so older strict v1 readers can ignore it.
 
 ## Integrity
 

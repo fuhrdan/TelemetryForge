@@ -394,3 +394,28 @@ archive format/product version, whole-file SHA-256, encrypted flag, and import
 time.
 
 It does **not** return archive bytes or full-fidelity telemetry.
+
+
+## Change Intelligence
+
+### `POST /api/v1/changes`
+
+Requires `ingest`. Records a structured deployment/rollback/release/feature-flag/configuration/infrastructure change through the normal Kafka durability boundary. Tenant identity is assigned from authentication.
+
+### `GET /api/v1/changes`
+
+Returns tenant-scoped structured change markers.
+
+### `POST /api/v1/changes/{id}/analyze`
+
+Computes and stores a bounded before/after analysis. Optional `before_seconds` and `after_seconds` are each 60..7200 seconds.
+
+### `GET /api/v1/changes/{id}/analysis`
+
+Returns the latest generated analysis snapshot.
+
+### `GET /api/v1/incidents/{id}/changes`
+
+Returns changes near the frozen incident window.
+
+The change-analysis response explicitly treats timing relationships as observational evidence rather than root-cause proof.

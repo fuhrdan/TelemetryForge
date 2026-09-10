@@ -7,7 +7,9 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/fuhrdan/TelemetryForge/internal/changeintel"
 	"github.com/fuhrdan/TelemetryForge/internal/costsim"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/evidence"
@@ -26,6 +28,10 @@ type Source interface {
 	ListCostSimulations(ctx context.Context, limit int) ([]costsim.Result, error)
 	SchemaHistory(ctx context.Context, source, eventType string) ([]schema.RegistryEntry, error)
 	ListSchemaDrifts(ctx context.Context, limit int) ([]schema.Drift, error)
+}
+
+type changeSource interface {
+	ChangesBetween(context.Context, time.Time, time.Time, int) ([]changeintel.Marker, error)
 }
 
 // BuildFromSource assembles a portable bundle from one frozen incident.
@@ -104,7 +110,20 @@ func BuildFromSource(
 		}
 	}
 
-	graph := evidence.Build(tenantID, incidentID, events, runs, costs)
+	var changes []changeintel.Marker
+	if changeReader, ok := source.(changeSource); ok && len(records) > 0 {
+		from, to := records[0].Event.Timestamp, records[0].Event.Timestamp
+		for _, record := range records[1:] {
+			if record.Event.Timestamp.Before(from) {
+				from = record.Event.Timestamp
+			}
+			if record.Event.Timestamp.After(to) {
+				to = record.Event.Timestamp
+			}
+		}
+		changes, _ = changeReader.ChangesBetween(ctx, from.Add(-15*time.Minute), to.Add(5*time.Minute), 100)
+	}
+	graph := evidence.BuildWithChanges(tenantID, incidentID, events, runs, costs, changes)
 
 	return Bundle{
 		Incident:       incident,
@@ -114,6 +133,7 @@ func BuildFromSource(
 		CostResults:    costs,
 		Schemas:        schemas,
 		SchemaDrifts:   drifts,
+		Changes:        changes,
 		Configurations: configurations,
 	}, nil
 }

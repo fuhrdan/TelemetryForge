@@ -1,134 +1,123 @@
-# TelemetryForge v1.5.0 Development Release Notes
+# TelemetryForge v1.7.0 Development Release Notes
 
-## Portable Incident Archive
+## Change Intelligence
 
-v1.5.0 turns frozen incidents into portable, verifiable investigation
-artifacts instead of leaving them tied to one PostgreSQL database.
+v1.7.0 makes production changes first-class telemetry evidence and connects
+change history to the existing Flight Recorder, Evidence Graph, portable
+incident archive, and tenant-scoped query model.
 
-## `.tfincident`
-
-Unencrypted archives are standard ZIP files with a versioned
-`manifest.json`.
-
-The package can preserve:
-
-- incident metadata;
-- frozen canonical events and first Flight Recorder capture time;
-- Evidence Graph;
-- replay history;
-- cost simulations;
-- relevant Schema Intelligence history/drift;
-- exact validated active/shadow Cardinality, shaping, and routing config files.
-
-Every member except the manifest has a recorded SHA-256 and byte size.
-
-The reader rejects changed, extra, missing, duplicate, unsafe-path, oversized,
-or incompatible archive members.
-
-## Encryption
-
-Optional encrypted archives wrap the complete ZIP with:
-
-```text
-AES-256-GCM
-```
-
-The CLI accepts a random 32-byte key encoded as 64 hex characters.
-
-v1.5 intentionally does not accept human passwords or invent a weak
-password-to-key scheme.
-
-## CLI
+### Structured change ingestion
 
 Added:
+
+```text
+POST /api/v1/changes
+```
+
+for:
+
+```text
+deployment
+rollback
+release
+feature_flag
+configuration
+infrastructure
+```
+
+Change identity is tenant-scoped and records source, environment, version,
+previous version, Git SHA, build ID, actor, summary, and explicit rollback
+relationships.
+
+### Evidence-preserving worker placement
+
+Change markers are normalized and stored before lossy shaping:
+
+```text
+Flight Recorder
+ -> Normalizer
+ -> Schema Intelligence
+ -> Change Intelligence
+ -> Adaptive Shaping
+ -> Cardinality Firewall
+ -> Persistence
+ -> Routing
+ -> Incident Detector
+```
+
+The v1.7 integration also corrects the actual worker ordering so Adaptive
+Shaping now precedes Cardinality Firewall as intended by the v1.4 design.
+
+### Before / after analysis
+
+A change analysis compares bounded source telemetry before and after a selected
+change using event count, error rate, and p95 latency.
+
+Sources with insufficient traffic remain `insufficient` instead of receiving a
+noisy verdict. Materiality thresholds are documented and visible in the output.
+
+### Observed blast radius
+
+The analysis reports the percentage of assessable observed sources that
+materially regressed. This is explicitly not presented as a dependency graph or
+causal blast-radius proof.
+
+### Rollback / recovery evidence
+
+Explicit `rollback_of` markers are correlated with the original change.
+Post-rollback recovery signals are surfaced as evidence that contradicts
+continued degradation, without claiming the rollback caused recovery.
+
+### Evidence Graph / portable archive
+
+Evidence Graph now supports:
+
+- structured change near incident;
+- structured change before error;
+- explicit rollback relationships;
+- recovery after rollback.
+
+`.tfincident` format v1 now optionally includes `change/markers.json`. The manifest schema itself remains unchanged; the new member is covered by the existing integrity map so older strict format-v1 readers can ignore it.
+
+### API / CLI / dashboard
+
+Added:
+
+```text
+GET  /api/v1/changes
+POST /api/v1/changes/{id}/analyze
+GET  /api/v1/changes/{id}/analysis
+GET  /api/v1/incidents/{id}/changes
+```
+
+CLI:
 
 ```bash
-telemetryctl incident export
-telemetryctl incident verify
-telemetryctl incident inspect
-telemetryctl incident report
-telemetryctl incident import
+telemetryctl change list
+telemetryctl change show --id ...
+telemetryctl change analyze --id ...
 ```
 
-`incident report` creates a standalone HTML investigation report with no
-JavaScript, external assets, analytics, or network requests.
+Dashboard adds a Change Intelligence view with deployment history, Git/version
+metadata, source-level before/after deltas, observed blast radius, and
+rollback/recovery evidence.
 
-## Import safety
+### Demonstration
 
-Import restores **frozen evidence**, not production traffic.
-
-It does not:
-
-- invoke ingestion;
-- populate normal telemetry;
-- run sampling/cardinality/routing;
-- send to destinations;
-- activate archived configuration.
-
-Cross-tenant import requires `--allow-tenant-remap`.
-
-Existing target incident IDs are never overwritten.
-
-The same archive ID cannot be silently imported twice into one tenant.
-
-## Import provenance
-
-Migration `012_incident_archive.sql` stores:
-
-- archive ID;
-- source tenant and incident;
-- imported incident ID;
-- archive/product version;
-- complete-file SHA-256;
-- encrypted/unencrypted source flag;
-- import time.
-
-Added:
-
-```text
-GET /api/v1/archive-imports
+```bash
+make demo-change
 ```
 
-and a dashboard provenance panel.
+generates healthy baseline -> deployment -> multi-source regression -> rollback
+-> recovery traffic.
 
-## v1.4 included cumulatively
+### Storage
 
-The v1.5 development tree includes the adaptive sampling/shaping work introduced
-in the v1.4 development milestone: protected telemetry, deterministic/pressure
-sampling, safe shaping, shadow shaping, visibility statistics, and frozen-
-incident preview.
+Migration `014_change_intelligence.sql` adds normalized markers and regenerable
+analysis snapshots.
 
-## Tests
+### Safety language
 
-Added unit coverage for:
+v1.7 preserves the product rule:
 
-- unencrypted round trip;
-- AES-GCM wrong-key/tamper rejection;
-- per-member checksum mismatch;
-- ZIP path traversal;
-- cross-tenant bundle rejection;
-- HTML escaping.
-
-Added a TimescaleDB integration scenario covering:
-
-```text
-freeze
- -> export
- -> verify
- -> tenant remap
- -> import
- -> provenance
- -> duplicate import rejection
-```
-
-## Known limitations
-
-- Archive encryption uses symmetric operator-managed keys; public-key recipient
-  encryption/signatures are not yet implemented.
-- Archive export/import is currently a `telemetryctl` administrative workflow,
-  not a browser download/upload feature.
-- Import does not copy archived replay/cost rows into live history.
-- Configuration snapshots are evidence only and are never auto-activated.
-- Schema drift export is bounded to the newest 500 tenant findings before
-  incident source/type filtering.
-- Offline HTML reports can contain sensitive evidence and must be protected.
+> Temporal association is evidence for investigation, not proof of root cause.

@@ -4,12 +4,14 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/fuhrdan/TelemetryForge/internal/changeintel"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/evidence"
 )
@@ -170,5 +172,52 @@ func TestOfflineHTMLReportEscapesTelemetryContent(t *testing.T) {
 	}
 	if !strings.Contains(text, "&lt;script&gt;") {
 		t.Fatal("expected incident title to be HTML-escaped")
+	}
+}
+
+func TestChangeMarkersDoNotChangeFormatV1ManifestSchema(t *testing.T) {
+	bundle := sampleBundle()
+	bundle.Changes = []changeintel.Marker{{
+		TenantID: "alpha", ChangeID: "chg-1", EventID: "change-event",
+		Source: "checkout", Kind: changeintel.KindDeployment,
+		Status: "completed", ChangedAt: time.Now().UTC(),
+	}}
+	filename := filepath.Join(t.TempDir(), "incident.tfincident")
+	if _, err := WriteFile(filename, bundle, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	payload, err := os.ReadFile(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := zip.NewReader(bytes.NewReader(payload), int64(len(payload)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest []byte
+	foundChanges := false
+	for _, member := range reader.File {
+		handle, err := member.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(handle)
+		_ = handle.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if member.Name == "manifest.json" {
+			manifest = data
+		}
+		if member.Name == "change/markers.json" {
+			foundChanges = true
+		}
+	}
+	if bytes.Contains(manifest, []byte(`"change_count"`)) {
+		t.Fatal("format v1 manifest must not add change_count; older strict readers would reject it")
+	}
+	if !foundChanges {
+		t.Fatal("expected optional change/markers.json member")
 	}
 }

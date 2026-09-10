@@ -281,6 +281,63 @@ type ArchiveImport = {
   imported_at: string;
 };
 
+type ChangeMarker = {
+  tenant_id: string;
+  change_id: string;
+  event_id: string;
+  source: string;
+  kind: string;
+  status: string;
+  environment?: string;
+  version?: string;
+  previous_version?: string;
+  git_sha?: string;
+  build_id?: string;
+  actor?: string;
+  rollback_of?: string;
+  summary?: string;
+  changed_at: string;
+};
+
+type ChangeWindow = {
+  events: number;
+  errors: number;
+  error_rate: number;
+  p95_latency_ms: number;
+};
+
+type ChangeImpact = {
+  source: string;
+  before: ChangeWindow;
+  after: ChangeWindow;
+  error_rate_delta: number;
+  p95_delta_ms: number;
+  assessment: string;
+  reason: string;
+};
+
+type ChangeAnalysis = {
+  tenant_id: string;
+  change: ChangeMarker;
+  generated_at: string;
+  assessment: string;
+  disclaimer: string;
+  primary_source: ChangeImpact;
+  source_impacts: ChangeImpact[];
+  observed_sources: number;
+  assessable_sources: number;
+  regressed_sources: number;
+  improved_sources: number;
+  blast_radius_percent: number;
+  recovery: {
+    rollback?: ChangeMarker;
+    after_rollback: ChangeWindow;
+    recovered: boolean;
+    reason?: string;
+  };
+  notes: string[];
+};
+
 type CostSimulation = {
   simulation_id: string;
   incident_id: string;
@@ -376,6 +433,9 @@ export default function Dashboard() {
   const [selectedSchema, setSelectedSchema] = useState<SchemaEntry | null>(null);
   const [schemaHistory, setSchemaHistory] = useState<SchemaEntry[]>([]);
   const [archiveImports, setArchiveImports] = useState<ArchiveImport[]>([]);
+  const [changes, setChanges] = useState<ChangeMarker[]>([]);
+  const [selectedChange, setSelectedChange] = useState<ChangeMarker | null>(null);
+  const [changeAnalysis, setChangeAnalysis] = useState<ChangeAnalysis | null>(null);
 
   const refresh = useCallback(async () => {
     const [
@@ -395,6 +455,7 @@ export default function Dashboard() {
       schemasResponse,
       schemaDriftResponse,
       archiveImportResponse,
+      changeResponse,
     ] = await Promise.all([
       fetch("/telemetry-api/api/v1/dashboard/summary?window=5m", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/incidents?limit=20", { cache: "no-store" }),
@@ -412,6 +473,7 @@ export default function Dashboard() {
       fetch("/telemetry-api/api/v1/schemas?limit=40", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/schema-drift?limit=30", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/archive-imports?limit=20", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/changes?limit=30", { cache: "no-store" }),
     ]);
 
     if (summaryResponse.ok) {
@@ -478,6 +540,10 @@ export default function Dashboard() {
       const payload = await archiveImportResponse.json();
       setArchiveImports(payload.imports ?? []);
     }
+    if (changeResponse.ok) {
+      const payload = await changeResponse.json();
+      setChanges(payload.changes ?? []);
+    }
   }, []);
 
   useEffect(() => {
@@ -529,6 +595,20 @@ export default function Dashboard() {
         setEvidenceGraph(null);
       });
   }, [selected]);
+
+  useEffect(() => {
+    if (!selectedChange) {
+      setChangeAnalysis(null);
+      return;
+    }
+    fetch(`/telemetry-api/api/v1/changes/${encodeURIComponent(selectedChange.change_id)}/analyze`, {
+      method: "POST",
+      cache: "no-store",
+    })
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((payload) => setChangeAnalysis(payload as ChangeAnalysis))
+      .catch(() => setChangeAnalysis(null));
+  }, [selectedChange]);
 
   useEffect(() => {
     if (!selectedSchema) {
@@ -630,6 +710,69 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
+        </article>
+      </section>
+
+      <section className="change-intelligence-grid">
+        <article className="panel change-list-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">CHANGE INTELLIGENCE</div>
+              <h2>Deployments & operational changes</h2>
+            </div>
+            <span className="count-badge">{changes.length}</span>
+          </div>
+          <div className="change-list">
+            {changes.slice(0, 12).map((change) => (
+              <button
+                type="button"
+                className={`change-row ${selectedChange?.change_id === change.change_id ? "selected" : ""}`}
+                key={change.change_id}
+                onClick={() => setSelectedChange(change)}
+              >
+                <span className={`change-kind ${change.kind}`}>{change.kind}</span>
+                <div>
+                  <strong>{change.source} {change.version ? `· ${change.version}` : ""}</strong>
+                  <span>{change.summary || change.change_id}</span>
+                  <small>{change.environment || "environment n/a"} · {change.git_sha ? change.git_sha.slice(0, 10) : "no git sha"}</small>
+                </div>
+                <time>{clock(change.changed_at)}</time>
+              </button>
+            ))}
+            {changes.length === 0 && <div className="empty">No structured changes recorded yet.</div>}
+          </div>
+        </article>
+
+        <article className="panel change-analysis-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">BEFORE / AFTER</div>
+              <h2>{selectedChange ? selectedChange.change_id : "Select a change"}</h2>
+            </div>
+            {changeAnalysis && <span className={`change-assessment ${changeAnalysis.assessment}`}>{changeAnalysis.assessment}</span>}
+          </div>
+          {!changeAnalysis && <div className="empty change-analysis-empty">Select a change to compare the 15-minute baseline and post-change windows.</div>}
+          {changeAnalysis && (
+            <>
+              <div className="change-disclaimer">{changeAnalysis.disclaimer}</div>
+              <div className="change-score-grid">
+                <div><span>Blast radius</span><strong>{changeAnalysis.blast_radius_percent.toFixed(1)}%</strong><small>{changeAnalysis.regressed_sources}/{changeAnalysis.assessable_sources} assessable sources</small></div>
+                <div><span>Error rate</span><strong>{pct(changeAnalysis.primary_source.after.error_rate)}</strong><small>{pct(changeAnalysis.primary_source.before.error_rate)} before</small></div>
+                <div><span>P95 latency</span><strong>{changeAnalysis.primary_source.after.p95_latency_ms.toFixed(0)} ms</strong><small>{changeAnalysis.primary_source.before.p95_latency_ms.toFixed(0)} ms before</small></div>
+                <div><span>Rollback</span><strong>{changeAnalysis.recovery.rollback ? changeAnalysis.recovery.rollback.change_id : "none"}</strong><small>{changeAnalysis.recovery.recovered ? "recovery signal observed" : "no recovery claim"}</small></div>
+              </div>
+              <div className="change-impact-list">
+                {changeAnalysis.source_impacts.slice(0, 8).map((impact) => (
+                  <div className="change-impact-row" key={impact.source}>
+                    <strong>{impact.source}</strong>
+                    <span className={`impact-status ${impact.assessment}`}>{impact.assessment}</span>
+                    <span>errors {(impact.error_rate_delta * 100).toFixed(1)} pp</span>
+                    <span>p95 {impact.p95_delta_ms >= 0 ? "+" : ""}{impact.p95_delta_ms.toFixed(0)} ms</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </article>
       </section>
 
