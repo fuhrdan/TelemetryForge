@@ -14,8 +14,8 @@
 | v1.0.0 | Released | Evidence Graph, auth/tenant isolation, redaction, Kafka security, production profile/runbooks |
 | v1.1.0 | Delivered development milestone | Schema Intelligence, schema history/drift, OpenTelemetry semantic-convention awareness |
 | v1.2.0 | Delivered development milestone | Distributed Cardinality Intelligence, hourly series budgets, forecasting |
-| **v1.3.0** | **Current development release** | **Multi-destination Telemetry Router, isolated retry/DLQ/fallback, shadow routing** |
-| v1.4.0 | Planned | Adaptive Sampling & Telemetry Shaping |
+| v1.3.0 | Delivered development milestone | Multi-destination Telemetry Router, isolated retry/DLQ/fallback, shadow routing |
+| **v1.4.0** | **Current development release** | **Adaptive Sampling & Telemetry Shaping, protected signals, shadow visibility preview** |
 | v1.5.0 | Planned | Portable `.tfincident` incident archives |
 | v1.6.0 | Planned | Policy lifecycle, approvals, promotion, rollback |
 | v1.7.0 | Planned | Change / deployment intelligence |
@@ -93,8 +93,23 @@
 - Docker Compose and Kubernetes router service
 - ADRs 0030-0032
 
-## v1.4.0 next
+## v1.4.0 delivered
 
-Build Adaptive Sampling & Telemetry Shaping on top of the router and replay
-foundation: protect errors/incident traces, transform/drop/rename attributes,
-preview visibility loss, and test sampling changes against historical incidents.
+- deterministic event-hash sampling
+- bounded queue-pressure adaptation with minimum floors
+- protected error/severe/high-latency/audit/deployment/incident-tag signals
+- tag drop/rename and oversized-payload shaping
+- full-fidelity Flight Recorder before shaping
+- successful sampled-out early-stop behavior
+- fail-open audit contract
+- minute aggregate shaping statistics
+- non-destructive shadow shaping
+- Prometheus shaping metrics
+- frozen-incident visibility preview
+- dashboard/API/CLI/demo coverage
+- ADRs 0033-0035
+
+## v1.5.0 next
+
+Build portable `.tfincident` archives containing frozen evidence, graph, replay,
+policy/schema/shaping snapshots, integrity metadata, and offline import/export.

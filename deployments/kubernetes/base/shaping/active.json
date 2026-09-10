@@ -1,0 +1,48 @@
+{
+  "name": "default-adaptive-shaping",
+  "version": "1.4.0",
+  "default_sample_rate": 1.0,
+  "protection": {
+    "errors": true,
+    "severities": ["error", "critical", "fatal"],
+    "types": ["audit.*", "deployment.*", "security.*"],
+    "tags": {
+      "incident_id": "*",
+      "telemetryforge.incident_id": "*"
+    },
+    "latency_threshold_ms": 1000
+  },
+  "pressure": {
+    "enabled": true,
+    "high_watermark": 0.70,
+    "critical_watermark": 0.90,
+    "high_factor": 0.60,
+    "critical_factor": 0.25
+  },
+  "rules": [
+    {
+      "name": "healthy-request-duration",
+      "tenant": "*",
+      "source": "*",
+      "type": "request.duration",
+      "sample_rate": 0.50,
+      "min_sample_rate": 0.10,
+      "drop_tags": ["debug_id"],
+      "rename_tags": {"http.method": "http.request.method"},
+      "payload_max_bytes": 32768,
+      "payload_action": "drop",
+      "stop": true
+    },
+    {
+      "name": "debug-events",
+      "tenant": "*",
+      "source": "*",
+      "type": "debug.*",
+      "sample_rate": 0.10,
+      "min_sample_rate": 0.02,
+      "payload_max_bytes": 8192,
+      "payload_action": "drop",
+      "stop": true
+    }
+  ]
+}

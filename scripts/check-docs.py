@@ -59,6 +59,10 @@ REQUIRED = [
     ROOT / "docs" / "routing" / "telemetry-router.md",
     ROOT / "docs" / "routing" / "shadow-routing.md",
     ROOT / "docs" / "roadmap" / "v1.3.0.md",
+    ROOT / "docs" / "shaping" / "adaptive-sampling.md",
+    ROOT / "docs" / "shaping" / "shaping-policy.md",
+    ROOT / "docs" / "shaping" / "visibility-preview.md",
+    ROOT / "docs" / "roadmap" / "v1.4.0.md",
 ]
 
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

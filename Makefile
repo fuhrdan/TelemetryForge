@@ -1,4 +1,4 @@
-.PHONY: build run run-worker run-router routing-check telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence demo-schema demo-routing test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check
+.PHONY: build run run-worker run-router routing-check telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence demo-schema demo-routing test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check demo-shaping
 
 build:
 	go build ./...
@@ -98,6 +98,10 @@ demo-schema:
 
 demo-routing:
 	python3 scripts/demo-traffic.py --routing-demo --count 80 --interval 0.08
+
+# Mix healthy requests with protected errors/high latency and large payloads.
+demo-shaping:
+	python3 scripts/demo-traffic.py --shaping-demo --count 140 --interval 0.04
 
 observability-check:
 	docker run --rm --entrypoint /bin/promtool \

@@ -202,3 +202,13 @@ telemetryctl routing dlq requeue \
 
 This routing DLQ is distinct from `telemetryctl dlq replay`, which operates on
 the primary Kafka processing DLQ.
+
+
+## Prune adaptive-shaping evidence
+
+```bash
+telemetryctl shaping prune --older-than 840h --tenant default
+```
+
+This removes compact shaping decisions, minute aggregates, and shadow
+differences older than the cutoff. The command refuses a horizon below 35 days.

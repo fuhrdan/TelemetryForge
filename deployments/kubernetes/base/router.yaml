@@ -25,7 +25,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: router
-          image: ghcr.io/fuhrdan/telemetryforge:v1.3.0
+          image: ghcr.io/fuhrdan/telemetryforge:v1.4.0
           imagePullPolicy: IfNotPresent
           command: ["/usr/local/bin/telemetryforge-router"]
           ports:

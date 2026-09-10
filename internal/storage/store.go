@@ -16,6 +16,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
 	"github.com/fuhrdan/TelemetryForge/internal/router"
 	"github.com/fuhrdan/TelemetryForge/internal/schema"
+	"github.com/fuhrdan/TelemetryForge/internal/shaping"
 )
 
 // Query describes a bounded telemetry lookup.
@@ -73,4 +74,11 @@ type RoutingReader interface {
 	ListRoutingShadowDiffs(ctx context.Context, limit int) ([]router.ShadowDiff, error)
 	ListRoutingDeadLetters(ctx context.Context, destination string, limit int) ([]router.DeadLetter, error)
 	ListRoutingDestinationHealth(ctx context.Context, limit int) ([]router.DestinationHealth, error)
+}
+
+// ShapingReader exposes tenant-scoped adaptive sampling/shaping evidence.
+type ShapingReader interface {
+	ShapingSummary(ctx context.Context, from time.Time) (shaping.Summary, error)
+	ListShapingStats(ctx context.Context, from time.Time, limit int) ([]shaping.Stat, error)
+	ListShapingShadowDiffs(ctx context.Context, limit int) ([]shaping.ShadowDiff, error)
 }

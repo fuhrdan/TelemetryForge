@@ -8,6 +8,8 @@ Cardinality Firewall and shadow-policy comparison.
 Use --schema-demo to establish a schema, introduce same-version drift, and
 then emit a deliberately breaking declared version.
 Use --routing-demo to emit production errors/audit events that visibly fan out.
+Use --shaping-demo to mix healthy telemetry with protected errors/high latency and
+attribute/payload shaping.
 """
 
 import argparse
@@ -128,6 +130,7 @@ def main() -> None:
     parser.add_argument("--evidence-demo", action="store_true")
     parser.add_argument("--schema-demo", action="store_true")
     parser.add_argument("--routing-demo", action="store_true")
+    parser.add_argument("--shaping-demo", action="store_true")
     parser.add_argument("--api-key", default=os.getenv("TELEMETRYFORGE_DEMO_API_KEY", ""))
     parser.add_argument("--count", type=int, default=120)
     parser.add_argument("--interval", type=float, default=0.25)
@@ -153,6 +156,8 @@ def main() -> None:
         print("Evidence demo enabled: deployment -> latency -> errors -> recovery.")
     if args.routing_demo:
         print("Routing demo enabled: production errors fan out; audit events archive.")
+    if args.shaping_demo:
+        print("Shaping demo enabled: healthy requests sample/shape while errors and high latency stay protected.")
 
     trace_id = f"demo-trace-{uuid.uuid4()}"
 
@@ -175,7 +180,32 @@ def main() -> None:
             latency = random.uniform(1150.0, 1800.0)
 
         try:
-            if args.routing_demo and index % 9 == 0:
+            if args.shaping_demo and index % 17 == 0:
+                error(
+                    args.base_url,
+                    "checkout-api",
+                    args.api_key,
+                    {"environment": "production", "debug_id": f"dbg-{uuid.uuid4()}"},
+                )
+            elif args.shaping_demo and index % 19 == 0:
+                metric(
+                    args.base_url,
+                    "checkout-api",
+                    random.uniform(1200.0, 1800.0),
+                    args.api_key,
+                    {"environment": "production", "debug_id": f"dbg-{uuid.uuid4()}", "http.method": "GET"},
+                )
+            elif args.shaping_demo:
+                body = envelope("checkout-api", "request.duration")
+                body["tags"].update({
+                    "environment": "production",
+                    "debug_id": f"dbg-{uuid.uuid4()}",
+                    "http.method": "GET",
+                })
+                body["payload"] = {"debug": "x" * (40000 if index % 11 == 0 else 128)}
+                body.update({"value": latency, "unit": "ms"})
+                post(args.base_url, "/api/v1/metrics", body, args.api_key)
+            elif args.routing_demo and index % 9 == 0:
                 error(
                     args.base_url,
                     "checkout-api",

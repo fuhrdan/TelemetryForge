@@ -363,3 +363,14 @@ limit=1..500
 
 Dead-letter envelopes are redacted on API output; stored recovery evidence is
 full fidelity.
+
+## Adaptive shaping
+
+### `GET /api/v1/shaping/stats`
+
+Returns tenant-scoped minute aggregates. Optional `window` defaults to `1h` and
+is capped at 720 hours.
+
+### `GET /api/v1/shaping/shadow-diffs`
+
+Returns newest active-versus-candidate shaping differences.

@@ -38,6 +38,8 @@ type Metrics struct {
 	consumerLagTotal  prometheus.Gauge
 	deadLetters       *prometheus.CounterVec
 	routingDeliveries *prometheus.CounterVec
+	shapingDecisions  *prometheus.CounterVec
+	shapingPressure   prometheus.Gauge
 }
 
 // NewMetrics creates a registry with low-cardinality TelemetryForge metrics.
@@ -86,12 +88,19 @@ func NewMetrics(service string) *Metrics {
 	metrics.routingDeliveries = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace, Name: "routing_deliveries_total", Help: "Telemetry Router delivery outcomes by configured destination.", ConstLabels: labels,
 	}, []string{"destination", "outcome"})
+	metrics.shapingDecisions = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace, Name: "shaping_decisions_total", Help: "Adaptive sampling decisions by reviewed shaping rule and bounded outcome.", ConstLabels: labels,
+	}, []string{"rule", "outcome"})
+	metrics.shapingPressure = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: namespace, Name: "shaping_queue_pressure_ratio", Help: "Current bounded worker queue utilization used by adaptive sampling.", ConstLabels: labels,
+	})
 
 	metrics.registry.MustRegister(
 		metrics.httpRequests, metrics.httpDuration, metrics.accepted,
 		metrics.publishFailure, metrics.workerCompleted, metrics.workerDuration,
 		metrics.workerRetries, metrics.queueDepth, metrics.queueCapacity,
 		metrics.consumerLag, metrics.consumerLagTotal, metrics.deadLetters, metrics.routingDeliveries,
+		metrics.shapingDecisions, metrics.shapingPressure,
 		collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
 	return metrics
@@ -147,6 +156,13 @@ func (metrics *Metrics) DeadLetter(classification string) {
 // Destination names come only from reviewed routing configuration.
 func (metrics *Metrics) RoutingDelivery(destination, outcome string) {
 	metrics.routingDeliveries.WithLabelValues(destination, outcome).Inc()
+}
+
+// ShapingDecision records adaptive-sampling outcomes. Rule names come only from
+// validated configuration and therefore remain a bounded metric label.
+func (metrics *Metrics) ShapingDecision(rule, outcome string, pressure float64) {
+	metrics.shapingDecisions.WithLabelValues(rule, outcome).Inc()
+	metrics.shapingPressure.Set(pressure)
 }
 
 // Middleware records Prometheus HTTP metrics and OpenTelemetry spans.

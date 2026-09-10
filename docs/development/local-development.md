@@ -232,3 +232,18 @@ Validate route policy before restart:
 ```bash
 make routing-check
 ```
+
+## Adaptive shaping demo
+
+```bash
+make demo-shaping
+```
+
+Then inspect the **Adaptive Sampling** dashboard panels and worker Prometheus
+metrics.
+
+Historical what-if preview:
+
+```bash
+go run ./cmd/telemetryctl shaping preview --incident <ID> --candidate shaping/shadow.json --pressure 0.9
+```

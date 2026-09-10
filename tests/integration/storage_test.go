@@ -15,6 +15,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/router"
 	"github.com/fuhrdan/TelemetryForge/internal/schema"
 	"github.com/fuhrdan/TelemetryForge/internal/security"
+	"github.com/fuhrdan/TelemetryForge/internal/shaping"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 )
 
@@ -791,5 +792,93 @@ func TestRoutingOutboxIsolationAndFallback(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected per-destination routing dead letter")
+	}
+}
+
+func TestShapingStatsAndShadowDiffPersistence(t *testing.T) {
+	databaseURL := os.Getenv("TELEMETRYFORGE_INTEGRATION_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TELEMETRYFORGE_INTEGRATION_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	ctx = security.WithTenant(ctx, "shaping-integration")
+
+	store, err := storage.NewPostgresStore(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Now().UTC()
+	configName := fmt.Sprintf("integration-shaping-%d", now.UnixNano())
+	decision := shaping.Decision{
+		TenantID: "shaping-integration", EventID: fmt.Sprintf("shape-%d", now.UnixNano()),
+		Source: "checkout-api", EventType: "request.duration", ObservedAt: now,
+		ConfigName: configName, ConfigVersion: "1.4.0",
+		Rules: []string{"healthy"}, Keep: false, BaseRate: .5, EffectiveRate: .25,
+		QueuePressure: .95, OriginalBytes: 1000, ShapedBytes: 700,
+		DroppedTags: []string{"debug_id"},
+	}
+	resolved, reused, err := store.ResolveShapingDecision(ctx, decision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reused || resolved.EffectiveRate != decision.EffectiveRate {
+		t.Fatalf("first decision reused=%v resolved=%#v", reused, resolved)
+	}
+
+	changedPressure := decision
+	changedPressure.QueuePressure = 0
+	changedPressure.EffectiveRate = .5
+	resolved, reused, err = store.ResolveShapingDecision(ctx, changedPressure)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reused || resolved.QueuePressure != .95 || resolved.EffectiveRate != .25 {
+		t.Fatalf("retry did not reuse first shaping decision: reused=%v resolved=%#v", reused, resolved)
+	}
+
+	stats, err := store.ListShapingStats(ctx, now.Add(-time.Minute), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, stat := range stats {
+		if stat.ConfigName == configName && stat.Source == "checkout-api" {
+			found = true
+			if stat.Observed != 1 || stat.SampledOut != 1 || stat.Transformed != 1 {
+				t.Fatalf("unexpected shaping stat: %#v", stat)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected shaping minute aggregate")
+	}
+
+	diff := shaping.ShadowDiff{
+		TenantID: "shaping-integration", EventID: decision.EventID, ObservedAt: now,
+		ActiveConfig: "active", ActiveVersion: "1.4.0", ShadowConfig: "candidate",
+		ShadowVersion: "1.4.0-candidate", ActiveKeep: true, ShadowKeep: false,
+		ActiveRate: .5, ShadowRate: .2, ActiveEffects: []string{"drop_tag:debug_id"},
+		ShadowEffects: []string{"drop_tag:debug_id", "sampled_out"},
+	}
+	if err := store.RecordShapingShadowDiff(ctx, diff); err != nil {
+		t.Fatal(err)
+	}
+	diffs, err := store.ListShapingShadowDiffs(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found = false
+	for _, item := range diffs {
+		if item.EventID == diff.EventID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected shaping shadow diff")
 	}
 }

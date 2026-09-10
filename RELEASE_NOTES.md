@@ -1,164 +1,86 @@
-# TelemetryForge v1.3.0 Development Release Notes
+# TelemetryForge v1.4.0 Development Release Notes
 
-## Telemetry Router
+## Adaptive Sampling & Telemetry Shaping
 
-v1.3.0 separates **routing intent** from **destination delivery**. The primary
-Kafka worker records a durable destination plan after primary persistence; a
-separate router service performs external I/O.
+v1.4.0 reduces healthy high-volume telemetry without weakening the evidence-first
+incident model.
 
-This means one broken observability backend cannot hold a healthy destination or
-the core Kafka processing partition hostage.
+## Deterministic sampling
 
-## Routing policy
+Sampling uses config identity plus canonical event ID. A compact durable
+decision ledger records the first queue-pressure decision so whole-chain retries
+reuse it and minute statistics are incremented exactly once.
 
-Routing JSON can match:
+## Protected telemetry
 
-```text
-authenticated tenant
-source glob
-event-type glob
-severity
-tag key/value globs
-```
+The checked-in active configuration protects errors, severe events, audit/
+deployment/security events, incident-tagged telemetry, and >=1000ms latency/
+duration signals. Protected events are never sampled out by queue pressure and
+preserve tags/payload unless a rule explicitly opts into `shape_protected`.
 
-Matching rules fan out to the union of their destinations. `stop: true` allows
-deliberate first-match termination.
+## Pressure adaptation
 
-If no rule matches, `fallback_destination` can receive the event.
+The active configuration uses bounded worker queue utilization to lower healthy
+traffic sampling rates at 70% and 90% queue pressure. Per-rule floors prevent
+unbounded reduction. Kafka remains the durable backpressure boundary.
 
-## Durable outbox
+## Telemetry shaping
 
-Migration `010_telemetry_router.sql` adds:
+Rules can drop tags, rename tags, and drop oversized JSON payloads while adding
+a safe `telemetryforge.payload_oversize=true` marker. Arbitrary byte truncation
+is not used because it could create invalid JSON.
 
-- `routing_deliveries`
-- `routing_shadow_diffs`
-- `routing_dead_letters`
-- `routing_destination_health`
+## Full-fidelity / fail-open safety
 
-Outbox uniqueness is:
+Flight Recorder, Schema Intelligence, and the Cardinality Firewall run before shaping, so sampling cannot hide cardinality explosions from shared estimates. A sampled-out event
+is acknowledged as a successful policy decision rather than sent to a DLQ.
 
-```text
-tenant_id + event_id + destination
-```
+Active shaping is applied only after its compact per-event decision is durable.
+The ledger contains no telemetry payload. If that write fails, TelemetryForge
+keeps the original unshaped event.
 
-so bounded worker retry cannot duplicate one destination intent.
+## Shadow shaping
 
-## Router service
+`shaping/shadow.json` is evaluated against the same pre-shaped event and queue
+pressure but never mutates production output. Only candidate differences are
+stored.
 
-New binary:
+## Visibility preview
 
-```text
-telemetryforge-router
-```
+`telemetryctl shaping preview` evaluates active/candidate shaping against a
+frozen incident and reports explicit event, byte, protected-event, and
+source/type retention. No opaque visibility score is generated.
 
-Admin surface:
-
-```text
-:8082/health
-:8082/ready
-:8082/metrics
-```
-
-Each destination gets its own concurrency lanes. Multiple router replicas claim
-work with PostgreSQL `FOR UPDATE SKIP LOCKED` and expiring leases.
-
-Router readiness intentionally does **not** fail because one external destination
-is unavailable; that would defeat destination isolation. Backend health is
-reported separately.
-
-## Destination types
-
-### Kafka
-
-Uses the same Kafka TLS/SASL environment contract as the rest of TelemetryForge.
-Destination brokers can optionally override the cluster default.
-
-### HTTP/webhook
-
-Posts the canonical post-policy event and includes event/tenant/idempotency
-headers.
-
-Credential-shaped static headers (`Authorization`, cookies, API keys, tokens,
-and secrets) are rejected in routing JSON. Use `bearer_token_env` for Bearer
-authentication or `header_env` for generic secret-backed HTTP headers.
-
-## Retry, DLQ, and failure fallback
-
-Each destination stores:
-
-- max attempts
-- base/max backoff
-- current attempts/status
-- next attempt time
-- last error
-
-After terminal failure TelemetryForge records a **per-destination routing DLQ**.
-An optional `failure_fallback` can atomically enqueue the same event to another
-destination such as `archive`. Fallback cycles are rejected.
-
-This routing DLQ is separate from `telemetry.dlq`, which represents failures in
-the primary processing pipeline.
-
-## Shadow routing
-
-The candidate routing file is evaluated against the same post-policy event but
-never creates destination I/O. Only added/removed destination names are stored.
-
-## API
-
-Added tenant-scoped:
-
-```text
-GET /api/v1/routing/destinations
-GET /api/v1/routing/deliveries
-GET /api/v1/routing/shadow-diffs
-GET /api/v1/routing/dead-letters
-```
-
-## CLI
+## Dashboard / API / metrics
 
 Added:
+
+```text
+GET /api/v1/shaping/stats
+GET /api/v1/shaping/shadow-diffs
+telemetryforge_shaping_decisions_total
+telemetryforge_shaping_queue_pressure_ratio
+```
+
+The Next.js dashboard shows last-hour retention, protected/transformed counts,
+and active-vs-shadow sampling changes.
+
+## Demo
 
 ```bash
-telemetryctl routing validate --file routing/active.json
-telemetryctl routing destinations --tenant default
-telemetryctl routing deliveries --status retry --tenant default
-telemetryctl routing dlq list --destination security --tenant default
-telemetryctl routing dlq requeue --event EVT --destination security --tenant default
+make demo-shaping
 ```
 
-## Dashboard
-
-Added:
-
-- destination health
-- pending/retry/DLQ counts
-- candidate shadow-routing differences
-- recent per-destination DLQ summary
-
-## Local demo destinations
-
-Compose creates:
-
-```text
-telemetry.routed.primary
-telemetry.routed.security
-telemetry.routed.archive
-```
-
-The checked-in active route sends unmatched telemetry to `primary`, production
-errors to `primary + security`, and uses `archive` as the failure fallback.
+The demo mixes ordinary request-duration telemetry with protected errors/high
+latency and oversized payloads.
 
 ## Known limitations
 
-- External destination delivery is at-least-once, not exactly-once.
-- HTTP destinations should implement idempotency using the canonical event ID.
-- v1.3 establishes routing semantics but intentionally does not freeze a public
-  third-party connector SDK; the connector/plugin platform remains v1.8 work.
-- Destination configuration is deployment-global while delivery/health history
-  is tenant-scoped.
-- The routing outbox uses PostgreSQL; cross-region HA semantics remain v1.9 work.
-- Delivered outbox rows and shadow-routing differences do not yet have automatic
-  pruning; production operators should define retention before sustained high-volume use.
-- A destination should be drained before it is removed/disabled; removing it also
-  removes the active dispatch lane for outstanding rows.
+- Queue pressure is process-local, not cluster-global.
+- v1.4 is event-aware sampling, not full trace-tail sampling/assembly.
+- Shaping evidence is not auto-pruned; `telemetryctl shaping prune` provides an
+  explicit guarded lifecycle operation with a 35-day minimum horizon.
+- Payload shaping supports safe whole-payload dropping rather than arbitrary
+  JSON-path transforms.
+- Full dependency-backed Go 1.27.1 and TimescaleDB validation remains CI-
+  authoritative when unavailable in a restricted sandbox.

@@ -24,6 +24,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/router"
 	"github.com/fuhrdan/TelemetryForge/internal/schema"
 	"github.com/fuhrdan/TelemetryForge/internal/security"
+	"github.com/fuhrdan/TelemetryForge/internal/shaping"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
 )
@@ -94,6 +95,24 @@ func main() {
 			}
 		case "budgets":
 			if err := cardinalityBudgets(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		default:
+			usage()
+			os.Exit(2)
+		}
+	case "shaping":
+		switch os.Args[2] {
+		case "validate":
+			if err := shapingValidate(os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "preview":
+			if err := shapingPreview(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "prune":
+			if err := shapingPrune(ctx, os.Args[3:]); err != nil {
 				exitErr(err)
 			}
 		default:
@@ -606,6 +625,123 @@ func schemaPrune(ctx context.Context, args []string) error {
 	return nil
 }
 
+func shapingValidate(args []string) error {
+	set := flag.NewFlagSet("shaping validate", flag.ContinueOnError)
+	file := set.String("file", "shaping/active.json", "shaping policy JSON")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	config, err := shaping.Load(*file)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("valid shaping config %s@%s (%d rules)\n", config.Name, config.Version, len(config.Rules))
+	return nil
+}
+
+func shapingPreview(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("shaping preview", flag.ContinueOnError)
+	incidentID := set.String("incident", "", "frozen incident identifier")
+	file := set.String("file", "shaping/active.json", "shaping policy JSON")
+	candidateFile := set.String("candidate", "", "optional candidate shaping policy JSON")
+	policyFile := set.String("policy", "policies/active.json", "active Cardinality Firewall policy replayed before shaping")
+	pressure := set.Float64("pressure", 0, "simulated worker queue pressure from 0 to 1")
+	maxEvents := set.Int("max-events", 10000, "maximum frozen events to preview")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*incidentID) == "" {
+		return errors.New("--incident is required")
+	}
+	if *pressure < 0 || *pressure > 1 {
+		return errors.New("--pressure must be between 0 and 1")
+	}
+	config, err := shaping.Load(*file)
+	if err != nil {
+		return err
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	events, err := store.IncidentEvents(ctx, *incidentID, *maxEvents)
+	if err != nil {
+		return err
+	}
+	if len(events) == 0 {
+		return fmt.Errorf("incident %q not found or contains no events", *incidentID)
+	}
+	activePolicy, err := policy.Load(*policyFile)
+	if err != nil {
+		return err
+	}
+	policyEngine, err := policy.NewEngine(activePolicy, nil, nil, 20000)
+	if err != nil {
+		return err
+	}
+	postPolicy := make([]domain.Event, 0, len(events))
+	for _, event := range events {
+		processed, evalErr := policyEngine.EvaluateAt(ctx, event, event.Timestamp)
+		if evalErr != nil {
+			return evalErr
+		}
+		postPolicy = append(postPolicy, processed)
+	}
+	active, err := shaping.PreviewEvents(config, postPolicy, *pressure)
+	if err != nil {
+		return err
+	}
+	result := map[string]any{"incident_id": *incidentID, "active": active}
+	if strings.TrimSpace(*candidateFile) != "" {
+		candidate, loadErr := shaping.Load(*candidateFile)
+		if loadErr != nil {
+			return loadErr
+		}
+		preview, previewErr := shaping.PreviewEvents(candidate, postPolicy, *pressure)
+		if previewErr != nil {
+			return previewErr
+		}
+		result["candidate"] = preview
+	}
+	payload, _ := json.MarshalIndent(result, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func shapingPrune(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("shaping prune", flag.ContinueOnError)
+	olderThan := set.Duration("older-than", 35*24*time.Hour, "minimum shaping evidence age")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if *olderThan < 35*24*time.Hour {
+		return errors.New("--older-than must be at least 35 days so retry decisions outlive the normal dedup/replay investigation horizon")
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	cutoff := time.Now().UTC().Add(-*olderThan)
+	result, err := store.PruneShapingBefore(ctx, cutoff)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(map[string]any{
+		"tenant": *tenant, "before": cutoff, "deleted": result,
+	}, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
 func routingValidate(args []string) error {
 	set := flag.NewFlagSet("routing validate", flag.ContinueOnError)
 	file := set.String("file", "routing/active.json", "routing JSON file")
@@ -755,6 +891,9 @@ func usage() {
   telemetryctl policy validate --file policies/active.json
   telemetryctl cardinality top [--mode active] [--limit 25] [--tenant default]
   telemetryctl cardinality budgets [--limit 100] [--tenant default]
+  telemetryctl shaping validate [--file shaping/active.json]
+  telemetryctl shaping preview --incident INC-42 [--candidate shaping/shadow.json] [--pressure 0.9] [--tenant default]
+  telemetryctl shaping prune [--older-than 840h] [--tenant default]
   telemetryctl schema inspect --source checkout-api --type request.duration [--tenant default]
   telemetryctl schema diff --source checkout-api --type request.duration --from 1.0 --to 2.0 [--tenant default]
   telemetryctl schema prune [--older-than 840h] [--tenant default]

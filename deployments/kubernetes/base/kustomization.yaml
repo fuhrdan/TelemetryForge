@@ -21,6 +21,10 @@ configMapGenerator:
     files:
       - active.json=routing/active.json
       - shadow.json=routing/shadow.json
+  - name: telemetryforge-shaping
+    files:
+      - active.json=shaping/active.json
+      - shadow.json=shaping/shadow.json
 
 generatorOptions:
   disableNameSuffixHash: true

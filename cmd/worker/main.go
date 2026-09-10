@@ -18,6 +18,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/router"
 	"github.com/fuhrdan/TelemetryForge/internal/security"
+	"github.com/fuhrdan/TelemetryForge/internal/shaping"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
 	"github.com/fuhrdan/TelemetryForge/internal/worker"
@@ -31,7 +32,7 @@ func main() {
 	traceShutdown, err := observability.InitTracing(
 		ctx,
 		"telemetryforge-worker",
-		"1.3.0",
+		"1.4.0",
 		os.Getenv("TELEMETRYFORGE_OTLP_TRACES_ENDPOINT"),
 	)
 	if err != nil {
@@ -110,6 +111,38 @@ func main() {
 		os.Exit(1)
 	}
 
+	activeShapingPath := env("TELEMETRYFORGE_SHAPING_FILE", "shaping/active.json")
+	activeShaping, err := shaping.Load(activeShapingPath)
+	if err != nil {
+		logger.Error("load active shaping config", "path", activeShapingPath, "error", err)
+		os.Exit(1)
+	}
+
+	var shadowShaping *shaping.Config
+	shadowShapingPath := env("TELEMETRYFORGE_SHADOW_SHAPING_FILE", "shaping/shadow.json")
+	if strings.EqualFold(shadowShapingPath, "disabled") {
+		shadowShapingPath = ""
+	}
+	if shadowShapingPath != "" {
+		loadedShaping, loadErr := shaping.Load(shadowShapingPath)
+		if loadErr != nil {
+			logger.Error("load shadow shaping config", "path", shadowShapingPath, "error", loadErr)
+			os.Exit(1)
+		}
+		shadowShaping = &loadedShaping
+	}
+	shapingEngine, err := shaping.NewEngine(activeShaping, shadowShaping)
+	if err != nil {
+		logger.Error("create shaping engine", "error", err)
+		os.Exit(1)
+	}
+	pressureController := shaping.NewPressureController()
+	shapingProcessor, err := worker.NewAdaptiveShaper(shapingEngine, store, pressureController, logger, metrics)
+	if err != nil {
+		logger.Error("create adaptive shaping processor", "error", err)
+		os.Exit(1)
+	}
+
 	activeTracker := storage.NewDistributedCardinalityTracker(store, "active")
 	var shadowTracker policy.CardinalityTracker
 	if shadowPolicy != nil {
@@ -158,6 +191,7 @@ func main() {
 		worker.Normalizer{},
 		schemaInspector,
 		worker.NewPolicyProcessor(policyEngine),
+		shapingProcessor,
 		persister,
 		routingProcessor,
 		worker.NewIncidentDetector(detector, logger),
@@ -213,7 +247,8 @@ func main() {
 
 	go consumer.RunLagMonitor(ctx, 15*time.Second)
 
-	pool, err := worker.NewPoolWithObserver(workers, queueCapacity, pipeline, logger, metrics)
+	poolObserver := worker.NewCompositeObserver(metrics, pressureController)
+	pool, err := worker.NewPoolWithObserver(workers, queueCapacity, pipeline, logger, poolObserver)
 	if err != nil {
 		logger.Error("create worker pool", "error", err)
 		os.Exit(1)
@@ -232,6 +267,8 @@ func main() {
 		"distributed_cardinality", "timescaledb-hourly",
 		"telemetry_router", activeRouting.Name+"@"+activeRouting.Version,
 		"shadow_routing", shadowRouting != nil,
+		"adaptive_shaping", activeShaping.Name+"@"+activeShaping.Version,
+		"shadow_shaping", shadowShaping != nil,
 		"policy", activePolicy.Name+"@"+activePolicy.Version,
 		"shadow_policy", shadowPolicyPath != "",
 		"admin_address", adminAddress)

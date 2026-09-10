@@ -202,3 +202,19 @@ New unit/integration checks cover:
 - router Docker/Kubernetes configuration
 
 The storage integration test uses the real PostgreSQL migration in CI.
+
+## v1.4.0 shaping coverage
+
+Tests cover protected errors/high latency, deterministic sampling, pressure
+floors, transformations, payload dropping, shadow isolation, successful sampled-
+out early stop, fail-open audit behavior, API validation, and frozen-incident
+preview calculations.
+
+
+### v1.4 retry-stability coverage
+
+Adaptive-shaping tests explicitly cover:
+
+- retry-stable first-decision reuse when queue pressure changes;
+- exactly-once minute-stat aggregation through the decision ledger; and
+- fail-open behavior when decision persistence is unavailable.

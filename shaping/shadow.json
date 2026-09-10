@@ -1,0 +1,48 @@
+{
+  "name": "candidate-cost-reduction",
+  "version": "1.4.0-candidate",
+  "default_sample_rate": 1.0,
+  "protection": {
+    "errors": true,
+    "severities": ["error", "critical", "fatal"],
+    "types": ["audit.*", "deployment.*", "security.*"],
+    "tags": {
+      "incident_id": "*",
+      "telemetryforge.incident_id": "*"
+    },
+    "latency_threshold_ms": 1000
+  },
+  "pressure": {
+    "enabled": true,
+    "high_watermark": 0.65,
+    "critical_watermark": 0.85,
+    "high_factor": 0.45,
+    "critical_factor": 0.15
+  },
+  "rules": [
+    {
+      "name": "healthy-request-duration",
+      "tenant": "*",
+      "source": "*",
+      "type": "request.duration",
+      "sample_rate": 0.25,
+      "min_sample_rate": 0.05,
+      "drop_tags": ["debug_id", "user_agent_raw"],
+      "rename_tags": {"http.method": "http.request.method"},
+      "payload_max_bytes": 16384,
+      "payload_action": "drop",
+      "stop": true
+    },
+    {
+      "name": "debug-events",
+      "tenant": "*",
+      "source": "*",
+      "type": "debug.*",
+      "sample_rate": 0.05,
+      "min_sample_rate": 0.01,
+      "payload_max_bytes": 4096,
+      "payload_action": "drop",
+      "stop": true
+    }
+  ]
+}

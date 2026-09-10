@@ -256,3 +256,20 @@ base_delay_ms  500
 max_delay_ms   30000
 concurrency    2
 ```
+
+## Adaptive sampling / shaping
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TELEMETRYFORGE_SHAPING_FILE` | `shaping/active.json` | Active deterministic sampling/shaping config |
+| `TELEMETRYFORGE_SHADOW_SHAPING_FILE` | `shaping/shadow.json` | Candidate non-destructive shaping config; `disabled` turns it off |
+
+Queue-pressure thresholds/rate factors live in the versioned shaping JSON, not
+ad-hoc environment variables.
+
+
+### Shaping configuration bounds
+
+Shaping configurations are capped at 256 rules. Config identity and rule names
+are length-bounded, and per-rule tag matchers/transforms are capped to prevent
+configuration-driven unbounded work or metric-label proliferation.

@@ -104,3 +104,11 @@ Tempo runs monolithically with local filesystem storage for development.
 This is not the recommended production storage architecture. Production Tempo
 should use an appropriate object-storage backend and authentication/network
 controls.
+
+
+## Adaptive sampling visibility
+
+The worker exports shaping-decision outcomes and the queue-pressure ratio used
+by the adaptive sampler. The provisioned Grafana dashboard includes panels for
+those signals so intentional sampling can be distinguished from processing or
+routing failures.

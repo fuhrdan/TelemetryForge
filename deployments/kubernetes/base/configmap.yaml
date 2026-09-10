@@ -22,6 +22,8 @@ data:
   TELEMETRYFORGE_SHADOW_POLICY_FILE: "/etc/telemetryforge/policies/shadow.json"
   TELEMETRYFORGE_ROUTING_FILE: "/etc/telemetryforge/routing/active.json"
   TELEMETRYFORGE_SHADOW_ROUTING_FILE: "/etc/telemetryforge/routing/shadow.json"
+  TELEMETRYFORGE_SHAPING_FILE: "/etc/telemetryforge/shaping/active.json"
+  TELEMETRYFORGE_SHADOW_SHAPING_FILE: "/etc/telemetryforge/shaping/shadow.json"
   TELEMETRYFORGE_ROUTER_ADMIN_ADDRESS: ":8082"
   TELEMETRYFORGE_CARDINALITY_MAX_DIMENSIONS: "20000"
   TELEMETRYFORGE_SCHEMA_FAIL_OPEN: "true"

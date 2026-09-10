@@ -181,6 +181,13 @@ Routing changes must preserve these release guarantees:
 - routing outbox writes remain idempotent by tenant/event/destination;
 - destination credentials come from environment/secret-manager inputs rather than committed routing JSON.
 
+### Sampling / shaping changes
+
+Protected-event behavior, deterministic hashing, and fail-open audit semantics
+are release invariants. A candidate/shadow configuration must never mutate the
+active event path. Do not add an opaque "visibility score" without separately
+exposing the measurable retention components.
+
 ## Documentation standards
 
 Human-readable documentation is a project requirement.

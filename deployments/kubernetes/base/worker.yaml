@@ -28,7 +28,7 @@ spec:
       terminationGracePeriodSeconds: 45
       containers:
         - name: worker
-          image: ghcr.io/fuhrdan/telemetryforge:v1.3.0
+          image: ghcr.io/fuhrdan/telemetryforge:v1.4.0
           imagePullPolicy: IfNotPresent
           command: ["/usr/local/bin/telemetryforge-worker"]
           ports:
@@ -45,6 +45,9 @@ spec:
               readOnly: true
             - name: routing
               mountPath: /etc/telemetryforge/routing
+              readOnly: true
+            - name: shaping
+              mountPath: /etc/telemetryforge/shaping
               readOnly: true
           readinessProbe:
             httpGet:
@@ -80,6 +83,9 @@ spec:
         - name: routing
           configMap:
             name: telemetryforge-routing
+        - name: shaping
+          configMap:
+            name: telemetryforge-shaping
 
 ---
 apiVersion: v1

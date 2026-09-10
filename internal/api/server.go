@@ -113,6 +113,10 @@ func (server *Server) routes() {
 			server.mux.HandleFunc("GET /api/v1/schema-drift", server.handleSchemaDrift)
 			server.mux.HandleFunc("GET /api/v1/schema-diff", server.handleSchemaDiff)
 		}
+		if _, ok := server.reader.(storage.ShapingReader); ok {
+			server.mux.HandleFunc("GET /api/v1/shaping/stats", server.handleShapingStats)
+			server.mux.HandleFunc("GET /api/v1/shaping/shadow-diffs", server.handleShapingShadowDiffs)
+		}
 		if _, ok := server.reader.(storage.RoutingReader); ok {
 			server.mux.HandleFunc("GET /api/v1/routing/deliveries", server.handleRoutingDeliveries)
 			server.mux.HandleFunc("GET /api/v1/routing/shadow-diffs", server.handleRoutingShadowDiffs)

@@ -10,9 +10,9 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current development release:** `v1.3.0` — Telemetry Router, durable multi-destination
-> fan-out, destination-isolated retry/DLQ/fallback, and non-destructive shadow
-> routing.
+> **Current development release:** `v1.4.0` — Adaptive Sampling & Telemetry Shaping,
+> protected incident/error signals, queue-pressure adaptation, deterministic
+> sampling, transformations, shadow preview, and visibility-retention evidence.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -97,6 +97,33 @@ Read:
 
 - [Telemetry Router](docs/routing/telemetry-router.md)
 - [Shadow Routing](docs/routing/shadow-routing.md)
+
+### Adaptive Sampling & Telemetry Shaping
+
+The worker can now reduce healthy high-volume telemetry **after** full-fidelity
+Flight Recorder/schema capture **and after the Cardinality Firewall has observed
+the full stream**, but before normal persistence and routing.
+
+Sampling is deterministic from event/config identity and can adapt to bounded
+worker queue pressure. The checked-in policy protects errors, severe events,
+audit/deployment/security events, high-latency signals, and incident-tagged
+telemetry. Protected events also preserve tags/payload unless a reviewed rule
+explicitly opts into `shape_protected`.
+
+Shaping rules can also drop/rename tags and safely remove oversized payloads.
+A candidate shadow configuration is evaluated without mutating the active path.
+A compact retry-stable decision ledger ensures downstream retries cannot change
+an already-recorded pressure decision or double-count shaping statistics.
+
+Historical incident preview reports event retention, byte retention, protected
+retention, and source/type coverage instead of inventing one opaque visibility
+score.
+
+Read:
+
+- [Adaptive Sampling](docs/shaping/adaptive-sampling.md)
+- [Shaping Policy](docs/shaping/shaping-policy.md)
+- [Visibility Preview](docs/shaping/visibility-preview.md)
 
 ### Policy-as-Code + Shadow Pipeline
 
@@ -538,6 +565,21 @@ pricing/                     explicit cost assumptions
 routing/                     active/shadow routing policy
 security/                    hash-only demo API-key document
 docs/                        human-readable engineering docs
+```
+
+
+## Adaptive shaping API
+
+```text
+GET /api/v1/shaping/stats?window=1h
+GET /api/v1/shaping/shadow-diffs
+```
+
+Validate or preview from CLI:
+
+```bash
+go run ./cmd/telemetryctl shaping validate --file shaping/active.json
+go run ./cmd/telemetryctl shaping preview --incident <INCIDENT_ID> --candidate shaping/shadow.json --pressure 0.9
 ```
 
 ## Security status

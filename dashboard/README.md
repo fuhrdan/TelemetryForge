@@ -1,7 +1,7 @@
 # TelemetryForge Dashboard
 
-**Package version:** `1.3.0`
-**Release:** `v1.3.0`
+**Package version:** `1.4.0`
+**Release:** `v1.4.0`
 
 The dashboard is intentionally small and readable.
 
@@ -127,3 +127,13 @@ summing replica-local estimates.
 - recent per-destination DLQ count
 
 The browser still reaches these APIs through the server-side authenticated proxy.
+
+## v1.4.0 additions
+
+- Adaptive Sampling last-hour event/byte retention
+- protected-event and transformation counts
+- candidate Shadow Shaping differences
+- same server-side authenticated API proxy from v1.0
+
+Sampling policy lives in `shaping/active.json`; `shaping/shadow.json` is
+non-destructive candidate evaluation.

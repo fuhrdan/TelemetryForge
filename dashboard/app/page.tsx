@@ -114,6 +114,49 @@ type RoutingDeadLetter = {
   failed_at: string;
 };
 
+type ShapingSummary = {
+  observed: number;
+  kept: number;
+  sampled_out: number;
+  protected: number;
+  transformed: number;
+  payload_dropped: number;
+  original_bytes: number;
+  shaped_bytes: number;
+};
+
+type ShapingStat = {
+  bucket: string;
+  config_name: string;
+  config_version: string;
+  rule_name: string;
+  source: string;
+  event_type: string;
+  observed: number;
+  kept: number;
+  sampled_out: number;
+  protected: number;
+  transformed: number;
+  payload_dropped: number;
+  original_bytes: number;
+  shaped_bytes: number;
+};
+
+type ShapingShadowDiff = {
+  event_id: string;
+  observed_at: string;
+  active_config: string;
+  active_version: string;
+  shadow_config: string;
+  shadow_version: string;
+  active_keep: boolean;
+  shadow_keep: boolean;
+  active_rate: number;
+  shadow_rate: number;
+  active_effects?: string[];
+  shadow_effects?: string[];
+};
+
 type PolicyDiff = {
   observed_at: string;
   source: string;
@@ -310,6 +353,9 @@ export default function Dashboard() {
   const [routingDestinations, setRoutingDestinations] = useState<RoutingDestinationHealth[]>([]);
   const [routingDiffs, setRoutingDiffs] = useState<RoutingShadowDiff[]>([]);
   const [routingDeadLetters, setRoutingDeadLetters] = useState<RoutingDeadLetter[]>([]);
+  const [shapingSummary, setShapingSummary] = useState<ShapingSummary>({ observed: 0, kept: 0, sampled_out: 0, protected: 0, transformed: 0, payload_dropped: 0, original_bytes: 0, shaped_bytes: 0 });
+  const [shapingStats, setShapingStats] = useState<ShapingStat[]>([]);
+  const [shapingDiffs, setShapingDiffs] = useState<ShapingShadowDiff[]>([]);
   const [policyDiffs, setPolicyDiffs] = useState<PolicyDiff[]>([]);
   const [replayRuns, setReplayRuns] = useState<ReplayRun[]>([]);
   const [costSimulations, setCostSimulations] = useState<CostSimulation[]>([]);
@@ -328,6 +374,8 @@ export default function Dashboard() {
       routingDestinationResponse,
       routingDiffResponse,
       routingDeadLetterResponse,
+      shapingStatsResponse,
+      shapingDiffResponse,
       diffResponse,
       replayResponse,
       costResponse,
@@ -342,6 +390,8 @@ export default function Dashboard() {
       fetch("/telemetry-api/api/v1/routing/destinations?limit=30", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/routing/shadow-diffs?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/routing/dead-letters?limit=20", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/shaping/stats?window=1h&limit=100", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/shaping/shadow-diffs?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/policy/shadow-diffs?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/replays?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/cost-simulations?limit=20", { cache: "no-store" }),
@@ -380,6 +430,15 @@ export default function Dashboard() {
       const payload = await routingDeadLetterResponse.json();
       setRoutingDeadLetters(payload.dead_letters ?? []);
     }
+    if (shapingStatsResponse.ok) {
+      const payload = await shapingStatsResponse.json();
+      setShapingSummary(payload.summary ?? { observed: 0, kept: 0, sampled_out: 0, protected: 0, transformed: 0, payload_dropped: 0, original_bytes: 0, shaped_bytes: 0 });
+      setShapingStats(payload.stats ?? []);
+    }
+    if (shapingDiffResponse.ok) {
+      const payload = await shapingDiffResponse.json();
+      setShapingDiffs(payload.diffs ?? []);
+    }
     if (diffResponse.ok) {
       const payload = await diffResponse.json();
       setPolicyDiffs(payload.diffs ?? []);
@@ -407,6 +466,13 @@ export default function Dashboard() {
     const timer = window.setInterval(() => refresh().catch(() => undefined), 5000);
     return () => window.clearInterval(timer);
   }, [refresh]);
+
+  const shapingRetention = shapingSummary.observed > 0
+    ? (shapingSummary.kept / shapingSummary.observed) * 100
+    : 100;
+  const shapingByteRetention = shapingSummary.original_bytes > 0
+    ? (shapingSummary.shaped_bytes / shapingSummary.original_bytes) * 100
+    : 100;
 
   useEffect(() => {
     const source = new EventSource("/telemetry-api/api/v1/live");
@@ -799,6 +865,55 @@ export default function Dashboard() {
             {cardinalityBudgets.length === 0 && (
               <div className="empty cardinality-empty">No budget observations yet. Budgets populate as matching telemetry arrives.</div>
             )}
+          </div>
+        </article>
+      </section>
+
+      <section className="shaping-grid">
+        <article className="panel shaping-summary-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">ADAPTIVE SAMPLING</div>
+              <h2>Telemetry shaping · last hour</h2>
+            </div>
+            <span className="count-badge">{shapingSummary.observed}</span>
+          </div>
+          <div className="shaping-kpis">
+            <div><span>Event retention</span><strong>{shapingRetention.toFixed(1)}%</strong></div>
+            <div><span>Byte retention</span><strong>{shapingByteRetention.toFixed(1)}%</strong></div>
+            <div><span>Protected</span><strong>{shapingSummary.protected}</strong></div>
+            <div><span>Transformed</span><strong>{shapingSummary.transformed}</strong></div>
+          </div>
+          <div className="shaping-list">
+            {shapingStats.slice(0, 10).map((row) => (
+              <div className="shaping-row" key={`${row.bucket}-${row.source}-${row.event_type}-${row.rule_name}`}>
+                <div><strong>{row.rule_name}</strong><span>{row.source} · {row.event_type}</span></div>
+                <span>{row.kept}/{row.observed} kept</span>
+                <span>{row.sampled_out} sampled out</span>
+                <span>{row.transformed} shaped</span>
+              </div>
+            ))}
+            {shapingStats.length === 0 && <div className="empty shaping-empty">No shaping decisions recorded yet.</div>}
+          </div>
+        </article>
+
+        <article className="panel shaping-shadow-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">SHADOW SHAPING</div>
+              <h2>Candidate visibility changes</h2>
+            </div>
+            <span className="count-badge">{shapingDiffs.length}</span>
+          </div>
+          <div className="shaping-diff-list">
+            {shapingDiffs.slice(0, 12).map((diff) => (
+              <div className="shaping-diff-row" key={diff.event_id}>
+                <div><strong>{diff.active_keep === diff.shadow_keep ? "shape change" : "sampling change"}</strong><span>{clock(diff.observed_at)}</span></div>
+                <span>{(diff.active_rate * 100).toFixed(0)}% → {(diff.shadow_rate * 100).toFixed(0)}%</span>
+                <span className={diff.active_keep && !diff.shadow_keep ? "sampling-loss" : "sampling-safe"}>{diff.active_keep ? "keep" : "drop"} → {diff.shadow_keep ? "keep" : "drop"}</span>
+              </div>
+            ))}
+            {shapingDiffs.length === 0 && <div className="empty shaping-empty">Active and shadow shaping have not diverged yet.</div>}
           </div>
         </article>
       </section>

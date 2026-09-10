@@ -223,6 +223,50 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Adaptive sampling outcomes",
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "telemetryforge-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(telemetryforge_shaping_decisions_total{service=\"worker\"}[5m])) by (rule, outcome)",
+          "legendFormat": "{{rule}} \u00b7 {{outcome}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Adaptive shaping queue pressure",
+      "gridPos": {
+        "x": 12,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "telemetryforge-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "telemetryforge_shaping_queue_pressure_ratio{service=\"worker\"}",
+          "legendFormat": "queue pressure",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }

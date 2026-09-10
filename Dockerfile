@@ -16,6 +16,7 @@ COPY --from=build /out/telemetryforge-router /usr/local/bin/telemetryforge-route
 COPY --from=build /out/telemetryctl /usr/local/bin/telemetryctl
 COPY policies /etc/telemetryforge/policies
 COPY routing /etc/telemetryforge/routing
+COPY shaping /etc/telemetryforge/shaping
 USER telemetryforge
 EXPOSE 8080 8081 8082
 ENTRYPOINT ["/usr/local/bin/telemetryforge-gateway"]

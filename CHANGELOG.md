@@ -4,6 +4,20 @@
 
 _No changes yet._
 
+## [1.4.0-dev] - 2026-09-09
+
+### Adaptive Sampling & Shaping
+- Added deterministic active sampling with bounded queue-pressure adaptation and per-rule floors.
+- Added default protection for errors, severe/high-latency signals, audit/deployment/security events, and incident-tagged telemetry.
+- Added tag drop/rename and safe oversized-payload dropping.
+- Added successful sampled-out early-stop semantics so policy drops do not become retries/DLQ failures.
+- Added fail-open behavior when shaping audit persistence is unavailable.
+- Added non-destructive shadow shaping and stored active/candidate differences.
+- Added minute aggregate shaping statistics and Prometheus sampling/pressure metrics.
+- Added tenant-scoped shaping APIs, dashboard panels, CLI validation/frozen-incident preview, and `make demo-shaping`.
+- Added migration 011 and ADRs 0033-0035.
+
+
 ## [1.3.0-dev] - 2026-09-09
 
 ### Telemetry Router

@@ -170,3 +170,28 @@ fallback_enqueued
 Destination names are bounded operator configuration values, not telemetry
 values. They are therefore acceptable Prometheus labels under the project's
 cardinality rules.
+
+
+## Adaptive sampling / shaping
+
+### `telemetryforge_shaping_decisions_total`
+
+Labels:
+
+```text
+service
+rule
+outcome
+```
+
+`rule` comes only from the validated shaping document; configuration caps the
+number and length of rule names. `outcome` is bounded to `kept`, `protected`,
+or `sampled_out`.
+
+### `telemetryforge_shaping_queue_pressure_ratio`
+
+Current process-local bounded worker queue utilization used by pressure-aware
+sampling. The value is between 0 and 1.
+
+These metrics describe policy decisions. They are separate from downstream
+persistence/routing success metrics.

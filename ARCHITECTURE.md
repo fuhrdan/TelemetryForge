@@ -1,6 +1,6 @@
 # TelemetryForge Architecture
 
-TelemetryForge v1.3.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v1.4.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
 
@@ -311,3 +311,26 @@ outbox rows.
 Delivery to external backends is at-least-once. Kafka destination keys retain
 `tenant_id|source`; HTTP destinations receive the event ID as an idempotency
 key.
+
+## Adaptive sampling / shaping
+
+The Flight Recorder, Schema Intelligence, and Cardinality Firewall observe the
+full pre-sampling stream before v1.4 can reduce or transform it. The active
+shaper then evaluates deterministic
+sampling against current bounded worker queue pressure.
+
+Protected error/severe/high-latency/audit/deployment/security/incident-tagged
+events cannot be sampled out. Healthy high-volume rules can reduce their rate
+at configured high/critical pressure watermarks while preserving a minimum rate.
+
+A sampled-out event is a **successful terminal pipeline decision**. The Kafka
+record is acknowledged normally and does not enter retry/DLQ handling.
+
+Before active shaping is applied, a compact tenant/event/config decision is
+durable. The first decision wins across whole-chain retries; minute aggregates
+increment only on the first insert. If that evidence write fails, TelemetryForge
+fails open and keeps the original unshaped event.
+
+Candidate Shadow Shaping evaluates the same original event and pressure but
+never mutates the active result. Frozen-incident preview uses the same
+deterministic engine with an explicit simulated pressure value.

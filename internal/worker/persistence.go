@@ -73,6 +73,11 @@ func (chain *Chain) Process(ctx context.Context, event domain.Event) (domain.Eve
 
 		processed, err := processor.Process(stageCtx, event)
 		if err != nil {
+			if isStopProcessing(err) {
+				span.SetAttributes(attribute.String("telemetryforge.pipeline_control", "sampled_out"))
+				span.End()
+				return processed, nil
+			}
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "processor failed")
 			span.End()

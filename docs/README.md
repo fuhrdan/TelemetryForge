@@ -132,3 +132,10 @@ or long-term maintainability.
 - [v1.0 upgrade runbook](operations/upgrade-v1.md)
 - [v1.0 rollback runbook](operations/rollback-v1.md)
 - [v1.0 portfolio demo](demo/v1-portfolio-demo.md)
+
+## Adaptive sampling and shaping
+
+- [Adaptive Sampling](shaping/adaptive-sampling.md)
+- [Shaping Policy](shaping/shaping-policy.md)
+- [Visibility Preview](shaping/visibility-preview.md)
+- [v1.4.0 delivered scope](roadmap/v1.4.0.md)

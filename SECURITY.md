@@ -201,3 +201,12 @@ Credential-shaped static headers are rejected. Use `header_env` or
 `bearer_token_env` and supply their values through the deployment secret
 mechanism. Routing dead letters retain full event envelopes and therefore require
 the same access controls as frozen incident evidence.
+
+## Adaptive sampling / shaping
+
+The Flight Recorder captures the event before v1.4 shaping. Dropped tags or
+payloads can therefore still exist in full-fidelity incident storage and backups.
+Shaping is not a substitute for ingestion-time legal/PII redaction.
+
+If shaping audit persistence fails, the active worker keeps the original event
+instead of performing unaudited loss.
