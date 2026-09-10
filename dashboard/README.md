@@ -1,7 +1,7 @@
 # TelemetryForge Dashboard
 
-**Package version:** `1.7.0`
-**Release:** `v1.7.0`
+**Package version:** `1.8.0`
+**Release:** `v1.8.0`
 
 The dashboard is intentionally small and readable.
 
@@ -158,3 +158,12 @@ turned into an ordinary browser download endpoint.
 - Git SHA, build, environment, and version context
 
 Change analysis is observational evidence; the dashboard does not label temporal proximity as root cause.
+
+## v1.8.0 additions
+
+- Connector Platform runtime panel
+- connector kind/protocol/signal capabilities
+- backend readiness independent from router readiness
+- router-instance heartbeat visibility
+
+The dashboard receives no connector credentials.

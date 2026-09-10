@@ -272,3 +272,7 @@ telemetryctl incident import \
 
 Import never runs archived events through the live ingestion/routing path and
 never activates configuration snapshots.
+
+## Connector Platform commands
+
+Use `connector catalog`, `connector validate`, `connector list`, and `connector test`. `connector test` performs no delivery unless `--send-sample` is explicit.

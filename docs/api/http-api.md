@@ -419,3 +419,7 @@ Returns the latest generated analysis snapshot.
 Returns changes near the frozen incident window.
 
 The change-analysis response explicitly treats timing relationships as observational evidence rather than root-cause proof.
+
+## Connector Platform and OTLP/HTTP JSON
+
+`POST /v1/logs` and `POST /v1/metrics` accept OTLP/HTTP JSON under `ingest`. `GET /api/v1/connectors/catalog` returns built-in capabilities; `GET /api/v1/connectors/runtime` returns recent secret-free router connector heartbeats.

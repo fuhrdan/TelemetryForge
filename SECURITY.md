@@ -243,3 +243,7 @@ incident-exports/
 
 Standalone HTML reports are also sensitive if they summarize real production
 evidence, even though they contain no external scripts/assets.
+
+## Connector credentials
+
+Connector configuration stores secret references (`header_env`, `bearer_token_env`, `api_key_env`) rather than raw secrets. Credential-bearing static headers and URL credentials are rejected. Prometheus labels require explicit allowlisting. OTLP protobuf ingestion is explicitly unsupported in v1.8 rather than partially decoded.

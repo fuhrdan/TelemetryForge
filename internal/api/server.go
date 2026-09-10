@@ -90,6 +90,9 @@ func (server *Server) routes() {
 	server.mux.HandleFunc("POST /api/v1/events", server.handleEvent)
 	server.mux.HandleFunc("POST /api/v1/metrics", server.handleMetric)
 	server.mux.HandleFunc("POST /api/v1/changes", server.handleChange)
+	server.mux.HandleFunc("POST /v1/logs", server.handleOTLPLogs)
+	server.mux.HandleFunc("POST /v1/metrics", server.handleOTLPMetrics)
+	server.mux.HandleFunc("GET /api/v1/connectors/catalog", server.handleConnectorCatalog)
 	if server.reader != nil {
 		server.mux.HandleFunc("GET /api/v1/events", server.handleQueryEvents)
 		server.mux.HandleFunc("GET /api/v1/metrics", server.handleQueryMetrics)
@@ -126,6 +129,9 @@ func (server *Server) routes() {
 		if _, ok := server.reader.(storage.ShapingReader); ok {
 			server.mux.HandleFunc("GET /api/v1/shaping/stats", server.handleShapingStats)
 			server.mux.HandleFunc("GET /api/v1/shaping/shadow-diffs", server.handleShapingShadowDiffs)
+		}
+		if _, ok := server.reader.(storage.ConnectorReader); ok {
+			server.mux.HandleFunc("GET /api/v1/connectors/runtime", server.handleConnectorRuntime)
 		}
 		if _, ok := server.reader.(storage.RoutingReader); ok {
 			server.mux.HandleFunc("GET /api/v1/routing/deliveries", server.handleRoutingDeliveries)

@@ -80,6 +80,25 @@ type CardinalityBudgetStatus = {
 };
 
 
+type ConnectorCapabilities = {
+  kind: string;
+  protocol: string;
+  signals: string[];
+  health_check: boolean;
+  retry_classification: boolean;
+  notes?: string;
+};
+
+type ConnectorRuntimeState = {
+  instance_id: string;
+  destination: string;
+  kind: string;
+  capabilities: ConnectorCapabilities;
+  ready: boolean;
+  last_error?: string;
+  checked_at: string;
+};
+
 type RoutingDestinationHealth = {
   destination: string;
   state: "unknown" | "healthy" | "degraded" | "unhealthy";
@@ -419,6 +438,7 @@ export default function Dashboard() {
   const [findings, setFindings] = useState<CardinalityFinding[]>([]);
   const [cardinalityStates, setCardinalityStates] = useState<DistributedCardinalityState[]>([]);
   const [cardinalityBudgets, setCardinalityBudgets] = useState<CardinalityBudgetStatus[]>([]);
+  const [connectorRuntime, setConnectorRuntime] = useState<ConnectorRuntimeState[]>([]);
   const [routingDestinations, setRoutingDestinations] = useState<RoutingDestinationHealth[]>([]);
   const [routingDiffs, setRoutingDiffs] = useState<RoutingShadowDiff[]>([]);
   const [routingDeadLetters, setRoutingDeadLetters] = useState<RoutingDeadLetter[]>([]);
@@ -444,6 +464,7 @@ export default function Dashboard() {
       findingResponse,
       cardinalityStateResponse,
       cardinalityBudgetResponse,
+      connectorRuntimeResponse,
       routingDestinationResponse,
       routingDiffResponse,
       routingDeadLetterResponse,
@@ -462,6 +483,7 @@ export default function Dashboard() {
       fetch("/telemetry-api/api/v1/cardinality/findings?limit=30", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/cardinality/state?mode=active&limit=30", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/cardinality/budgets?limit=30", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/connectors/runtime?limit=100", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/routing/destinations?limit=30", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/routing/shadow-diffs?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/routing/dead-letters?limit=20", { cache: "no-store" }),
@@ -494,6 +516,10 @@ export default function Dashboard() {
     if (cardinalityBudgetResponse.ok) {
       const payload = await cardinalityBudgetResponse.json();
       setCardinalityBudgets(payload.budgets ?? []);
+    }
+    if (connectorRuntimeResponse.ok) {
+      const payload = await connectorRuntimeResponse.json();
+      setConnectorRuntime(payload.connectors ?? []);
     }
     if (routingDestinationResponse.ok) {
       const payload = await routingDestinationResponse.json();
@@ -1077,6 +1103,27 @@ export default function Dashboard() {
             ))}
             {shapingDiffs.length === 0 && <div className="empty shaping-empty">Active and shadow shaping have not diverged yet.</div>}
           </div>
+        </article>
+      </section>
+
+      <section className="connector-section">
+        <article className="panel connector-panel">
+          <div className="panel-heading">
+            <div><div className="eyebrow">CONNECTOR PLATFORM</div><h2>Live backend adapters & capabilities</h2></div>
+            <span className="count-badge">{connectorRuntime.length}</span>
+          </div>
+          <div className="connector-list">
+            {connectorRuntime.map((connector) => (
+              <div className="connector-row" key={`${connector.instance_id}-${connector.destination}`}>
+                <div><strong>{connector.destination}</strong><span>{connector.kind} · {connector.capabilities.protocol}</span></div>
+                <div className="connector-signals">{(connector.capabilities.signals ?? []).map((signal) => (<span key={signal}>{signal}</span>))}</div>
+                <div><span>{connector.instance_id}</span><small>{clock(connector.checked_at)}</small></div>
+                <span className={`connector-ready ${connector.ready ? "ready" : "down"}`}>{connector.ready ? "ready" : "unhealthy"}</span>
+              </div>
+            ))}
+            {connectorRuntime.length === 0 && (<div className="empty routing-empty">No live connector heartbeat yet. Start the router to publish connector capabilities.</div>)}
+          </div>
+          <div className="connector-footnote">Connector readiness is reported independently from router process readiness so one broken backend cannot force healthy delivery lanes to restart.</div>
         </article>
       </section>
 

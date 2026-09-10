@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+
+	"github.com/fuhrdan/TelemetryForge/internal/connectors"
 	"sync"
 	"time"
 )
@@ -88,6 +90,39 @@ func (dispatcher *Dispatcher) Run(ctx context.Context) {
 	wait.Wait()
 }
 
+// ConnectorRuntimeStates probes configured destinations independently from process readiness.
+func (dispatcher *Dispatcher) ConnectorRuntimeStates(ctx context.Context, instanceID string) []connectors.RuntimeState {
+	destinations := dispatcher.config.EnabledDestinations()
+	result := make([]connectors.RuntimeState, len(destinations))
+	var wait sync.WaitGroup
+	for index, destination := range destinations {
+		sender, ok := dispatcher.senders[destination.Name]
+		if !ok {
+			continue
+		}
+		wait.Add(1)
+		go func(index int, destination Destination, sender Sender) {
+			defer wait.Done()
+			state := connectors.RuntimeState{InstanceID: instanceID, Destination: destination.Name, Kind: sender.Kind(), Capabilities: sender.Capabilities(), Ready: true, CheckedAt: time.Now().UTC()}
+			probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+			if err := sender.Ready(probeCtx); err != nil {
+				state.Ready = false
+				state.LastError = err.Error()
+			}
+			result[index] = state
+		}(index, destination, sender)
+	}
+	wait.Wait()
+	compacted := result[:0]
+	for _, state := range result {
+		if state.Destination != "" {
+			compacted = append(compacted, state)
+		}
+	}
+	return compacted
+}
+
 // Ready intentionally checks initialization rather than every backend. Making
 // Kubernetes restart the entire router because one destination is down would
 // defeat destination failure isolation.
@@ -148,6 +183,11 @@ func (dispatcher *Dispatcher) deliver(ctx context.Context, delivery Delivery) {
 	}
 
 	_ = dispatcher.store.RecordRoutingDestinationHealth(ctx, delivery.TenantID, delivery.Destination, false, err.Error())
+	if !connectors.Retryable(err) {
+		dispatcher.observe(delivery.Destination, "permanent_failure")
+		dispatcher.terminalFailure(ctx, delivery, err)
+		return
+	}
 	if delivery.Attempts >= delivery.MaxAttempts {
 		dispatcher.terminalFailure(ctx, delivery, err)
 		return

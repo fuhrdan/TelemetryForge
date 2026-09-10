@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fuhrdan/TelemetryForge/internal/connectors"
 	"github.com/fuhrdan/TelemetryForge/internal/costsim"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/evidence"
@@ -155,6 +156,28 @@ func main() {
 			}
 		case "prune":
 			if err := shapingPrune(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		default:
+			usage()
+			os.Exit(2)
+		}
+	case "connector":
+		switch os.Args[2] {
+		case "catalog":
+			if err := connectorCatalog(os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "validate":
+			if err := connectorValidate(os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "list":
+			if err := connectorList(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "test":
+			if err := connectorTest(ctx, os.Args[3:]); err != nil {
 				exitErr(err)
 			}
 		default:
@@ -1240,6 +1263,116 @@ func shapingPrune(ctx context.Context, args []string) error {
 	return nil
 }
 
+func connectorCatalog(args []string) error {
+	set := flag.NewFlagSet("connector catalog", flag.ContinueOnError)
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(map[string]any{"connectors": connectors.Catalog()}, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func connectorValidate(args []string) error {
+	set := flag.NewFlagSet("connector validate", flag.ContinueOnError)
+	file := set.String("file", "routing/active.json", "routing JSON file containing connector destinations")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	config, err := router.Load(*file)
+	if err != nil {
+		return err
+	}
+	type item struct {
+		Destination  string                  `json:"destination"`
+		Kind         string                  `json:"kind"`
+		Capabilities connectors.Capabilities `json:"capabilities"`
+	}
+	items := make([]item, 0, len(config.EnabledDestinations()))
+	for _, destination := range config.EnabledDestinations() {
+		spec, err := router.ConnectorSpec(destination)
+		if err != nil {
+			return err
+		}
+		capability, _ := connectors.Capability(spec.Kind)
+		items = append(items, item{Destination: destination.Name, Kind: spec.Kind, Capabilities: capability})
+	}
+	payload, _ := json.MarshalIndent(map[string]any{"routing_config": config.Name, "version": config.Version, "connectors": items}, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func connectorList(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("connector list", flag.ContinueOnError)
+	limit := set.Int("limit", 100, "maximum live connector runtime rows")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	rows, err := store.ListConnectorRuntimeStates(ctx, *limit)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(map[string]any{"count": len(rows), "connectors": rows}, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func connectorTest(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("connector test", flag.ContinueOnError)
+	file := set.String("file", "routing/active.json", "routing JSON file")
+	destinationName := set.String("destination", "", "destination name to initialize/probe")
+	sendSample := set.Bool("send-sample", false, "explicitly send one synthetic sample event")
+	sampleMetric := set.Bool("metric", false, "with --send-sample, send a numeric metric sample")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*destinationName) == "" {
+		return errors.New("--destination is required")
+	}
+	config, err := router.Load(*file)
+	if err != nil {
+		return err
+	}
+	destination, ok := config.DestinationByName(strings.TrimSpace(*destinationName))
+	if !ok || !destination.Enabled {
+		return fmt.Errorf("destination %q is missing or disabled", *destinationName)
+	}
+	sender, err := router.NewSender(destination, router.SenderFactoryConfig{KafkaBrokers: splitCSV(env("TELEMETRYFORGE_KAFKA_BROKERS", "localhost:9092")), KafkaSecurity: stream.KafkaSecurityFromEnv(), Logger: logging.New()})
+	if err != nil {
+		return err
+	}
+	defer sender.Close()
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := sender.Ready(probeCtx); err != nil {
+		return fmt.Errorf("connector readiness probe failed: %w", err)
+	}
+	result := map[string]any{"destination": *destinationName, "kind": sender.Kind(), "capabilities": sender.Capabilities(), "ready": true, "sample_sent": false}
+	if *sendSample {
+		event := domain.Event{ID: "connector-test-" + fmt.Sprint(time.Now().UTC().UnixNano()), TenantID: env("TELEMETRYFORGE_TENANT_ID", "default"), Source: "telemetryctl", Type: "connector.test", Timestamp: time.Now().UTC(), SchemaVersion: "1.0", Tags: map[string]string{"telemetryforge.test": "true"}}
+		if *sampleMetric {
+			value := 1.0
+			event.Type = "telemetryforge.connector.test"
+			event.Value = &value
+			event.Unit = "1"
+		}
+		if err := sender.Send(ctx, event); err != nil {
+			return fmt.Errorf("connector sample delivery failed: %w", err)
+		}
+		result["sample_sent"] = true
+		result["event_id"] = event.ID
+	}
+	payload, _ := json.MarshalIndent(result, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
 func routingValidate(args []string) error {
 	set := flag.NewFlagSet("routing validate", flag.ContinueOnError)
 	file := set.String("file", "routing/active.json", "routing JSON file")
@@ -1403,6 +1536,10 @@ func usage() {
   telemetryctl schema inspect --source checkout-api --type request.duration [--tenant default]
   telemetryctl schema diff --source checkout-api --type request.duration --from 1.0 --to 2.0 [--tenant default]
   telemetryctl schema prune [--older-than 840h] [--tenant default]
+  telemetryctl connector catalog
+  telemetryctl connector validate [--file routing/active.json]
+  telemetryctl connector list [--limit 100]
+  telemetryctl connector test --destination primary [--file routing/active.json] [--send-sample] [--metric]
   telemetryctl routing validate [--file routing/active.json]
   telemetryctl routing destinations [--tenant default]
   telemetryctl routing deliveries [--status retry] [--tenant default]

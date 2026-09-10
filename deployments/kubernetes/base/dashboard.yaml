@@ -21,7 +21,7 @@ spec:
       terminationGracePeriodSeconds: 20
       containers:
         - name: dashboard
-          image: ghcr.io/fuhrdan/telemetryforge-dashboard:v1.7.0
+          image: ghcr.io/fuhrdan/telemetryforge-dashboard:v1.8.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

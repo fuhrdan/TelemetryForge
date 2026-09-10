@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/changeintel"
+	"github.com/fuhrdan/TelemetryForge/internal/connectors"
 	"github.com/fuhrdan/TelemetryForge/internal/costsim"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/evidence"
@@ -121,4 +122,9 @@ type ChangeIntelligenceReader interface {
 	ChangesBetween(ctx context.Context, from, to time.Time, limit int) ([]changeintel.Marker, error)
 	AnalyzeChange(ctx context.Context, changeID string, before, after time.Duration) (changeintel.Analysis, error)
 	ChangeAnalysis(ctx context.Context, changeID string) (changeintel.Analysis, bool, error)
+}
+
+// ConnectorReader exposes secret-free live Connector Platform runtime state.
+type ConnectorReader interface {
+	ListConnectorRuntimeStates(ctx context.Context, limit int) ([]connectors.RuntimeState, error)
 }

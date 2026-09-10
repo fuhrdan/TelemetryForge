@@ -1,0 +1,76 @@
+{
+  "name": "connector-catalog-example",
+  "version": "1.8.0",
+  "destinations": [
+    {
+      "name": "local-kafka",
+      "type": "connector",
+      "enabled": true,
+      "connector": {
+        "kind": "kafka",
+        "topic": "telemetry.routed.example"
+      },
+      "concurrency": 1
+    },
+    {
+      "name": "generic-webhook",
+      "type": "connector",
+      "enabled": false,
+      "connector": {
+        "kind": "http_json",
+        "endpoint": "https://example.invalid/telemetry",
+        "health_endpoint": "https://example.invalid/health",
+        "header_env": {
+          "X-API-Key": "TF_WEBHOOK_API_KEY"
+        }
+      }
+    },
+    {
+      "name": "otlp",
+      "type": "connector",
+      "enabled": false,
+      "connector": {
+        "kind": "otlp_http",
+        "endpoint": "https://otel-collector.example.invalid:4318",
+        "bearer_token_env": "TF_OTLP_TOKEN"
+      }
+    },
+    {
+      "name": "prometheus-remote-write",
+      "type": "connector",
+      "enabled": false,
+      "connector": {
+        "kind": "prometheus_remote_write",
+        "endpoint": "https://prometheus.example.invalid/api/v1/write",
+        "bearer_token_env": "TF_PROM_RW_TOKEN",
+        "prometheus_label_tags": [
+          "region",
+          "environment"
+        ]
+      }
+    },
+    {
+      "name": "splunk-hec",
+      "type": "connector",
+      "enabled": false,
+      "connector": {
+        "kind": "splunk_hec",
+        "endpoint": "https://splunk.example.invalid:8088/services/collector/event",
+        "health_endpoint": "https://splunk.example.invalid:8088/services/collector/health",
+        "api_key_env": "TF_SPLUNK_HEC_TOKEN"
+      }
+    },
+    {
+      "name": "datadog-logs",
+      "type": "connector",
+      "enabled": false,
+      "connector": {
+        "kind": "datadog_logs",
+        "endpoint": "https://http-intake.logs.datadoghq.com/api/v2/logs",
+        "api_key_env": "TF_DATADOG_API_KEY"
+      }
+    }
+  ],
+  "fallback_destination": "local-kafka",
+  "rules": []
+}

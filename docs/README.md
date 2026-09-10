@@ -153,3 +153,13 @@ or long-term maintainability.
 - [Visibility Preview](shaping/visibility-preview.md)
 - [v1.4.0 delivered scope](roadmap/v1.4.0.md)
 - [v1.5.0 delivered scope](roadmap/v1.5.0.md)
+
+## Connector Platform
+
+- [Connector Platform](connectors/connector-platform.md)
+- [Connector SDK](connectors/connector-sdk.md)
+- [OTLP/HTTP JSON](connectors/otlp.md)
+- [Prometheus Remote Write](connectors/prometheus-remote-write.md)
+- [Vendor adapters](connectors/vendor-adapters.md)
+- [Connector operations](operations/connectors.md)
+- [v1.8.0 delivered scope](roadmap/v1.8.0.md)

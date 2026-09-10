@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -26,7 +27,7 @@ func main() {
 
 	metrics := observability.NewMetrics("router")
 	traceShutdown, err := observability.InitTracing(
-		ctx, "telemetryforge-router", "1.7.0", os.Getenv("TELEMETRYFORGE_OTLP_TRACES_ENDPOINT"),
+		ctx, "telemetryforge-router", "1.8.0", os.Getenv("TELEMETRYFORGE_OTLP_TRACES_ENDPOINT"),
 	)
 	if err != nil {
 		logger.Error("OpenTelemetry initialization failed", "error", err)
@@ -59,6 +60,7 @@ func main() {
 		router.SenderFactoryConfig{
 			KafkaBrokers:  splitCSV(env("TELEMETRYFORGE_KAFKA_BROKERS", "localhost:9092")),
 			KafkaSecurity: stream.KafkaSecurityFromEnv(),
+			Logger:        logger,
 		},
 		logger,
 		metrics,
@@ -96,9 +98,42 @@ func main() {
 		_ = healthServer.Shutdown(shutdownCtx)
 	}()
 
+	instanceID := env("TELEMETRYFORGE_ROUTER_INSTANCE_ID", defaultInstanceID())
+	heartbeat := func() {
+		states := dispatcher.ConnectorRuntimeStates(ctx, instanceID)
+		for _, state := range states {
+			metrics.ConnectorReady(state.Destination, state.Kind, state.Ready)
+			if err := store.RecordConnectorRuntimeState(ctx, state); err != nil {
+				logger.Warn("record connector runtime heartbeat", "destination", state.Destination, "error", err)
+			}
+		}
+	}
+	heartbeat()
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		pruneTicker := time.NewTicker(time.Hour)
+		defer pruneTicker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				heartbeat()
+			case <-pruneTicker.C:
+				if pruned, err := store.PruneConnectorRuntimeStates(ctx, time.Now().UTC().Add(-24*time.Hour)); err != nil {
+					logger.Warn("prune stale connector runtime state", "error", err)
+				} else if pruned > 0 {
+					logger.Info("pruned stale connector runtime state", "rows", pruned)
+				}
+			}
+		}
+	}()
+
 	logger.Info("TelemetryForge router started",
 		"config", routingConfig.Name+"@"+routingConfig.Version,
 		"destinations", len(routingConfig.EnabledDestinations()),
+		"instance_id", instanceID,
 		"admin_address", adminAddress)
 
 	dispatcher.Run(ctx)
@@ -121,4 +156,11 @@ func splitCSV(value string) []string {
 		}
 	}
 	return result
+}
+
+func defaultInstanceID() string {
+	if hostname, err := os.Hostname(); err == nil && strings.TrimSpace(hostname) != "" {
+		return hostname
+	}
+	return fmt.Sprintf("router-%d", time.Now().UTC().UnixNano())
 }

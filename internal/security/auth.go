@@ -264,7 +264,7 @@ func requiredScope(request *http.Request) string {
 		return ScopeAdmin
 	}
 	if request.Method == http.MethodPost &&
-		(request.URL.Path == "/api/v1/events" || request.URL.Path == "/api/v1/metrics" || request.URL.Path == "/api/v1/changes") {
+		(request.URL.Path == "/api/v1/events" || request.URL.Path == "/api/v1/metrics" || request.URL.Path == "/api/v1/changes" || request.URL.Path == "/v1/logs" || request.URL.Path == "/v1/metrics") {
 		return ScopeIngest
 	}
 	if strings.HasPrefix(request.URL.Path, "/api/") {

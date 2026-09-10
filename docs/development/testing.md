@@ -263,3 +263,7 @@ Checks include:
 - `.tfincident` change marker serialization/count verification;
 - TimescaleDB before/after regression plus rollback integration scenario;
 - dashboard TypeScript compilation.
+
+## v1.8.0 Connector Platform coverage
+
+Focused tests cover connector catalog/protocols, vendor credential health probes, permanent/transient failure classification, OTLP path selection, Prometheus label allowlisting, and legacy routing translation. CI remains responsible for the full dependency-backed suite.

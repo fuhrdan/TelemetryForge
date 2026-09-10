@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fuhrdan/TelemetryForge/internal/connectors"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 )
 
@@ -130,5 +131,20 @@ func TestConfigAllowsSecretBackedHTTPHeader(t *testing.T) {
 	}}}
 	if err := config.Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestConnectorDestinationValidatesAndLegacyDestinationsRemainCompatible(t *testing.T) {
+	config := testConfig()
+	config.Destinations = append(config.Destinations, Destination{Name: "otlp", Type: DestinationConnector, Enabled: true, Connector: &connectors.Spec{Kind: connectors.KindOTLPHTTP, Endpoint: "https://collector.example.invalid"}})
+	if err := config.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := ConnectorSpec(config.Destinations[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.Kind != connectors.KindKafka {
+		t.Fatalf("legacy Kafka kind=%q", legacy.Kind)
 	}
 }

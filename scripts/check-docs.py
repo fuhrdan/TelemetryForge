@@ -71,6 +71,13 @@ REQUIRED = [
     ROOT / "docs" / "change-intelligence" / "change-api.md",
     ROOT / "docs" / "operations" / "change-analysis.md",
     ROOT / "docs" / "roadmap" / "v1.7.0.md",
+    ROOT / "docs" / "connectors" / "connector-platform.md",
+    ROOT / "docs" / "connectors" / "connector-sdk.md",
+    ROOT / "docs" / "connectors" / "otlp.md",
+    ROOT / "docs" / "connectors" / "prometheus-remote-write.md",
+    ROOT / "docs" / "connectors" / "vendor-adapters.md",
+    ROOT / "docs" / "operations" / "connectors.md",
+    ROOT / "docs" / "roadmap" / "v1.8.0.md",
 ]
 
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

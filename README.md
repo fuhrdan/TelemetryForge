@@ -10,7 +10,7 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current development release:** `v1.7.0` — Change Intelligence, structured deployment/rollback evidence, before/after regression analysis, observed blast radius, and Evidence Graph change correlation.
+> **Current development release:** `v1.8.0` — Connector Platform, OTLP/HTTP JSON ingest/export, Prometheus Remote Write, Kafka/HTTP/vendor adapters, connector runtime health, and protocol-isolated delivery.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -71,6 +71,14 @@ Read:
 
 - [Distributed Cardinality Intelligence](docs/cardinality/distributed-cardinality.md)
 - [Cardinality Budgets](docs/cardinality/budgets.md)
+
+### Connector Platform
+
+v1.8 separates backend protocol adapters from durable routing control. Built-in connector kinds are `kafka`, `http_json`, `otlp_http`, `prometheus_remote_write`, `splunk_hec`, and `datadog_logs`. Legacy Kafka/HTTP routing documents remain valid. The router still owns durable retry/DLQ/fallback; connectors own protocol translation, readiness, capabilities, and retry/permanent error classification.
+
+TelemetryForge also accepts OTLP/HTTP JSON at `POST /v1/logs` and `POST /v1/metrics`.
+
+Read [Connector Platform](docs/connectors/connector-platform.md).
 
 ### Telemetry Router
 

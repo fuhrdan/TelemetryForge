@@ -38,6 +38,7 @@ type Metrics struct {
 	consumerLagTotal  prometheus.Gauge
 	deadLetters       *prometheus.CounterVec
 	routingDeliveries *prometheus.CounterVec
+	connectorReady    *prometheus.GaugeVec
 	shapingDecisions  *prometheus.CounterVec
 	shapingPressure   prometheus.Gauge
 }
@@ -88,6 +89,9 @@ func NewMetrics(service string) *Metrics {
 	metrics.routingDeliveries = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace, Name: "routing_deliveries_total", Help: "Telemetry Router delivery outcomes by configured destination.", ConstLabels: labels,
 	}, []string{"destination", "outcome"})
+	metrics.connectorReady = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: namespace, Name: "connector_ready", Help: "Connector backend readiness by reviewed destination and connector kind.", ConstLabels: labels,
+	}, []string{"destination", "kind"})
 	metrics.shapingDecisions = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace, Name: "shaping_decisions_total", Help: "Adaptive sampling decisions by reviewed shaping rule and bounded outcome.", ConstLabels: labels,
 	}, []string{"rule", "outcome"})
@@ -99,7 +103,7 @@ func NewMetrics(service string) *Metrics {
 		metrics.httpRequests, metrics.httpDuration, metrics.accepted,
 		metrics.publishFailure, metrics.workerCompleted, metrics.workerDuration,
 		metrics.workerRetries, metrics.queueDepth, metrics.queueCapacity,
-		metrics.consumerLag, metrics.consumerLagTotal, metrics.deadLetters, metrics.routingDeliveries,
+		metrics.consumerLag, metrics.consumerLagTotal, metrics.deadLetters, metrics.routingDeliveries, metrics.connectorReady,
 		metrics.shapingDecisions, metrics.shapingPressure,
 		collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
@@ -156,6 +160,15 @@ func (metrics *Metrics) DeadLetter(classification string) {
 // Destination names come only from reviewed routing configuration.
 func (metrics *Metrics) RoutingDelivery(destination, outcome string) {
 	metrics.routingDeliveries.WithLabelValues(destination, outcome).Inc()
+}
+
+// ConnectorReady records current backend readiness.
+func (metrics *Metrics) ConnectorReady(destination, kind string, ready bool) {
+	value := 0.0
+	if ready {
+		value = 1.0
+	}
+	metrics.connectorReady.WithLabelValues(destination, kind).Set(value)
 }
 
 // ShapingDecision records adaptive-sampling outcomes. Rule names come only from

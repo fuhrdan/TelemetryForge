@@ -1,6 +1,6 @@
 # TelemetryForge Architecture
 
-TelemetryForge v1.7.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v1.8.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
 
@@ -383,3 +383,7 @@ outbox rows.
 Delivery to external backends is at-least-once. Kafka destination keys retain
 `tenant_id|source`; HTTP destinations receive the event ID as an idempotency
 key.
+
+## Connector Platform
+
+The routing outbox remains the durability boundary. Connectors translate canonical post-policy events to Kafka, HTTP JSON, OTLP/HTTP JSON, Prometheus Remote Write, Splunk HEC, or Datadog Logs. Connector health is reported independently from router process readiness so one backend outage cannot restart or stall healthy delivery lanes.

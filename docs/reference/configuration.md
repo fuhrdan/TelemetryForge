@@ -298,3 +298,7 @@ routing/shadow.json
 Use the corresponding `--*-policy`, `--*-shaping`, or `--*-routing` flags on
 `telemetryctl incident export` to override them, or `disabled` to omit a
 snapshot.
+
+## Connector Platform
+
+New routing documents use `type: connector` with nested `connector.kind`. Secrets use `header_env`, `bearer_token_env`, or `api_key_env`; raw credentials are not stored. `TELEMETRYFORGE_ROUTER_INSTANCE_ID` optionally sets the heartbeat identity. Routing is bounded to 64 destinations and 512 rules; connector headers/Prometheus label allowlists are bounded.

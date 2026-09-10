@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "v1.7.0"]
+    branches: ["main", "v1.8.0"]
   pull_request:
     branches: ["main"]
 
@@ -51,6 +51,10 @@ jobs:
         run: go run ./cmd/telemetryctl routing validate --file routing/active.json
       - name: Validate shadow routing
         run: go run ./cmd/telemetryctl routing validate --file routing/shadow.json
+      - name: Validate Connector Platform routing example
+        run: go run ./cmd/telemetryctl connector validate --file routing/connectors.example.json
+      - name: Connector protocol tests
+        run: go test ./internal/connectors ./internal/router
 
   kafka-integration:
     runs-on: ubuntu-latest

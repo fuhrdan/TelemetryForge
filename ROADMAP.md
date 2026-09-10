@@ -18,8 +18,8 @@
 | v1.4.0 | Delivered development milestone | Adaptive Sampling & Telemetry Shaping |
 | v1.5.0 | Delivered development milestone | Portable `.tfincident` archives, encryption, import provenance, offline investigation |
 | v1.6.0 | Delivered development milestone | Policy lifecycle model, approval/evidence gates, managed configuration state foundation |
-| **v1.7.0** | **Current development release** | **Change Intelligence, before/after analysis, observed blast radius, rollback evidence** |
-| v1.8.0 | Planned | Connector and plugin platform |
+| v1.7.0 | Delivered development milestone | Change Intelligence, before/after analysis, observed blast radius, rollback evidence |
+| **v1.8.0** | **Current development release** | **Connector Platform, OTLP/HTTP JSON, Prometheus Remote Write, Kafka/HTTP/vendor adapters, runtime health** |
 | v1.9.0 | Planned | Scale, HA, chaos and operational proof |
 | v2.0.0 | Planned | Evidence-first intelligent telemetry control plane |
 
@@ -155,3 +155,17 @@ evidence gates, promotion, and rollback.
 ## v1.8.0 next
 
 Build the Connector Platform around stable destination interfaces: OTLP export, Prometheus remote write, generic HTTP/Kafka connectors, connector health/config validation, and backend-specific adapters without coupling vendor code into the core pipeline.
+
+## v1.8.0 delivered
+
+- stable connector contract and capability catalog
+- Kafka, generic HTTP JSON, OTLP/HTTP JSON, Prometheus Remote Write, Splunk HEC, Datadog Logs
+- OTLP/HTTP JSON log and numeric gauge/sum ingestion
+- environment-backed connector credentials
+- connector runtime readiness/capability heartbeats
+- connector catalog/runtime APIs, dashboard, metric, and CLI
+- migration 015 and ADRs 0043-0045
+
+## v1.9.0 next
+
+Scale, HA & Operational Proof: chaos tests, rolling-upgrade proof, broker/database/connector outage scenarios, backup/restore validation, and measured benchmark/recovery artifacts.

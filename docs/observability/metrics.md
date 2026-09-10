@@ -195,3 +195,7 @@ sampling. The value is between 0 and 1.
 
 These metrics describe policy decisions. They are separate from downstream
 persistence/routing success metrics.
+
+## Connector Platform
+
+`telemetryforge_connector_ready{service="router",destination,kind}` is 1 when the latest connector readiness probe succeeds and 0 when it fails. Connector readiness is intentionally separate from router process readiness.

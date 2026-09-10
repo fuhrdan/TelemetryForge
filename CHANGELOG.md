@@ -4,6 +4,16 @@
 
 _No changes yet._
 
+## [1.8.0-dev] - 2026-09-10
+
+### Connector Platform
+- Added stable connector SDK and capability catalog.
+- Added Kafka, HTTP JSON, OTLP/HTTP JSON, Prometheus Remote Write, Splunk HEC, and Datadog Logs adapters.
+- Added OTLP/HTTP JSON logs/metric ingestion.
+- Added typed permanent/transient delivery classification and legacy routing translation.
+- Added connector runtime health persistence/API/dashboard/metrics/CLI.
+- Added migration 015 and connector documentation/ADRs.
+
 ## [1.7.0-dev] - 2026-09-10
 
 ### Change Intelligence

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fuhrdan/TelemetryForge/internal/connectors"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 )
 
@@ -39,6 +40,10 @@ func (*dispatcherTestStore) RecordRoutingDestinationHealth(context.Context, stri
 
 type dispatcherTestSender struct{ err error }
 
+func (dispatcherTestSender) Kind() string { return connectors.KindHTTPJSON }
+func (dispatcherTestSender) Capabilities() connectors.Capabilities {
+	return connectors.Capabilities{Kind: connectors.KindHTTPJSON, Protocol: "HTTP JSON"}
+}
 func (sender dispatcherTestSender) Send(context.Context, domain.Event) error { return sender.err }
 func (dispatcherTestSender) Ready(context.Context) error                     { return nil }
 func (dispatcherTestSender) Close()                                          {}
@@ -99,5 +104,18 @@ func TestTerminalFailureCreatesConfiguredFallback(t *testing.T) {
 	}
 	if store.fallback == nil || store.fallback.Destination != "archive" || store.fallback.MaxAttempts != 7 {
 		t.Fatalf("fallback=%#v", store.fallback)
+	}
+}
+
+func TestPermanentConnectorFailureBypassesRetry(t *testing.T) {
+	store := &dispatcherTestStore{}
+	dispatcher := &Dispatcher{config: Config{Name: "routing", Version: "1", Destinations: []Destination{{Name: "rejecting", Type: DestinationHTTP, Enabled: true, URL: "https://example.invalid"}}}, store: store, senders: map[string]Sender{"rejecting": dispatcherTestSender{err: &connectors.DeliveryError{Err: errors.New("schema rejected"), Retryable: false, StatusCode: 400}}}, logger: slog.Default()}
+	event := domain.Event{ID: "evt", TenantID: "tenant"}
+	dispatcher.deliver(context.Background(), Delivery{TenantID: "tenant", EventID: event.ID, Destination: "rejecting", Event: event, Attempts: 1, MaxAttempts: 5})
+	if len(store.retried) != 0 {
+		t.Fatalf("permanent failure retried: %v", store.retried)
+	}
+	if len(store.dead) != 1 || store.dead[0] != "rejecting" {
+		t.Fatalf("dead letters=%v", store.dead)
 	}
 }

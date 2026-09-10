@@ -9,12 +9,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fuhrdan/TelemetryForge/internal/connectors"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 )
 
 const (
-	DestinationKafka = "kafka"
-	DestinationHTTP  = "http"
+	DestinationKafka     = "kafka"
+	DestinationHTTP      = "http"
+	DestinationConnector = "connector"
 )
 
 // Config is a versioned routing policy and destination catalog.
@@ -38,6 +40,7 @@ type Destination struct {
 	Headers         map[string]string `json:"headers,omitempty"`
 	HeaderEnv       map[string]string `json:"header_env,omitempty"`
 	BearerTokenEnv  string            `json:"bearer_token_env,omitempty"`
+	Connector       *connectors.Spec  `json:"connector,omitempty"`
 	TimeoutMS       int               `json:"timeout_ms,omitempty"`
 	MaxAttempts     int               `json:"max_attempts,omitempty"`
 	BaseDelayMS     int               `json:"base_delay_ms,omitempty"`
@@ -143,6 +146,12 @@ func (config Config) Validate() error {
 	if len(config.Destinations) == 0 {
 		return fmt.Errorf("at least one routing destination is required")
 	}
+	if len(config.Destinations) > 64 {
+		return fmt.Errorf("routing config has %d destinations; maximum is 64", len(config.Destinations))
+	}
+	if len(config.Rules) > 512 {
+		return fmt.Errorf("routing config has %d rules; maximum is 512", len(config.Rules))
+	}
 
 	destinations := make(map[string]Destination, len(config.Destinations))
 	for index, destination := range config.Destinations {
@@ -154,15 +163,23 @@ func (config Config) Validate() error {
 		if _, exists := destinations[name]; exists {
 			return fmt.Errorf("duplicate destination %q", name)
 		}
-		if destination.Type != DestinationKafka && destination.Type != DestinationHTTP {
+		if destination.Type != DestinationKafka &&
+			destination.Type != DestinationHTTP &&
+			destination.Type != DestinationConnector {
 			return fmt.Errorf("destination %q has unsupported type %q", name, destination.Type)
 		}
 		switch destination.Type {
 		case DestinationKafka:
+			if destination.Connector != nil {
+				return fmt.Errorf("legacy Kafka destination %q cannot also define connector", name)
+			}
 			if strings.TrimSpace(destination.Topic) == "" {
 				return fmt.Errorf("Kafka destination %q requires topic", name)
 			}
 		case DestinationHTTP:
+			if destination.Connector != nil {
+				return fmt.Errorf("legacy HTTP destination %q cannot also define connector", name)
+			}
 			if strings.TrimSpace(destination.URL) == "" {
 				return fmt.Errorf("HTTP destination %q requires url", name)
 			}
@@ -180,6 +197,26 @@ func (config Config) Validate() error {
 			for headerName, environmentName := range destination.HeaderEnv {
 				if strings.TrimSpace(headerName) == "" || strings.TrimSpace(environmentName) == "" {
 					return fmt.Errorf("HTTP destination %q header_env requires non-empty header and environment names", name)
+				}
+			}
+		case DestinationConnector:
+			if destination.Connector == nil {
+				return fmt.Errorf("connector destination %q requires connector configuration", name)
+			}
+			if err := destination.Connector.Validate(); err != nil {
+				return fmt.Errorf("connector destination %q: %w", name, err)
+			}
+			for _, legacy := range []struct {
+				label string
+				set   bool
+			}{
+				{"brokers", len(destination.Brokers) > 0}, {"topic", strings.TrimSpace(destination.Topic) != ""},
+				{"url", strings.TrimSpace(destination.URL) != ""}, {"health_url", strings.TrimSpace(destination.HealthURL) != ""},
+				{"headers", len(destination.Headers) > 0}, {"header_env", len(destination.HeaderEnv) > 0},
+				{"bearer_token_env", strings.TrimSpace(destination.BearerTokenEnv) != ""},
+			} {
+				if legacy.set {
+					return fmt.Errorf("connector destination %q must put %s inside connector", name, legacy.label)
 				}
 			}
 		}
@@ -289,6 +326,31 @@ func withDestinationDefaults(destination Destination) Destination {
 		destination.MaxDelayMS = destination.BaseDelayMS
 	}
 	return destination
+}
+
+// ConnectorSpec returns the normalized connector definition for one destination.
+func ConnectorSpec(destination Destination) (connectors.Spec, error) {
+	destination = withDestinationDefaults(destination)
+	switch destination.Type {
+	case DestinationConnector:
+		if destination.Connector == nil {
+			return connectors.Spec{}, fmt.Errorf("destination %q has no connector configuration", destination.Name)
+		}
+		spec := *destination.Connector
+		if spec.TimeoutMS <= 0 {
+			spec.TimeoutMS = destination.TimeoutMS
+		}
+		spec = connectors.WithDefaults(spec)
+		return spec, spec.Validate()
+	case DestinationKafka:
+		spec := connectors.Spec{Kind: connectors.KindKafka, Brokers: destination.Brokers, Topic: destination.Topic, TimeoutMS: destination.TimeoutMS}
+		return connectors.WithDefaults(spec), spec.Validate()
+	case DestinationHTTP:
+		spec := connectors.Spec{Kind: connectors.KindHTTPJSON, Endpoint: destination.URL, HealthEndpoint: destination.HealthURL, Headers: destination.Headers, HeaderEnv: destination.HeaderEnv, BearerTokenEnv: destination.BearerTokenEnv, TimeoutMS: destination.TimeoutMS}
+		return connectors.WithDefaults(spec), spec.Validate()
+	default:
+		return connectors.Spec{}, fmt.Errorf("destination %q has unsupported type %q", destination.Name, destination.Type)
+	}
 }
 
 func validateFallbackCycles(destinations map[string]Destination) error {

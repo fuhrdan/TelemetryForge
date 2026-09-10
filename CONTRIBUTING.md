@@ -264,3 +264,7 @@ Before requesting review:
 
 See [the testing guide](docs/development/testing.md) and
 [release process](docs/development/release-process.md).
+
+### Connector Platform changes
+
+Connector code is a protocol boundary, not a second delivery state machine. Keep retry/DLQ/fallback ownership in the Telemetry Router, use environment-backed secrets, bound connector metadata/response handling, keep connector health separate from router readiness, and preserve legacy Kafka/HTTP routing compatibility.
