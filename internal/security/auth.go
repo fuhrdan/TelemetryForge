@@ -21,9 +21,10 @@ type contextKey string
 const principalKey contextKey = "telemetryforge-principal"
 
 const (
-	ScopeIngest = "ingest"
-	ScopeRead   = "read"
-	ScopeAdmin  = "admin"
+	ScopeIngest  = "ingest"
+	ScopeRead    = "read"
+	ScopeAdmin   = "admin"
+	ScopeControl = "control"
 )
 
 // Principal is the authenticated identity attached to a request.
@@ -36,10 +37,13 @@ type Principal struct {
 	Scopes   map[string]struct{}
 }
 
-// Has reports whether the principal owns a scope. Admin implies all scopes.
+// Has reports whether the principal owns a scope. Admin implies tenant/application
+// scopes, but deliberately does not imply the global control-plane scope.
 func (principal Principal) Has(scope string) bool {
-	if _, ok := principal.Scopes[ScopeAdmin]; ok {
-		return true
+	if scope != ScopeControl {
+		if _, ok := principal.Scopes[ScopeAdmin]; ok {
+			return true
+		}
 	}
 	_, ok := principal.Scopes[scope]
 	return ok
@@ -170,7 +174,7 @@ func LoadAPIKeys(filename string) (*Authenticator, error) {
 		for _, scope := range entry.Scopes {
 			scope = strings.TrimSpace(scope)
 			switch scope {
-			case ScopeIngest, ScopeRead, ScopeAdmin:
+			case ScopeIngest, ScopeRead, ScopeAdmin, ScopeControl:
 				scopes[scope] = struct{}{}
 			default:
 				return nil, fmt.Errorf("API key entry %d has unsupported scope %q", index, scope)
@@ -229,7 +233,8 @@ func (auth *Authenticator) authenticate(request *http.Request) (Principal, bool)
 			Name:     "local-development",
 			TenantID: tenant,
 			Scopes: map[string]struct{}{
-				ScopeAdmin: {},
+				ScopeAdmin:   {},
+				ScopeControl: {},
 			},
 		}, true
 	}
@@ -252,6 +257,9 @@ func (auth *Authenticator) authenticate(request *http.Request) (Principal, bool)
 }
 
 func requiredScope(request *http.Request) string {
+	if strings.HasPrefix(request.URL.Path, "/api/v1/lifecycle/") && request.Method != http.MethodGet {
+		return ScopeControl
+	}
 	if request.URL.Path == "/metrics" {
 		return ScopeAdmin
 	}

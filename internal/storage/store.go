@@ -13,6 +13,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/evidence"
 	"github.com/fuhrdan/TelemetryForge/internal/incidentarchive"
+	"github.com/fuhrdan/TelemetryForge/internal/lifecycle"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
 	"github.com/fuhrdan/TelemetryForge/internal/router"
@@ -91,4 +92,22 @@ type IncidentArchiveReader interface {
 		ctx context.Context,
 		limit int,
 	) ([]incidentarchive.ImportProvenance, error)
+}
+
+// LifecycleStore is the global configuration control-plane contract.
+type LifecycleStore interface {
+    CreateLifecycleArtifact(context.Context, lifecycle.Kind, []byte, string) (lifecycle.Artifact, error)
+    ListLifecycleArtifacts(context.Context, lifecycle.Kind, int) ([]lifecycle.Artifact, error)
+    LifecycleArtifact(context.Context, string, bool) (lifecycle.Artifact, error)
+    SetLifecycleShadow(context.Context, string, string) error
+    ApproveLifecycle(context.Context, string, string, string) error
+    AddLifecycleEvidence(context.Context, string, string, string, string, string, string, string) (lifecycle.Evidence, error)
+    ScheduleLifecycle(context.Context, string, time.Time, string) error
+    ActivateLifecycle(context.Context, string, string) error
+    RollbackLifecycle(context.Context, string, string) error
+    RetireLifecycle(context.Context, string, string) error
+    ManagedLifecycleConfig(context.Context, lifecycle.Kind, string) (lifecycle.Artifact, bool, error)
+    RecordLifecycleRuntimeLoad(context.Context, lifecycle.RuntimeLoad) error
+    LifecycleConvergence(context.Context) ([]lifecycle.Convergence, error)
+    ListLifecycleAudit(context.Context, int) ([]lifecycle.AuditEntry, error)
 }

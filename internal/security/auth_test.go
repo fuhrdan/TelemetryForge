@@ -93,3 +93,14 @@ func TestAPIKeyFileRejectsTrailingJSON(t *testing.T) {
 		t.Fatal("expected trailing JSON value to be rejected")
 	}
 }
+
+func TestAdminDoesNotImplyControl(t *testing.T) {
+	p := Principal{Scopes: map[string]struct{}{ScopeAdmin: {}}}
+	if p.Has(ScopeControl) {
+		t.Fatal("admin must not imply global control scope")
+	}
+	p.Scopes[ScopeControl] = struct{}{}
+	if !p.Has(ScopeControl) {
+		t.Fatal("explicit control scope should be honored")
+	}
+}
