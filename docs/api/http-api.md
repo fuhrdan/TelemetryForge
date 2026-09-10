@@ -374,3 +374,23 @@ is capped at 720 hours.
 ### `GET /api/v1/shaping/shadow-diffs`
 
 Returns newest active-versus-candidate shaping differences.
+
+
+## Incident archive import provenance
+
+### `GET /api/v1/archive-imports`
+
+Returns newest-first tenant-scoped metadata about `.tfincident` archives that
+were imported into the current tenant.
+
+Optional:
+
+```text
+limit=1..200
+```
+
+The response contains archive ID, source tenant/incident, imported incident ID,
+archive format/product version, whole-file SHA-256, encrypted flag, and import
+time.
+
+It does **not** return archive bytes or full-fidelity telemetry.

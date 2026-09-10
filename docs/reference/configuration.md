@@ -273,3 +273,28 @@ ad-hoc environment variables.
 Shaping configurations are capped at 256 rules. Config identity and rule names
 are length-bounded, and per-rule tag matchers/transforms are capped to prevent
 configuration-driven unbounded work or metric-label proliferation.
+
+
+## Portable Incident Archive
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TELEMETRYFORGE_ARCHIVE_KEY_FILE` | empty | Optional file containing exactly 64 hexadecimal characters (32-byte AES-256 key) used by telemetryctl archive commands |
+
+Archive encryption is intentionally CLI/operator controlled. The gateway does
+not expose a full-fidelity archive download endpoint.
+
+Configuration snapshots included in an archive default to:
+
+```text
+policies/active.json
+policies/shadow.json
+shaping/active.json
+shaping/shadow.json
+routing/active.json
+routing/shadow.json
+```
+
+Use the corresponding `--*-policy`, `--*-shaping`, or `--*-routing` flags on
+`telemetryctl incident export` to override them, or `disabled` to omit a
+snapshot.

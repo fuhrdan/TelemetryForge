@@ -7,17 +7,21 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/costsim"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/evidence"
+	incidentarchive "github.com/fuhrdan/TelemetryForge/internal/incidentarchive"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
@@ -49,6 +53,26 @@ func main() {
 			}
 		case "graph":
 			if err := incidentGraph(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "export":
+			if err := incidentExport(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "import":
+			if err := incidentImport(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "inspect":
+			if err := incidentInspect(os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "verify":
+			if err := incidentVerify(os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "report":
+			if err := incidentReport(os.Args[3:]); err != nil {
 				exitErr(err)
 			}
 		default:
@@ -358,6 +382,365 @@ func incidentReplay(ctx context.Context, args []string) error {
 	payload, _ := json.MarshalIndent(run, "", "  ")
 	fmt.Println(string(payload))
 	return nil
+}
+
+func incidentExport(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("incident export", flag.ContinueOnError)
+	incidentID := set.String("id", "", "frozen incident identifier")
+	output := set.String("out", "", "output .tfincident or .tfincident.enc path")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	maxEvents := set.Int("max-events", 10000, "maximum frozen events to export")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	keyFile := set.String("encrypt-key-file", env("TELEMETRYFORGE_ARCHIVE_KEY_FILE", ""), "optional file containing a 64-hex-character AES-256 key")
+	force := set.Bool("force", false, "overwrite an existing output file")
+	activePolicy := set.String("active-policy", "policies/active.json", "active cardinality policy snapshot; use disabled to omit")
+	shadowPolicy := set.String("shadow-policy", "policies/shadow.json", "shadow cardinality policy snapshot; use disabled to omit")
+	activeShaping := set.String("active-shaping", "shaping/active.json", "active shaping config snapshot; use disabled to omit")
+	shadowShaping := set.String("shadow-shaping", "shaping/shadow.json", "shadow shaping config snapshot; use disabled to omit")
+	activeRouting := set.String("active-routing", "routing/active.json", "active routing config snapshot; use disabled to omit")
+	shadowRouting := set.String("shadow-routing", "routing/shadow.json", "shadow routing config snapshot; use disabled to omit")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*incidentID) == "" {
+		return errors.New("--id is required")
+	}
+	if strings.TrimSpace(*output) == "" {
+		*output = strings.TrimSpace(*incidentID) + ".tfincident"
+	}
+	if *maxEvents < 1 || *maxEvents > incidentarchive.MaxEvents {
+		return fmt.Errorf("--max-events must be between 1 and %d", incidentarchive.MaxEvents)
+	}
+	if !*force {
+		if _, err := os.Stat(*output); err == nil {
+			return fmt.Errorf("output file %q already exists; use --force to overwrite", *output)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+
+	configurations, err := loadArchiveConfigurations(map[string]string{
+		"policy:active":  *activePolicy,
+		"policy:shadow":  *shadowPolicy,
+		"shaping:active": *activeShaping,
+		"shaping:shadow": *shadowShaping,
+		"routing:active": *activeRouting,
+		"routing:shadow": *shadowRouting,
+	})
+	if err != nil {
+		return err
+	}
+
+	ctx = security.WithTenant(ctx, *tenant)
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	bundle, err := incidentarchive.BuildFromSource(
+		ctx, store, strings.TrimSpace(*incidentID), *maxEvents, configurations,
+	)
+	if err != nil {
+		return err
+	}
+
+	var key []byte
+	if strings.TrimSpace(*keyFile) != "" {
+		key, err = incidentarchive.LoadKeyFile(*keyFile)
+		if err != nil {
+			return err
+		}
+	}
+	manifest, err := incidentarchive.WriteFile(*output, bundle, key)
+	if err != nil {
+		return err
+	}
+
+	fileHash, err := fileSHA256(*output)
+	if err != nil {
+		return err
+	}
+	fmt.Printf(
+		"exported incident %s to %s (%d events, archive %s, sha256 %s, encrypted=%t)\n",
+		manifest.IncidentID, *output, manifest.EventCount, manifest.ArchiveID,
+		fileHash, len(key) != 0,
+	)
+	return nil
+}
+
+func incidentImport(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("incident import", flag.ContinueOnError)
+	filename := set.String("file", "", "input .tfincident or .tfincident.enc path")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", ""), "target tenant; defaults to archive tenant")
+	newID := set.String("new-id", "", "optional imported incident identifier")
+	allowTenantRemap := set.Bool("allow-tenant-remap", false, "explicitly allow import into a different tenant")
+	keyFile := set.String("decrypt-key-file", env("TELEMETRYFORGE_ARCHIVE_KEY_FILE", ""), "optional file containing a 64-hex-character AES-256 key")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*filename) == "" {
+		return errors.New("--file is required")
+	}
+
+	raw, err := os.ReadFile(*filename)
+	if err != nil {
+		return err
+	}
+	encrypted := incidentarchive.IsEncrypted(raw)
+
+	var key []byte
+	if encrypted {
+		if strings.TrimSpace(*keyFile) == "" {
+			return errors.New("archive is encrypted; --decrypt-key-file or TELEMETRYFORGE_ARCHIVE_KEY_FILE is required")
+		}
+		key, err = incidentarchive.LoadKeyFile(*keyFile)
+		if err != nil {
+			return err
+		}
+	}
+
+	bundle, err := incidentarchive.ReadFile(*filename, key)
+	if err != nil {
+		return err
+	}
+
+	sourceTenant := bundle.Manifest.TenantID
+	targetTenant := strings.TrimSpace(*tenant)
+	if targetTenant == "" {
+		targetTenant = sourceTenant
+	}
+	if targetTenant != sourceTenant && !*allowTenantRemap {
+		return fmt.Errorf(
+			"archive belongs to tenant %q; importing into %q requires --allow-tenant-remap",
+			sourceTenant, targetTenant,
+		)
+	}
+
+	incident := bundle.Incident
+	if strings.TrimSpace(*newID) != "" {
+		incident.ID = strings.TrimSpace(*newID)
+	}
+	records := storage.NormalizeImportedEvents(bundle.Events, targetTenant)
+
+	fileHash, err := fileSHA256(*filename)
+	if err != nil {
+		return err
+	}
+	provenance := incidentarchive.ImportProvenance{
+		ArchiveID:             bundle.Manifest.ArchiveID,
+		SourceTenantID:        sourceTenant,
+		SourceIncidentID:      bundle.Manifest.IncidentID,
+		ImportedIncidentID:    incident.ID,
+		FormatVersion:         bundle.Manifest.FormatVersion,
+		TelemetryForgeVersion: bundle.Manifest.TelemetryForge,
+		FileSHA256:            fileHash,
+		Encrypted:             encrypted,
+	}
+
+	ctx = security.WithTenant(ctx, targetTenant)
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	inserted, err := store.ImportIncidentArchive(ctx, incident, records, provenance)
+	if err != nil {
+		return err
+	}
+
+	// Rebuild the graph for the imported tenant/incident rather than blindly
+	// trusting embedded tenant/root IDs from another environment.
+	events := make([]domain.Event, 0, len(records))
+	for _, record := range records {
+		events = append(events, record.Event)
+	}
+	// Replay/cost rows are intentionally not inserted into live operational
+	// history during import, so the imported live Evidence Graph is rebuilt
+	// from frozen events only. The original graph/replay/cost artifacts remain
+	// intact inside the archive for offline inspection.
+	graph := evidence.Build(targetTenant, incident.ID, events, nil, nil)
+	if err := store.SaveEvidenceGraph(ctx, graph); err != nil {
+		fmt.Fprintf(os.Stderr,
+			"warning: incident import committed but Evidence Graph snapshot refresh failed: %v\n",
+			err,
+		)
+	}
+
+	fmt.Printf(
+		"imported archive %s as incident %s into tenant %s (%d events, source tenant %s)\n",
+		bundle.Manifest.ArchiveID, incident.ID, targetTenant, inserted, sourceTenant,
+	)
+	return nil
+}
+
+func incidentInspect(args []string) error {
+	set := flag.NewFlagSet("incident inspect", flag.ContinueOnError)
+	filename := set.String("file", "", "input .tfincident or .tfincident.enc path")
+	keyFile := set.String("decrypt-key-file", env("TELEMETRYFORGE_ARCHIVE_KEY_FILE", ""), "optional AES-256 key file")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	bundle, encrypted, fileHash, err := readArchiveForCLI(*filename, *keyFile)
+	if err != nil {
+		return err
+	}
+
+	summary := map[string]any{
+		"archive_id":              bundle.Manifest.ArchiveID,
+		"format_version":          bundle.Manifest.FormatVersion,
+		"telemetryforge_version":  bundle.Manifest.TelemetryForge,
+		"tenant_id":               bundle.Manifest.TenantID,
+		"incident":                bundle.Incident,
+		"event_count":             len(bundle.Events),
+		"schema_count":            len(bundle.Schemas),
+		"schema_drift_count":      len(bundle.SchemaDrifts),
+		"replay_run_count":        len(bundle.ReplayRuns),
+		"cost_simulation_count":   len(bundle.CostResults),
+		"configuration_snapshots": bundle.Manifest.Configurations,
+		"evidence_summary":        bundle.EvidenceGraph.Summary,
+		"encrypted":               encrypted,
+		"file_sha256":             fileHash,
+	}
+	payload, _ := json.MarshalIndent(summary, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func incidentVerify(args []string) error {
+	set := flag.NewFlagSet("incident verify", flag.ContinueOnError)
+	filename := set.String("file", "", "input .tfincident or .tfincident.enc path")
+	keyFile := set.String("decrypt-key-file", env("TELEMETRYFORGE_ARCHIVE_KEY_FILE", ""), "optional AES-256 key file")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	bundle, encrypted, fileHash, err := readArchiveForCLI(*filename, *keyFile)
+	if err != nil {
+		return err
+	}
+	fmt.Printf(
+		"verified archive %s: incident=%s tenant=%s events=%d entries=%d encrypted=%t sha256=%s\n",
+		bundle.Manifest.ArchiveID, bundle.Manifest.IncidentID,
+		bundle.Manifest.TenantID, bundle.Manifest.EventCount,
+		len(bundle.Manifest.Entries), encrypted, fileHash,
+	)
+	return nil
+}
+
+func incidentReport(args []string) error {
+	set := flag.NewFlagSet("incident report", flag.ContinueOnError)
+	filename := set.String("file", "", "input .tfincident or .tfincident.enc path")
+	output := set.String("out", "", "standalone HTML report path")
+	keyFile := set.String("decrypt-key-file", env("TELEMETRYFORGE_ARCHIVE_KEY_FILE", ""), "optional AES-256 key file")
+	force := set.Bool("force", false, "overwrite an existing report")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*output) == "" {
+		return errors.New("--out is required")
+	}
+	if !*force {
+		if _, err := os.Stat(*output); err == nil {
+			return fmt.Errorf("report file %q already exists; use --force to overwrite", *output)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+
+	bundle, _, _, err := readArchiveForCLI(*filename, *keyFile)
+	if err != nil {
+		return err
+	}
+	if err := incidentarchive.WriteHTMLReport(*output, bundle); err != nil {
+		return err
+	}
+	fmt.Printf("wrote standalone incident report %s\n", *output)
+	return nil
+}
+
+func readArchiveForCLI(filename, keyFile string) (incidentarchive.Bundle, bool, string, error) {
+	if strings.TrimSpace(filename) == "" {
+		return incidentarchive.Bundle{}, false, "", errors.New("--file is required")
+	}
+	raw, err := os.ReadFile(filename)
+	if err != nil {
+		return incidentarchive.Bundle{}, false, "", err
+	}
+	encrypted := incidentarchive.IsEncrypted(raw)
+
+	var key []byte
+	if encrypted {
+		if strings.TrimSpace(keyFile) == "" {
+			return incidentarchive.Bundle{}, false, "", errors.New("archive is encrypted; a decryption key file is required")
+		}
+		key, err = incidentarchive.LoadKeyFile(keyFile)
+		if err != nil {
+			return incidentarchive.Bundle{}, false, "", err
+		}
+	}
+	bundle, err := incidentarchive.ReadFile(filename, key)
+	if err != nil {
+		return incidentarchive.Bundle{}, false, "", err
+	}
+	fileHash, err := fileSHA256(filename)
+	return bundle, encrypted, fileHash, err
+}
+
+func loadArchiveConfigurations(files map[string]string) ([]incidentarchive.ConfigurationSnapshot, error) {
+	keys := make([]string, 0, len(files))
+	for key := range files {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	result := make([]incidentarchive.ConfigurationSnapshot, 0, len(keys))
+	for _, key := range keys {
+		filename := strings.TrimSpace(files[key])
+		if filename == "" || strings.EqualFold(filename, "disabled") {
+			continue
+		}
+		parts := strings.SplitN(key, ":", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid archive configuration key %q", key)
+		}
+
+		// Validate with the real configuration parser before preserving exact
+		// bytes in the archive.
+		switch parts[0] {
+		case "policy":
+			if _, err := policy.Load(filename); err != nil {
+				return nil, err
+			}
+		case "shaping":
+			if _, err := shaping.Load(filename); err != nil {
+				return nil, err
+			}
+		case "routing":
+			if _, err := router.Load(filename); err != nil {
+				return nil, err
+			}
+		default:
+			return nil, fmt.Errorf("unsupported configuration kind %q", parts[0])
+		}
+
+		snapshot, err := incidentarchive.LoadConfigurationSnapshot(parts[0], parts[1], filename)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, snapshot)
+	}
+	return result, nil
+}
+
+func fileSHA256(filename string) (string, error) {
+	payload, err := os.ReadFile(filename)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 func costSimulate(ctx context.Context, args []string) error {
@@ -885,6 +1268,11 @@ func usage() {
   telemetryctl incident freeze --id INC-42 --title "Checkout latency" --from <RFC3339> --to <RFC3339>
   telemetryctl incident replay --id INC-42 [--tenant default] [--policy policies/active.json] [--shadow-policy policies/shadow.json]
   telemetryctl incident graph --id INC-42 [--tenant default]
+  telemetryctl incident export --id INC-42 [--out INC-42.tfincident] [--encrypt-key-file archive.key]
+  telemetryctl incident import --file INC-42.tfincident [--tenant default] [--allow-tenant-remap] [--new-id INC-IMPORTED]
+  telemetryctl incident inspect --file INC-42.tfincident [--decrypt-key-file archive.key]
+  telemetryctl incident verify --file INC-42.tfincident [--decrypt-key-file archive.key]
+  telemetryctl incident report --file INC-42.tfincident --out INC-42.html
   telemetryctl cost simulate --incident INC-42 [--tenant default] [--pricing pricing/vendor.json]
   telemetryctl dlq replay --file dead-letter.json [--topic telemetry.raw]
   telemetryctl dedup prune [--older-than 840h]

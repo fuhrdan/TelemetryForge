@@ -57,6 +57,12 @@ to reconstruct every decision from implementation details.
 - [API redaction](security/redaction.md)
 - [Dashboard server proxy](security/dashboard-proxy.md)
 
+## Portable incident evidence
+
+- [Portable incident archives](incidents/portable-archive.md)
+- [Archive encryption](security/archive-encryption.md)
+- [Archive workflow](operations/archive-workflow.md)
+
 ## Replay and cost
 
 - [Incident Replay](incidents/replay.md)
@@ -139,3 +145,4 @@ or long-term maintainability.
 - [Shaping Policy](shaping/shaping-policy.md)
 - [Visibility Preview](shaping/visibility-preview.md)
 - [v1.4.0 delivered scope](roadmap/v1.4.0.md)
+- [v1.5.0 delivered scope](roadmap/v1.5.0.md)

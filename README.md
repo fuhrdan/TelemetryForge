@@ -10,9 +10,9 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current development release:** `v1.4.0` — Adaptive Sampling & Telemetry Shaping,
-> protected incident/error signals, queue-pressure adaptation, deterministic
-> sampling, transformations, shadow preview, and visibility-retention evidence.
+> **Current development release:** `v1.5.0` — Portable `.tfincident` archives,
+> integrity verification, optional AES-256-GCM encryption, tenant-aware import
+> provenance, and standalone offline incident reports.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -100,30 +100,53 @@ Read:
 
 ### Adaptive Sampling & Telemetry Shaping
 
-The worker can now reduce healthy high-volume telemetry **after** full-fidelity
-Flight Recorder/schema capture **and after the Cardinality Firewall has observed
-the full stream**, but before normal persistence and routing.
+Runs after full-fidelity Flight Recorder and Schema Intelligence capture but
+before Cardinality Firewall/persistence/routing.
 
-Sampling is deterministic from event/config identity and can adapt to bounded
-worker queue pressure. The checked-in policy protects errors, severe events,
-audit/deployment/security events, high-latency signals, and incident-tagged
-telemetry. Protected events also preserve tags/payload unless a reviewed rule
-explicitly opts into `shape_protected`.
+v1.4 adds:
 
-Shaping rules can also drop/rename tags and safely remove oversized payloads.
-A candidate shadow configuration is evaluated without mutating the active path.
-A compact retry-stable decision ledger ensures downstream retries cannot change
-an already-recorded pressure decision or double-count shaping statistics.
+- deterministic event-hash sampling;
+- pressure-aware rate reduction;
+- protected errors/severe/high-latency/audit/deployment/incident telemetry;
+- tag drop/rename shaping;
+- oversized payload suppression;
+- non-destructive shadow shaping;
+- visibility-retention preview against frozen incidents.
 
-Historical incident preview reports event retention, byte retention, protected
-retention, and source/type coverage instead of inventing one opaque visibility
-score.
+Sampled-out events are successful processing outcomes, not DLQ failures.
 
-Read:
+Read [Adaptive Sampling](docs/shaping/adaptive-sampling.md).
 
-- [Adaptive Sampling](docs/shaping/adaptive-sampling.md)
-- [Shaping Policy](docs/shaping/shaping-policy.md)
-- [Visibility Preview](docs/shaping/visibility-preview.md)
+### Portable Incident Archive
+
+v1.5 packages a frozen investigation into:
+
+```text
+INC-42.tfincident
+```
+
+The portable file can contain:
+
+- frozen events with original `captured_at`;
+- Evidence Graph;
+- replay and cost-analysis history;
+- relevant Schema Intelligence history/drift;
+- exact active/shadow policy, shaping, and routing configuration snapshots.
+
+Every member is SHA-256 verified through a versioned manifest. Optional
+AES-256-GCM encrypts the complete archive with an explicit random 256-bit key.
+
+```bash
+telemetryctl incident export --id INC-42 --out INC-42.tfincident
+telemetryctl incident verify --file INC-42.tfincident
+telemetryctl incident inspect --file INC-42.tfincident
+telemetryctl incident report --file INC-42.tfincident --out INC-42.html
+```
+
+Import restores frozen evidence only; it never injects archived telemetry into
+the live production pipeline or activates archived configuration.
+
+Read [Portable Incident Archives](docs/incidents/portable-archive.md).
 
 ### Policy-as-Code + Shadow Pipeline
 
@@ -248,6 +271,7 @@ flowchart LR
     I --> R[Incident Replay]
     I --> C[Cost Simulator]
     I --> EG[Evidence Graph]
+    I --> IA[Portable .tfincident Archive]
 
     DB --> API[Tenant-scoped Query / SSE API]
     R --> API
@@ -434,6 +458,34 @@ go run ./cmd/telemetryctl cost simulate \
   --tenant default
 ```
 
+## Portable incident workflow
+
+```bash
+telemetryctl incident export \
+  --id INC-42 \
+  --out incident-exports/INC-42.tfincident
+
+telemetryctl incident verify \
+  --file incident-exports/INC-42.tfincident
+
+telemetryctl incident report \
+  --file incident-exports/INC-42.tfincident \
+  --out incident-exports/INC-42.html
+```
+
+Encrypted export:
+
+```bash
+openssl rand -hex 32 > incident-archive.key
+
+telemetryctl incident export \
+  --id INC-42 \
+  --out INC-42.tfincident.enc \
+  --encrypt-key-file incident-archive.key
+```
+
+See [Archive Workflow](docs/operations/archive-workflow.md).
+
 ## Self-observability
 
 Gateway:
@@ -565,21 +617,6 @@ pricing/                     explicit cost assumptions
 routing/                     active/shadow routing policy
 security/                    hash-only demo API-key document
 docs/                        human-readable engineering docs
-```
-
-
-## Adaptive shaping API
-
-```text
-GET /api/v1/shaping/stats?window=1h
-GET /api/v1/shaping/shadow-diffs
-```
-
-Validate or preview from CLI:
-
-```bash
-go run ./cmd/telemetryctl shaping validate --file shaping/active.json
-go run ./cmd/telemetryctl shaping preview --incident <INCIDENT_ID> --candidate shaping/shadow.json --pressure 0.9
 ```
 
 ## Security status

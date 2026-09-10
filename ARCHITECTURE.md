@@ -1,6 +1,6 @@
 # TelemetryForge Architecture
 
-TelemetryForge v1.4.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v1.5.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
 
@@ -231,6 +231,37 @@ SCRAM-SHA-512
 
 Local Compose remains plaintext for development.
 
+## Portable Incident Archive
+
+A `.tfincident` is a portable copy of **frozen evidence**, not another live
+pipeline.
+
+```text
+Frozen Incident
+    |
+    +--> event/capture timeline
+    +--> Evidence Graph
+    +--> replay/cost history
+    +--> relevant schema history/drift
+    +--> policy/shaping/routing snapshots
+    |
+    v
+manifest + SHA-256 member checksums
+    |
+    +--> ordinary .tfincident ZIP
+    `--> optional AES-256-GCM outer envelope
+```
+
+Archive import writes only a frozen incident plus provenance. It deliberately
+does not call ingestion, primary persistence, adaptive sampling, Cardinality
+Firewall processing, or routing.
+
+Configuration snapshots remain historical evidence and are never activated by
+import.
+
+The parser bounds member count, individual member size, total uncompressed
+bytes, event count, JSONL line size, and ZIP member paths.
+
 ## Self-observability
 
 Prometheus labels stay bounded.
@@ -281,6 +312,29 @@ reference its supporting evidence, and preserve contradictory evidence rather
 than replacing the graph with an opaque root-cause score.
 
 
+## Adaptive Sampling & Telemetry Shaping
+
+The production order preserves evidence before any lossy shaping:
+
+```text
+Flight Recorder
+  -> Normalizer
+  -> Schema Intelligence
+  -> Adaptive Sampling / Shaping
+  -> Distributed Cardinality Firewall
+  -> Primary persistence
+  -> Routing outbox
+```
+
+Sampled-out events are successful processing outcomes. They are acknowledged
+after shaping evidence is durably recorded and do not enter the processing DLQ.
+
+Errors, severe events, high-latency signals, audit/deployment events, and
+incident-tagged telemetry are protected by default.
+
+Candidate shaping runs in shadow mode and never changes active keep/drop
+behavior.
+
 ## Telemetry Router
 
 The primary worker records post-policy delivery intent in `routing_deliveries`
@@ -311,26 +365,3 @@ outbox rows.
 Delivery to external backends is at-least-once. Kafka destination keys retain
 `tenant_id|source`; HTTP destinations receive the event ID as an idempotency
 key.
-
-## Adaptive sampling / shaping
-
-The Flight Recorder, Schema Intelligence, and Cardinality Firewall observe the
-full pre-sampling stream before v1.4 can reduce or transform it. The active
-shaper then evaluates deterministic
-sampling against current bounded worker queue pressure.
-
-Protected error/severe/high-latency/audit/deployment/security/incident-tagged
-events cannot be sampled out. Healthy high-volume rules can reduce their rate
-at configured high/critical pressure watermarks while preserving a minimum rate.
-
-A sampled-out event is a **successful terminal pipeline decision**. The Kafka
-record is acknowledged normally and does not enter retry/DLQ handling.
-
-Before active shaping is applied, a compact tenant/event/config decision is
-durable. The first decision wins across whole-chain retries; minute aggregates
-increment only on the first insert. If that evidence write fails, TelemetryForge
-fails open and keeps the original unshaped event.
-
-Candidate Shadow Shaping evaluates the same original event and pressure but
-never mutates the active result. Frozen-incident preview uses the same
-deterministic engine with an explicit simulated pressure value.

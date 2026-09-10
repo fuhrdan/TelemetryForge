@@ -42,3 +42,10 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+
+
+# Portable incident evidence / keys
+*.tfincident
+*.tfincident.enc
+*.archive.key
+/incident-exports/

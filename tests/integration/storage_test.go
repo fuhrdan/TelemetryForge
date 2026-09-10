@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/costsim"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	incidentarchive "github.com/fuhrdan/TelemetryForge/internal/incidentarchive"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
 	"github.com/fuhrdan/TelemetryForge/internal/router"
@@ -880,5 +882,144 @@ func TestShapingStatsAndShadowDiffPersistence(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected shaping shadow diff")
+	}
+}
+
+func TestPortableIncidentArchiveRoundTripAcrossTenants(t *testing.T) {
+	databaseURL := os.Getenv("TELEMETRYFORGE_INTEGRATION_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TELEMETRYFORGE_INTEGRATION_DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	store, err := storage.NewPostgresStore(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	sourceTenant := "archive-source-" + now.Format("150405000")
+	targetTenant := "archive-target-" + now.Format("150405000")
+	sourceIncident := "INC-ARCHIVE-" + now.Format("150405000")
+	targetIncident := sourceIncident + "-IMPORTED"
+
+	sourceCtx := security.WithTenant(ctx, sourceTenant)
+	event := domain.Event{
+		ID:            "archive-event-" + now.Format("150405000"),
+		TenantID:      sourceTenant,
+		Source:        "checkout-api",
+		Type:          "request.error",
+		Timestamp:     now,
+		SchemaVersion: "1.0",
+		CorrelationID: "archive-correlation",
+		Tags:          map[string]string{"severity": "error"},
+	}
+	if err := store.WriteFlightEvent(ctx, event); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.FreezeIncident(
+		sourceCtx,
+		sourceIncident,
+		"portable archive integration test",
+		now.Add(-time.Minute),
+		now.Add(time.Minute),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	bundle, err := incidentarchive.BuildFromSource(
+		sourceCtx,
+		store,
+		sourceIncident,
+		100,
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	filename := filepath.Join(t.TempDir(), "incident.tfincident")
+	manifest, err := incidentarchive.WriteFile(filename, bundle, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified, err := incidentarchive.ReadFile(filename, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified.Manifest.ArchiveID != manifest.ArchiveID {
+		t.Fatal("archive ID changed during round trip")
+	}
+
+	targetCtx := security.WithTenant(ctx, targetTenant)
+	importedIncident := verified.Incident
+	importedIncident.ID = targetIncident
+	records := storage.NormalizeImportedEvents(verified.Events, targetTenant)
+
+	provenance := incidentarchive.ImportProvenance{
+		ArchiveID:             verified.Manifest.ArchiveID,
+		SourceTenantID:        verified.Manifest.TenantID,
+		SourceIncidentID:      verified.Manifest.IncidentID,
+		ImportedIncidentID:    targetIncident,
+		FormatVersion:         verified.Manifest.FormatVersion,
+		TelemetryForgeVersion: verified.Manifest.TelemetryForge,
+		FileSHA256:            "integration-file-hash",
+		Encrypted:             false,
+	}
+	inserted, err := store.ImportIncidentArchive(
+		targetCtx,
+		importedIncident,
+		records,
+		provenance,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inserted != 1 {
+		t.Fatalf("inserted=%d, want 1", inserted)
+	}
+
+	importedEvents, err := store.IncidentEvents(targetCtx, targetIncident, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(importedEvents) != 1 {
+		t.Fatalf("imported event count=%d, want 1", len(importedEvents))
+	}
+	if importedEvents[0].TenantID != targetTenant {
+		t.Fatalf("imported tenant=%q, want %q", importedEvents[0].TenantID, targetTenant)
+	}
+
+	imports, err := store.ListIncidentArchiveImports(targetCtx, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, item := range imports {
+		if item.ArchiveID == manifest.ArchiveID &&
+			item.ImportedIncidentID == targetIncident {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected archive import provenance row")
+	}
+
+	// Re-importing the same archive into the same tenant is rejected so audit
+	// provenance cannot silently point at only one of multiple imports.
+	secondIncident := importedIncident
+	secondIncident.ID = targetIncident + "-SECOND"
+	provenance.ImportedIncidentID = secondIncident.ID
+	if _, err := store.ImportIncidentArchive(
+		targetCtx,
+		secondIncident,
+		records,
+		provenance,
+	); err == nil {
+		t.Fatal("duplicate archive import should fail")
 	}
 }

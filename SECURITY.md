@@ -1,8 +1,8 @@
 # Security Policy
 
-## v1.0.0 security posture
+## v1.5.0 security posture
 
-v1.0.0 implements the major application-level portfolio security boundaries:
+TelemetryForge retains the v1 application-level security boundaries and v1.5 adds portable incident evidence controls:
 
 - scoped API-key authentication
 - authentication-derived tenant identity
@@ -202,11 +202,44 @@ Credential-shaped static headers are rejected. Use `header_env` or
 mechanism. Routing dead letters retain full event envelopes and therefore require
 the same access controls as frozen incident evidence.
 
-## Adaptive sampling / shaping
 
-The Flight Recorder captures the event before v1.4 shaping. Dropped tags or
-payloads can therefore still exist in full-fidelity incident storage and backups.
-Shaping is not a substitute for ingestion-time legal/PII redaction.
+## Portable incident archives
 
-If shaping audit persistence fails, the active worker keeps the original event
-instead of performing unaudited loss.
+`.tfincident` files can contain full-fidelity frozen telemetry, schema history,
+Evidence Graph relationships, and configuration snapshots.
+
+Treat an unencrypted archive as sensitive production evidence.
+
+Optional encrypted archives use AES-256-GCM over the complete ZIP payload. The
+key must be a random 32-byte value represented as 64 hexadecimal characters.
+
+TelemetryForge does not accept human passwords for archive encryption in v1.5;
+it therefore avoids silently introducing a weak or undocumented password KDF.
+
+Archive verification rejects:
+
+- changed members;
+- extra/unlisted members;
+- missing members;
+- duplicate ZIP paths;
+- path traversal;
+- incompatible format versions;
+- count mismatches;
+- oversized archive/member/event content.
+
+Import never activates archived configuration or sends imported evidence through
+the production pipeline.
+
+Cross-tenant import requires an explicit operator acknowledgement.
+
+The following local artifacts are Git-ignored by default:
+
+```text
+*.tfincident
+*.tfincident.enc
+*.archive.key
+incident-exports/
+```
+
+Standalone HTML reports are also sensitive if they summarize real production
+evidence, even though they contain no external scripts/assets.

@@ -218,3 +218,31 @@ Adaptive-shaping tests explicitly cover:
 - retry-stable first-decision reuse when queue pressure changes;
 - exactly-once minute-stat aggregation through the decision ledger; and
 - fail-open behavior when decision persistence is unavailable.
+
+
+## v1.5.0 archive coverage
+
+Unit checks cover:
+
+- unencrypted ZIP round trip;
+- AES-256-GCM encrypted round trip/failure behavior;
+- wrong-key and ciphertext-tamper rejection;
+- member SHA-256 mismatch rejection;
+- unsafe ZIP member path rejection;
+- tenant-consistency validation;
+- HTML escaping of telemetry-controlled content.
+
+TimescaleDB integration covers:
+
+```text
+freeze -> export -> verify -> target-tenant import -> provenance
+```
+
+and proves a second import of the same archive ID into one tenant fails.
+
+CI/full environments should also run:
+
+```bash
+go test ./internal/incidentarchive
+go test ./tests/integration
+```

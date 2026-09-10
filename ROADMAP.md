@@ -15,8 +15,8 @@
 | v1.1.0 | Delivered development milestone | Schema Intelligence, schema history/drift, OpenTelemetry semantic-convention awareness |
 | v1.2.0 | Delivered development milestone | Distributed Cardinality Intelligence, hourly series budgets, forecasting |
 | v1.3.0 | Delivered development milestone | Multi-destination Telemetry Router, isolated retry/DLQ/fallback, shadow routing |
-| **v1.4.0** | **Current development release** | **Adaptive Sampling & Telemetry Shaping, protected signals, shadow visibility preview** |
-| v1.5.0 | Planned | Portable `.tfincident` incident archives |
+| v1.4.0 | Delivered development milestone | Adaptive Sampling & Telemetry Shaping |
+| **v1.5.0** | **Current development release** | **Portable `.tfincident` archives, encryption, import provenance, offline investigation** |
 | v1.6.0 | Planned | Policy lifecycle, approvals, promotion, rollback |
 | v1.7.0 | Planned | Change / deployment intelligence |
 | v1.8.0 | Planned | Connector and plugin platform |
@@ -95,21 +95,32 @@
 
 ## v1.4.0 delivered
 
-- deterministic event-hash sampling
-- bounded queue-pressure adaptation with minimum floors
-- protected error/severe/high-latency/audit/deployment/incident-tag signals
-- tag drop/rename and oversized-payload shaping
-- full-fidelity Flight Recorder before shaping
-- successful sampled-out early-stop behavior
-- fail-open audit contract
-- minute aggregate shaping statistics
-- non-destructive shadow shaping
-- Prometheus shaping metrics
+- deterministic and pressure-aware sampling
+- protected error/severe/high-latency/audit/deployment/incident telemetry
+- tag drop/rename and payload shaping
+- fail-open shaping audit path
+- active/shadow shaping comparison
+- one-hour event/byte retention statistics
 - frozen-incident visibility preview
-- dashboard/API/CLI/demo coverage
+- shaping dashboard/metrics/CLI
 - ADRs 0033-0035
 
-## v1.5.0 next
+## v1.5.0 delivered
 
-Build portable `.tfincident` archives containing frozen evidence, graph, replay,
-policy/schema/shaping snapshots, integrity metadata, and offline import/export.
+- portable `.tfincident` format
+- per-member SHA-256 integrity manifest
+- exact configuration snapshots
+- frozen event / schema / replay / cost / Evidence Graph evidence
+- optional AES-256-GCM outer encryption
+- offline inspect/verify/report commands
+- tenant-aware import with explicit remap
+- no-overwrite semantics
+- durable import provenance
+- archive import history API/dashboard
+- ADRs 0036-0039
+
+## v1.6.0 next
+
+Turn policy/shaping/routing files into managed lifecycle objects with
+draft/shadow/approved/scheduled/active/retired state, approvals, replay/archive
+evidence gates, promotion, and rollback.

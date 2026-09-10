@@ -247,3 +247,33 @@ Historical what-if preview:
 ```bash
 go run ./cmd/telemetryctl shaping preview --incident <ID> --candidate shaping/shadow.json --pressure 0.9
 ```
+
+
+## Portable archive development
+
+After generating/freezing an incident:
+
+```bash
+mkdir -p incident-exports
+
+go run ./cmd/telemetryctl incident export \
+  --id <INCIDENT_ID> \
+  --out incident-exports/<INCIDENT_ID>.tfincident
+
+go run ./cmd/telemetryctl incident verify \
+  --file incident-exports/<INCIDENT_ID>.tfincident
+
+go run ./cmd/telemetryctl incident report \
+  --file incident-exports/<INCIDENT_ID>.tfincident \
+  --out incident-exports/<INCIDENT_ID>.html
+```
+
+`incident-exports/` is Git-ignored.
+
+For encryption:
+
+```bash
+openssl rand -hex 32 > local.archive.key
+```
+
+Key/archive files are local sensitive artifacts and should not be committed.

@@ -1468,3 +1468,70 @@ select {
 .shaping-empty { min-height:90px;display:grid;place-items:center;text-align:center; }
 @media (max-width:1100px){.shaping-grid{grid-template-columns:1fr}.shaping-kpis{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:700px){.shaping-row,.shaping-diff-row{grid-template-columns:1fr 1fr}}
+
+
+.archive-section {
+  margin-top: 14px;
+}
+
+.archive-panel {
+  padding: 20px;
+}
+
+.archive-command {
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  padding: 10px 12px;
+  overflow-x: auto;
+  color: var(--accent);
+  font-size: 0.7rem;
+}
+
+.archive-list {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.archive-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.1fr) minmax(220px, 1.4fr) minmax(120px, 0.8fr) 90px;
+  gap: 12px;
+  align-items: center;
+  min-height: 62px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  font-size: 0.68rem;
+}
+
+.archive-row:first-child {
+  border-top: 0;
+}
+
+.archive-row strong,
+.archive-row span,
+.archive-row small {
+  display: block;
+}
+
+.archive-row span,
+.archive-row small,
+.archive-hash {
+  color: var(--muted);
+}
+
+.archive-row small {
+  margin-top: 4px;
+}
+
+.archive-hash {
+  font-family: monospace;
+}
+
+@media (max-width: 760px) {
+  .archive-row {
+    grid-template-columns: 1fr;
+  }
+}

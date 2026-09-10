@@ -181,12 +181,21 @@ Routing changes must preserve these release guarantees:
 - routing outbox writes remain idempotent by tenant/event/destination;
 - destination credentials come from environment/secret-manager inputs rather than committed routing JSON.
 
-### Sampling / shaping changes
+### Portable incident archive changes
 
-Protected-event behavior, deterministic hashing, and fail-open audit semantics
-are release invariants. A candidate/shadow configuration must never mutate the
-active event path. Do not add an opaque "visibility score" without separately
-exposing the measurable retention components.
+`.tfincident` is a security/integrity boundary.
+
+Changes must preserve:
+
+- strict format-version handling;
+- member SHA-256 verification;
+- ZIP path/member/size bounds;
+- no implicit production-pipeline replay on import;
+- no automatic activation of archived configuration;
+- explicit tenant-remap acknowledgement;
+- authenticated encryption when encryption is requested.
+
+Do not add password encryption without a reviewed, versioned KDF design.
 
 ## Documentation standards
 

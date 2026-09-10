@@ -1,86 +1,134 @@
-# TelemetryForge v1.4.0 Development Release Notes
+# TelemetryForge v1.5.0 Development Release Notes
 
-## Adaptive Sampling & Telemetry Shaping
+## Portable Incident Archive
 
-v1.4.0 reduces healthy high-volume telemetry without weakening the evidence-first
-incident model.
+v1.5.0 turns frozen incidents into portable, verifiable investigation
+artifacts instead of leaving them tied to one PostgreSQL database.
 
-## Deterministic sampling
+## `.tfincident`
 
-Sampling uses config identity plus canonical event ID. A compact durable
-decision ledger records the first queue-pressure decision so whole-chain retries
-reuse it and minute statistics are incremented exactly once.
+Unencrypted archives are standard ZIP files with a versioned
+`manifest.json`.
 
-## Protected telemetry
+The package can preserve:
 
-The checked-in active configuration protects errors, severe events, audit/
-deployment/security events, incident-tagged telemetry, and >=1000ms latency/
-duration signals. Protected events are never sampled out by queue pressure and
-preserve tags/payload unless a rule explicitly opts into `shape_protected`.
+- incident metadata;
+- frozen canonical events and first Flight Recorder capture time;
+- Evidence Graph;
+- replay history;
+- cost simulations;
+- relevant Schema Intelligence history/drift;
+- exact validated active/shadow Cardinality, shaping, and routing config files.
 
-## Pressure adaptation
+Every member except the manifest has a recorded SHA-256 and byte size.
 
-The active configuration uses bounded worker queue utilization to lower healthy
-traffic sampling rates at 70% and 90% queue pressure. Per-rule floors prevent
-unbounded reduction. Kafka remains the durable backpressure boundary.
+The reader rejects changed, extra, missing, duplicate, unsafe-path, oversized,
+or incompatible archive members.
 
-## Telemetry shaping
+## Encryption
 
-Rules can drop tags, rename tags, and drop oversized JSON payloads while adding
-a safe `telemetryforge.payload_oversize=true` marker. Arbitrary byte truncation
-is not used because it could create invalid JSON.
+Optional encrypted archives wrap the complete ZIP with:
 
-## Full-fidelity / fail-open safety
+```text
+AES-256-GCM
+```
 
-Flight Recorder, Schema Intelligence, and the Cardinality Firewall run before shaping, so sampling cannot hide cardinality explosions from shared estimates. A sampled-out event
-is acknowledged as a successful policy decision rather than sent to a DLQ.
+The CLI accepts a random 32-byte key encoded as 64 hex characters.
 
-Active shaping is applied only after its compact per-event decision is durable.
-The ledger contains no telemetry payload. If that write fails, TelemetryForge
-keeps the original unshaped event.
+v1.5 intentionally does not accept human passwords or invent a weak
+password-to-key scheme.
 
-## Shadow shaping
+## CLI
 
-`shaping/shadow.json` is evaluated against the same pre-shaped event and queue
-pressure but never mutates production output. Only candidate differences are
-stored.
+Added:
 
-## Visibility preview
+```bash
+telemetryctl incident export
+telemetryctl incident verify
+telemetryctl incident inspect
+telemetryctl incident report
+telemetryctl incident import
+```
 
-`telemetryctl shaping preview` evaluates active/candidate shaping against a
-frozen incident and reports explicit event, byte, protected-event, and
-source/type retention. No opaque visibility score is generated.
+`incident report` creates a standalone HTML investigation report with no
+JavaScript, external assets, analytics, or network requests.
 
-## Dashboard / API / metrics
+## Import safety
+
+Import restores **frozen evidence**, not production traffic.
+
+It does not:
+
+- invoke ingestion;
+- populate normal telemetry;
+- run sampling/cardinality/routing;
+- send to destinations;
+- activate archived configuration.
+
+Cross-tenant import requires `--allow-tenant-remap`.
+
+Existing target incident IDs are never overwritten.
+
+The same archive ID cannot be silently imported twice into one tenant.
+
+## Import provenance
+
+Migration `012_incident_archive.sql` stores:
+
+- archive ID;
+- source tenant and incident;
+- imported incident ID;
+- archive/product version;
+- complete-file SHA-256;
+- encrypted/unencrypted source flag;
+- import time.
 
 Added:
 
 ```text
-GET /api/v1/shaping/stats
-GET /api/v1/shaping/shadow-diffs
-telemetryforge_shaping_decisions_total
-telemetryforge_shaping_queue_pressure_ratio
+GET /api/v1/archive-imports
 ```
 
-The Next.js dashboard shows last-hour retention, protected/transformed counts,
-and active-vs-shadow sampling changes.
+and a dashboard provenance panel.
 
-## Demo
+## v1.4 included cumulatively
 
-```bash
-make demo-shaping
+The v1.5 development tree includes the adaptive sampling/shaping work introduced
+in the v1.4 development milestone: protected telemetry, deterministic/pressure
+sampling, safe shaping, shadow shaping, visibility statistics, and frozen-
+incident preview.
+
+## Tests
+
+Added unit coverage for:
+
+- unencrypted round trip;
+- AES-GCM wrong-key/tamper rejection;
+- per-member checksum mismatch;
+- ZIP path traversal;
+- cross-tenant bundle rejection;
+- HTML escaping.
+
+Added a TimescaleDB integration scenario covering:
+
+```text
+freeze
+ -> export
+ -> verify
+ -> tenant remap
+ -> import
+ -> provenance
+ -> duplicate import rejection
 ```
-
-The demo mixes ordinary request-duration telemetry with protected errors/high
-latency and oversized payloads.
 
 ## Known limitations
 
-- Queue pressure is process-local, not cluster-global.
-- v1.4 is event-aware sampling, not full trace-tail sampling/assembly.
-- Shaping evidence is not auto-pruned; `telemetryctl shaping prune` provides an
-  explicit guarded lifecycle operation with a 35-day minimum horizon.
-- Payload shaping supports safe whole-payload dropping rather than arbitrary
-  JSON-path transforms.
-- Full dependency-backed Go 1.27.1 and TimescaleDB validation remains CI-
-  authoritative when unavailable in a restricted sandbox.
+- Archive encryption uses symmetric operator-managed keys; public-key recipient
+  encryption/signatures are not yet implemented.
+- Archive export/import is currently a `telemetryctl` administrative workflow,
+  not a browser download/upload feature.
+- Import does not copy archived replay/cost rows into live history.
+- Configuration snapshots are evidence only and are never auto-activated.
+- Schema drift export is bounded to the newest 500 tenant findings before
+  incident source/type filtering.
+- Offline HTML reports can contain sensitive evidence and must be protected.

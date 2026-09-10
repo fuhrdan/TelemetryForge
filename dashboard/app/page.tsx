@@ -269,6 +269,18 @@ type SchemaDrift = {
   occurrences: number;
 };
 
+type ArchiveImport = {
+  archive_id: string;
+  source_tenant_id: string;
+  source_incident_id: string;
+  imported_incident_id: string;
+  format_version: number;
+  telemetryforge_version: string;
+  file_sha256: string;
+  encrypted: boolean;
+  imported_at: string;
+};
+
 type CostSimulation = {
   simulation_id: string;
   incident_id: string;
@@ -363,6 +375,7 @@ export default function Dashboard() {
   const [schemaDrift, setSchemaDrift] = useState<SchemaDrift[]>([]);
   const [selectedSchema, setSelectedSchema] = useState<SchemaEntry | null>(null);
   const [schemaHistory, setSchemaHistory] = useState<SchemaEntry[]>([]);
+  const [archiveImports, setArchiveImports] = useState<ArchiveImport[]>([]);
 
   const refresh = useCallback(async () => {
     const [
@@ -381,6 +394,7 @@ export default function Dashboard() {
       costResponse,
       schemasResponse,
       schemaDriftResponse,
+      archiveImportResponse,
     ] = await Promise.all([
       fetch("/telemetry-api/api/v1/dashboard/summary?window=5m", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/incidents?limit=20", { cache: "no-store" }),
@@ -397,6 +411,7 @@ export default function Dashboard() {
       fetch("/telemetry-api/api/v1/cost-simulations?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/schemas?limit=40", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/schema-drift?limit=30", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/archive-imports?limit=20", { cache: "no-store" }),
     ]);
 
     if (summaryResponse.ok) {
@@ -458,6 +473,10 @@ export default function Dashboard() {
     if (schemaDriftResponse.ok) {
       const payload = await schemaDriftResponse.json();
       setSchemaDrift(payload.drift ?? []);
+    }
+    if (archiveImportResponse.ok) {
+      const payload = await archiveImportResponse.json();
+      setArchiveImports(payload.imports ?? []);
     }
   }, []);
 
@@ -1100,6 +1119,42 @@ export default function Dashboard() {
             {costSimulations.length === 0 && (
               <div className="empty evidence-empty">
                 No cost simulations yet. Dollar estimates appear only with explicit pricing inputs.
+              </div>
+            )}
+          </div>
+        </article>
+      </section>
+
+      <section className="archive-section">
+        <article className="panel archive-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">PORTABLE INCIDENT ARCHIVES</div>
+              <h2>.tfincident import provenance</h2>
+            </div>
+            <span className="count-badge">{archiveImports.length}</span>
+          </div>
+          <div className="archive-command">
+            <code>telemetryctl incident export --id &lt;INCIDENT&gt; --out incident.tfincident</code>
+          </div>
+          <div className="archive-list">
+            {archiveImports.slice(0, 10).map((item) => (
+              <div className="archive-row" key={item.archive_id}>
+                <div>
+                  <strong>{item.imported_incident_id}</strong>
+                  <span>{item.source_tenant_id}/{item.source_incident_id}</span>
+                </div>
+                <div>
+                  <span>TF {item.telemetryforge_version} · format v{item.format_version}</span>
+                  <small>{item.encrypted ? "encrypted source archive" : "unencrypted source archive"}</small>
+                </div>
+                <div className="archive-hash">{item.file_sha256.slice(0, 16)}…</div>
+                <div>{clock(item.imported_at)}</div>
+              </div>
+            ))}
+            {archiveImports.length === 0 && (
+              <div className="empty evidence-empty">
+                No imported archives yet. Export, verify, inspect, and import are available through telemetryctl.
               </div>
             )}
           </div>

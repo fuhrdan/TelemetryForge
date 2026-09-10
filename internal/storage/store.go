@@ -12,6 +12,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/costsim"
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/evidence"
+	"github.com/fuhrdan/TelemetryForge/internal/incidentarchive"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
 	"github.com/fuhrdan/TelemetryForge/internal/router"
@@ -81,4 +82,13 @@ type ShapingReader interface {
 	ShapingSummary(ctx context.Context, from time.Time) (shaping.Summary, error)
 	ListShapingStats(ctx context.Context, from time.Time, limit int) ([]shaping.Stat, error)
 	ListShapingShadowDiffs(ctx context.Context, limit int) ([]shaping.ShadowDiff, error)
+}
+
+// IncidentArchiveReader exposes tenant-scoped portable archive import
+// provenance. Archive file bytes are deliberately not stored in PostgreSQL.
+type IncidentArchiveReader interface {
+	ListIncidentArchiveImports(
+		ctx context.Context,
+		limit int,
+	) ([]incidentarchive.ImportProvenance, error)
 }

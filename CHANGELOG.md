@@ -4,19 +4,27 @@
 
 _No changes yet._
 
+## [1.5.0-dev] - 2026-09-09
+
+### Portable Incident Archive
+- Added versioned `.tfincident` ZIP/JSON/JSONL format with per-member SHA-256 integrity manifest.
+- Added frozen event capture timestamps, Evidence Graph, replay/cost/schema evidence, and exact configuration snapshots.
+- Added bounded archive parsing with duplicate/member/path traversal/count validation.
+- Added optional AES-256-GCM outer encryption using explicit 256-bit key files.
+- Added `telemetryctl incident export`, `verify`, `inspect`, `report`, and `import`.
+- Added safe tenant remap, no-overwrite import, and durable import provenance.
+- Added archive-import history API/dashboard panel.
+- Added standalone script-free offline HTML incident reports.
+- Added migration 012, integration coverage, ADRs 0036-0039, and archive/security/runbook documentation.
+
 ## [1.4.0-dev] - 2026-09-09
 
-### Adaptive Sampling & Shaping
-- Added deterministic active sampling with bounded queue-pressure adaptation and per-rule floors.
-- Added default protection for errors, severe/high-latency signals, audit/deployment/security events, and incident-tagged telemetry.
-- Added tag drop/rename and safe oversized-payload dropping.
-- Added successful sampled-out early-stop semantics so policy drops do not become retries/DLQ failures.
-- Added fail-open behavior when shaping audit persistence is unavailable.
-- Added non-destructive shadow shaping and stored active/candidate differences.
-- Added minute aggregate shaping statistics and Prometheus sampling/pressure metrics.
-- Added tenant-scoped shaping APIs, dashboard panels, CLI validation/frozen-incident preview, and `make demo-shaping`.
-- Added migration 011 and ADRs 0033-0035.
-
+### Adaptive Sampling & Telemetry Shaping
+- Added deterministic event-hash sampling and worker-pressure rate reduction.
+- Protected error/severe/high-latency/audit/deployment/incident telemetry by default.
+- Added tag drop/rename and oversized-payload shaping.
+- Added fail-open shaping audit behavior and successful sampled-out early stop.
+- Added active/shadow shaping evidence, statistics, metrics, dashboard, CLI preview/pruning, and ADRs 0033-0035.
 
 ## [1.3.0-dev] - 2026-09-09
 

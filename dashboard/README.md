@@ -1,7 +1,7 @@
 # TelemetryForge Dashboard
 
-**Package version:** `1.4.0`
-**Release:** `v1.4.0`
+**Package version:** `1.5.0`
+**Release:** `v1.5.0`
 
 The dashboard is intentionally small and readable.
 
@@ -137,3 +137,13 @@ The browser still reaches these APIs through the server-side authenticated proxy
 
 Sampling policy lives in `shaping/active.json`; `shaping/shadow.json` is
 non-destructive candidate evaluation.
+
+
+## v1.5.0 additions
+
+- Portable Incident Archive import provenance panel
+- `.tfincident` operator workflow visibility
+
+Archive export itself remains a `telemetryctl` administrative workflow because
+portable incident packages contain full-fidelity evidence and should not be
+turned into an ordinary browser download endpoint.

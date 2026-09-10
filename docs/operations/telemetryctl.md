@@ -212,3 +212,63 @@ telemetryctl shaping prune --older-than 840h --tenant default
 
 This removes compact shaping decisions, minute aggregates, and shadow
 differences older than the cutoff. The command refuses a horizon below 35 days.
+
+
+## Export a portable incident archive
+
+```bash
+telemetryctl incident export \
+  --id INC-42 \
+  --tenant production \
+  --out INC-42.tfincident
+```
+
+Encrypted:
+
+```bash
+telemetryctl incident export \
+  --id INC-42 \
+  --out INC-42.tfincident.enc \
+  --encrypt-key-file archive.key
+```
+
+The exporter validates active/shadow policy, shaping, and routing files before
+preserving their exact JSON bytes.
+
+## Verify / inspect
+
+```bash
+telemetryctl incident verify --file INC-42.tfincident
+telemetryctl incident inspect --file INC-42.tfincident
+```
+
+These do not require Kafka or PostgreSQL.
+
+## Offline HTML report
+
+```bash
+telemetryctl incident report \
+  --file INC-42.tfincident \
+  --out INC-42.html
+```
+
+The report is script-free and self-contained.
+
+## Import frozen evidence
+
+```bash
+telemetryctl incident import --file INC-42.tfincident
+```
+
+Explicit tenant remap:
+
+```bash
+telemetryctl incident import \
+  --file INC-42.tfincident \
+  --tenant lab \
+  --allow-tenant-remap \
+  --new-id INC-42-LAB
+```
+
+Import never runs archived events through the live ingestion/routing path and
+never activates configuration snapshots.
