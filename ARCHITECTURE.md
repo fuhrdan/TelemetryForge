@@ -1,6 +1,6 @@
 # TelemetryForge Architecture
 
-TelemetryForge v1.9.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v2.0.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
 
@@ -417,3 +417,25 @@ key.
 ## Connector Platform
 
 The routing outbox remains the durability boundary. Connectors translate canonical post-policy events to Kafka, HTTP JSON, OTLP/HTTP JSON, Prometheus Remote Write, Splunk HEC, or Datadog Logs. Connector health is reported independently from router process readiness so one backend outage cannot restart or stall healthy delivery lanes.
+
+## Evidence-First Intelligence
+
+The v2 intelligence layer sits above frozen incident evidence; it is not in the ingestion critical path.
+
+```text
+Frozen Incident
+   +--> Evidence Graph + structured changes
+   +--> Incident Replay
+   +--> Cost Simulation
+             |
+             v
+Evidence-First Investigator
+   +--> cited findings + contradictions
+   +--> incident comparison
+   `--> advisory recommendation
+             |
+             v
+Human lifecycle review / approval / activation
+```
+
+The investigator has no production mutation interface. The v1.6 lifecycle remains the only path to configuration activation.

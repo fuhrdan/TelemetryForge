@@ -430,3 +430,17 @@ The change-analysis response explicitly treats timing relationships as observati
 ### `GET /api/v1/proofs`
 
 Returns newest-first verified operational proof records. Each row includes the parsed proof artifact, whole-file SHA-256, artifact byte count, and database recorded time. The endpoint is read-only; proof generation/recording remains an operator CLI workflow.
+
+## Evidence-First Intelligence
+
+### `GET /api/v1/incidents/{id}/investigation`
+
+Rebuilds the incident Evidence Graph from frozen events, stored replay/cost history and nearby structured changes, then returns the deterministic v2 investigation and stores the latest tenant-scoped snapshot.
+
+### `GET /api/v1/incidents/{id}/compare?other=INC-17`
+
+Returns reproducible Evidence Graph similarity plus matching node IDs. Similarity is not a root-cause assertion.
+
+### `GET /api/v1/investigations?limit=25`
+
+Returns newest-first stored investigation snapshots for the authenticated tenant.

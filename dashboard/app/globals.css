@@ -1585,3 +1585,23 @@ select {
 .proof-status.fail,.proof-status.error { color:var(--danger); border:1px solid rgba(255,101,119,.35); }
 .proof-hash { font-family:monospace; }
 @media (max-width:800px) { .proof-row { grid-template-columns:1fr; } }
+
+
+.intelligence-section { margin-top: 14px; }
+.intelligence-panel { padding: 20px; }
+.intelligence-status { border: 1px solid var(--line); border-radius: 999px; padding: 5px 9px; font-family: monospace; font-size: .62rem; text-transform: uppercase; }
+.intelligence-status.evidence_supported { color: var(--accent); }
+.intelligence-status.mixed_evidence { color: #f3bf65; }
+.intelligence-status.insufficient_evidence { color: var(--muted); }
+.intelligence-summary { border-left: 3px solid var(--accent); padding: 10px 12px; background: var(--panel-2); line-height: 1.5; font-size: .78rem; }
+.intelligence-evidence { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.intelligence-evidence span { border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; color: var(--muted); font-size: .64rem; }
+.intelligence-findings { display: grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); gap: 10px; }
+.intelligence-finding { border: 1px solid var(--line); border-radius: 8px; padding: 11px; }
+.intelligence-finding .confidence { display: inline-block; margin-right: 7px; color: var(--accent); font-family: monospace; font-size: .58rem; text-transform: uppercase; }
+.intelligence-finding strong { font-size: .75rem; }
+.intelligence-finding small,.intelligence-finding p { color: var(--muted); font-size: .65rem; line-height: 1.4; }
+.intelligence-recommendation { margin-top: 10px; border: 1px solid rgba(243,191,101,.35); border-radius: 8px; padding: 12px; background: rgba(243,191,101,.04); }
+.recommendation-label { color: #f3bf65; font-family: monospace; font-size: .58rem; margin-bottom: 5px; }
+.intelligence-recommendation p,.intelligence-recommendation small,.recommendation-safety { color: var(--muted); font-size: .65rem; line-height: 1.45; }
+.recommendation-safety { margin-top: 8px; }

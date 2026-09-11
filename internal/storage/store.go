@@ -15,6 +15,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/evidence"
 	"github.com/fuhrdan/TelemetryForge/internal/incidentarchive"
+	"github.com/fuhrdan/TelemetryForge/internal/intelligence"
 	"github.com/fuhrdan/TelemetryForge/internal/lifecycle"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/proof"
@@ -133,4 +134,11 @@ type ConnectorReader interface {
 // OperationalProofReader exposes recorded reproducible HA/benchmark evidence.
 type OperationalProofReader interface {
 	ListOperationalProofs(context.Context, int) ([]proof.Stored, error)
+}
+
+// IntelligenceStore persists deterministic v2 evidence-first investigations.
+type IntelligenceStore interface {
+	SaveInvestigation(context.Context, intelligence.Investigation) error
+	Investigation(context.Context, string) (intelligence.Investigation, bool, error)
+	ListInvestigations(context.Context, int) ([]intelligence.Investigation, error)
 }

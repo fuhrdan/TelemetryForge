@@ -10,7 +10,7 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current development release:** `v1.9.0` — Scale, HA & Operational Proof: versioned `.tfproof.json` evidence, benchmark/chaos/backup/rolling-update harnesses, and hardened multi-replica Kubernetes rollout defaults.
+> **Current release:** `v2.0.0` — Evidence-First Intelligent Telemetry Control Plane with cited investigations, incident comparison, and human-gated policy recommendations.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -18,6 +18,19 @@ backend. It controls telemetry **before** downstream cost, cardinality, policy,
 and evidence decisions become irreversible.
 
 ## Signature capabilities
+
+### Evidence-First Investigator
+
+v2.0 synthesizes the existing Evidence Graph into operator-readable findings while preserving the underlying citations. Findings show supporting and contradictory graph edges, exact node IDs, and explicit uncertainty. `insufficient_evidence` is a first-class successful result rather than an excuse to invent a root cause.
+
+```bash
+telemetryctl intelligence investigate --id INC-42
+telemetryctl intelligence compare --left INC-42 --right INC-17
+```
+
+Policy recommendations are advisory only and can cite recorded replay/cost artifacts. Production changes still require the immutable lifecycle's human review and approval.
+
+Read [Evidence-First Investigator](docs/intelligence/evidence-first-investigator.md).
 
 ### Incident Flight Recorder
 

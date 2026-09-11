@@ -1,7 +1,7 @@
 # TelemetryForge Dashboard
 
-**Package version:** `1.9.0`
-**Release:** `v1.9.0`
+**Package version:** `2.0.0`
+**Release:** `v2.0.0`
 
 The dashboard is intentionally small and readable.
 
@@ -176,3 +176,12 @@ The dashboard receives no connector credentials.
 - whole-file artifact SHA-256 provenance
 
 The dashboard displays recorded evidence; it does not invent or extrapolate benchmark claims.
+
+## v2.0.0 additions
+
+- Evidence-First Investigator panel
+- finding confidence plus supporting/contradicting citation counts
+- replay/cost evidence counts
+- advisory policy recommendation surface with explicit human-approval warning
+
+The browser receives cited investigation results through the existing server-side gateway proxy. It does not receive a global lifecycle `control` credential and cannot activate a recommendation.

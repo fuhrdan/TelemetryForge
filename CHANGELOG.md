@@ -4,6 +4,16 @@
 
 _No changes yet._
 
+## [2.0.0] - 2026-09-11
+
+### Evidence-First Intelligence
+- Added deterministic incident synthesis with exact Evidence Graph citations and contradiction visibility.
+- Added explicit insufficient, mixed, and evidence-supported result states.
+- Added reproducible incident comparison with cited node IDs and non-causal similarity disclaimer.
+- Added advisory shadow-policy recommendations backed by stored cost-simulation and replay artifacts.
+- Kept production mutation exclusively behind existing human-reviewed lifecycle promotion.
+- Added tenant-scoped intelligence snapshot storage, API, CLI, dashboard, migration 017, docs and ADRs 0049-0051.
+
 ## [1.9.0-dev] - 2026-09-10
 
 ### Scale, HA & Operational Proof

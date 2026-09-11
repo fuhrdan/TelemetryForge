@@ -299,3 +299,13 @@ telemetryctl proof list --limit 25
 ```
 
 Recording is idempotent only for the same run ID, whole-file SHA-256, and byte count.
+
+## Evidence-First Intelligence commands
+
+```bash
+telemetryctl intelligence investigate --id INC-42 --tenant production
+telemetryctl intelligence compare --left INC-42 --right INC-17 --tenant production
+telemetryctl intelligence list --limit 25 --tenant production
+```
+
+Investigation and comparison are read/analysis workflows. They do not promote policy or mutate production configuration.

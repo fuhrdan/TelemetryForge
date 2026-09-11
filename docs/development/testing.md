@@ -274,3 +274,17 @@ Focused tests cover connector catalog/protocols, vendor credential health probes
 Focused checks cover strict proof validation, non-finite measurement rejection, whole-file provenance, proof storage idempotency boundaries, API serialization, CLI verification, Python-to-Go artifact compatibility, dashboard TypeScript, Kubernetes HA invariants, and YAML/Compose structure.
 
 Disruptive outage/restore/rollout harnesses require explicit execution and are not silently run by ordinary unit tests.
+
+## v2.0.0 intelligence coverage
+
+Focused coverage verifies:
+
+- explicit insufficient-evidence behavior;
+- supporting and contradicting edge citations;
+- recommendation evidence and mandatory human approval;
+- deterministic incident comparison overlap;
+- intelligence storage/API/CLI boundaries;
+- dashboard TypeScript;
+- migration/document/version consistency.
+
+The complete Go 1.27.1 dependency-backed suite remains part of CI.

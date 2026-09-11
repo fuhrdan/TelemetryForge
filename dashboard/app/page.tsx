@@ -252,6 +252,57 @@ type EvidenceGraph = {
   hypotheses: EvidenceHypothesis[];
 };
 
+type IntelligenceCitation = {
+  from: string;
+  to: string;
+  relation: string;
+  assessment: string;
+  reason: string;
+};
+
+type IntelligenceFinding = {
+  id: string;
+  statement: string;
+  status: string;
+  confidence: string;
+  supporting?: IntelligenceCitation[];
+  contradicting?: IntelligenceCitation[];
+  cited_node_ids?: string[];
+  notes: string;
+};
+
+type IntelligenceRecommendation = {
+  id: string;
+  kind: string;
+  title: string;
+  rationale: string;
+  expected_effects?: Record<string, number>;
+  evidence?: Array<{ kind: string; id: string; note: string }>;
+  requires_human_approval: boolean;
+  lifecycle_action: string;
+  safety: string;
+};
+
+type IntelligenceInvestigation = {
+  incident_id: string;
+  generated_at: string;
+  engine: string;
+  status: "evidence_supported" | "mixed_evidence" | "insufficient_evidence" | string;
+  summary: string;
+  findings: IntelligenceFinding[];
+  recommendations?: IntelligenceRecommendation[];
+  evidence: {
+    graph_nodes: number;
+    graph_edges: number;
+    supporting_edges: number;
+    contradicting_edges: number;
+    replay_runs: number;
+    cost_simulations: number;
+    findings_with_conflict: number;
+  };
+  disclaimer: string;
+};
+
 type SchemaSemanticFinding = {
   key: string;
   path: string;
@@ -453,6 +504,7 @@ export default function Dashboard() {
   const [selected, setSelected] = useState<Incident | null>(null);
   const [incidentEvents, setIncidentEvents] = useState<TelemetryEvent[]>([]);
   const [evidenceGraph, setEvidenceGraph] = useState<EvidenceGraph | null>(null);
+  const [investigation, setInvestigation] = useState<IntelligenceInvestigation | null>(null);
   const [streamState, setStreamState] = useState("connecting");
   const [sourceFilter, setSourceFilter] = useState("");
   const [findings, setFindings] = useState<CardinalityFinding[]>([]);
@@ -629,6 +681,7 @@ export default function Dashboard() {
     if (!selected) {
       setIncidentEvents([]);
       setEvidenceGraph(null);
+      setInvestigation(null);
       return;
     }
 
@@ -636,16 +689,20 @@ export default function Dashboard() {
     Promise.all([
       fetch(`/telemetry-api/api/v1/incidents/${incidentID}/events`, { cache: "no-store" }),
       fetch(`/telemetry-api/api/v1/incidents/${incidentID}/evidence-graph`, { cache: "no-store" }),
+      fetch(`/telemetry-api/api/v1/incidents/${incidentID}/investigation`, { cache: "no-store" }),
     ])
-      .then(async ([eventsResponse, graphResponse]) => {
+      .then(async ([eventsResponse, graphResponse, investigationResponse]) => {
         const eventsPayload = eventsResponse.ok ? await eventsResponse.json() : { events: [] };
         const graphPayload = graphResponse.ok ? await graphResponse.json() : null;
+        const investigationPayload = investigationResponse.ok ? await investigationResponse.json() : null;
         setIncidentEvents(eventsPayload.events ?? []);
         setEvidenceGraph(graphPayload);
+        setInvestigation(investigationPayload);
       })
       .catch(() => {
         setIncidentEvents([]);
         setEvidenceGraph(null);
+        setInvestigation(null);
       });
   }, [selected]);
 
@@ -878,6 +935,49 @@ export default function Dashboard() {
                 ))}
                 {incidentEvents.length === 0 && <div className="empty">No captured events in this window.</div>}
               </div>
+            </>
+          )}
+        </article>
+      </section>
+
+      <section className="intelligence-section">
+        <article className="panel intelligence-panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">EVIDENCE-FIRST INVESTIGATOR</div>
+              <h2>{selected ? `Investigation for ${selected.id}` : "Select an incident"}</h2>
+            </div>
+            {investigation && <span className={`intelligence-status ${investigation.status}`}>{investigation.status.replaceAll("_", " ")}</span>}
+          </div>
+          {!investigation && <div className="empty">Select a frozen incident to generate deterministic, cited investigative findings.</div>}
+          {investigation && (
+            <>
+              <div className="intelligence-summary">{investigation.summary}</div>
+              <div className="intelligence-evidence">
+                <span>{investigation.evidence.supporting_edges} supporting</span>
+                <span>{investigation.evidence.contradicting_edges} contradicting</span>
+                <span>{investigation.evidence.replay_runs} replays</span>
+                <span>{investigation.evidence.cost_simulations} cost sims</span>
+              </div>
+              <div className="intelligence-findings">
+                {investigation.findings.map((finding) => (
+                  <div className={`intelligence-finding ${finding.status}`} key={finding.id}>
+                    <div><span className="confidence">{finding.confidence}</span><strong>{finding.statement}</strong></div>
+                    <small>{(finding.supporting ?? []).length} support · {(finding.contradicting ?? []).length} contradict · {(finding.cited_node_ids ?? []).length} cited nodes</small>
+                    <p>{finding.notes}</p>
+                  </div>
+                ))}
+              </div>
+              {(investigation.recommendations ?? []).map((recommendation) => (
+                <div className="intelligence-recommendation" key={recommendation.id}>
+                  <div className="recommendation-label">ADVISORY · HUMAN APPROVAL REQUIRED</div>
+                  <strong>{recommendation.title}</strong>
+                  <p>{recommendation.rationale}</p>
+                  <small>{recommendation.lifecycle_action}</small>
+                  <div className="recommendation-safety">{recommendation.safety}</div>
+                </div>
+              ))}
+              <div className="graph-disclaimer">{investigation.disclaimer}</div>
             </>
           )}
         </article>

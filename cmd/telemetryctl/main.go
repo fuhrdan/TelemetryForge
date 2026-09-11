@@ -23,6 +23,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	"github.com/fuhrdan/TelemetryForge/internal/evidence"
 	incidentarchive "github.com/fuhrdan/TelemetryForge/internal/incidentarchive"
+	"github.com/fuhrdan/TelemetryForge/internal/intelligence"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/proof"
@@ -122,6 +123,24 @@ func main() {
 		}
 		if err := costSimulate(ctx, os.Args[3:]); err != nil {
 			exitErr(err)
+		}
+	case "intelligence":
+		switch os.Args[2] {
+		case "investigate":
+			if err := intelligenceInvestigate(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "compare":
+			if err := intelligenceCompare(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "list":
+			if err := intelligenceList(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		default:
+			usage()
+			os.Exit(2)
 		}
 	case "proof":
 		switch os.Args[2] {
@@ -261,6 +280,125 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
+}
+
+func intelligenceInvestigate(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("intelligence investigate", flag.ContinueOnError)
+	incidentID := set.String("id", "", "incident identifier")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*incidentID) == "" {
+		return errors.New("--id is required")
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	graph, runs, simulations, err := intelligenceInputs(ctx, store, *tenant, *incidentID)
+	if err != nil {
+		return err
+	}
+	result := intelligence.Investigate(graph, runs, simulations)
+	if err := store.SaveInvestigation(ctx, result); err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(result, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func intelligenceCompare(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("intelligence compare", flag.ContinueOnError)
+	left := set.String("left", "", "left incident identifier")
+	right := set.String("right", "", "right incident identifier")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*left) == "" || strings.TrimSpace(*right) == "" {
+		return errors.New("--left and --right are required")
+	}
+	if *left == *right {
+		return errors.New("comparison requires two different incidents")
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	leftGraph, _, _, err := intelligenceInputs(ctx, store, *tenant, *left)
+	if err != nil {
+		return err
+	}
+	rightGraph, _, _, err := intelligenceInputs(ctx, store, *tenant, *right)
+	if err != nil {
+		return err
+	}
+	result := intelligence.Compare(leftGraph, rightGraph)
+	payload, _ := json.MarshalIndent(result, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func intelligenceList(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("intelligence list", flag.ContinueOnError)
+	limit := set.Int("limit", 25, "maximum investigation snapshots")
+	tenant := set.String("tenant", env("TELEMETRYFORGE_TENANT_ID", "default"), "tenant identifier")
+	databaseURL := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	ctx = security.WithTenant(ctx, *tenant)
+	store, err := storage.NewPostgresStore(ctx, *databaseURL)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	items, err := store.ListInvestigations(ctx, *limit)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(map[string]any{"count": len(items), "investigations": items}, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func intelligenceInputs(ctx context.Context, store *storage.PostgresStore, tenant, incidentID string) (evidence.Graph, []replay.Run, []costsim.Result, error) {
+	events, err := store.IncidentEvents(ctx, incidentID, 1000)
+	if err != nil {
+		return evidence.Graph{}, nil, nil, err
+	}
+	if len(events) == 0 {
+		return evidence.Graph{}, nil, nil, fmt.Errorf("incident %q not found or contains no events for tenant %q", incidentID, tenant)
+	}
+	runs, err := store.ListReplayRuns(ctx, 200)
+	if err != nil {
+		return evidence.Graph{}, nil, nil, err
+	}
+	simulations, err := store.ListCostSimulations(ctx, 200)
+	if err != nil {
+		return evidence.Graph{}, nil, nil, err
+	}
+	from, to := events[0].Timestamp, events[0].Timestamp
+	for _, event := range events[1:] {
+		if event.Timestamp.Before(from) {
+			from = event.Timestamp
+		}
+		if event.Timestamp.After(to) {
+			to = event.Timestamp
+		}
+	}
+	changes, _ := store.ChangesBetween(ctx, from.Add(-15*time.Minute), to.Add(5*time.Minute), 100)
+	graph := evidence.BuildWithChanges(tenant, incidentID, events, runs, simulations, changes)
+	_ = store.SaveEvidenceGraph(ctx, graph)
+	return graph, runs, simulations, nil
 }
 
 func proofVerify(args []string) error {
@@ -1618,6 +1756,9 @@ func usage() {
   telemetryctl schema inspect --source checkout-api --type request.duration [--tenant default]
   telemetryctl schema diff --source checkout-api --type request.duration --from 1.0 --to 2.0 [--tenant default]
   telemetryctl schema prune [--older-than 840h] [--tenant default]
+  telemetryctl intelligence investigate --id INC-42 [--tenant default]
+  telemetryctl intelligence compare --left INC-42 --right INC-17 [--tenant default]
+  telemetryctl intelligence list [--limit 25] [--tenant default]
   telemetryctl proof verify --file run.tfproof.json
   telemetryctl proof record --file run.tfproof.json
   telemetryctl proof list [--limit 25]

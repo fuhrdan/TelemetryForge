@@ -100,6 +100,8 @@ func (server *Server) routes() {
 		server.mux.HandleFunc("GET /api/v1/incidents", server.handleIncidents)
 		server.mux.HandleFunc("GET /api/v1/incidents/{id}/events", server.handleIncidentEvents)
 		server.mux.HandleFunc("GET /api/v1/incidents/{id}/evidence-graph", server.handleEvidenceGraph)
+		server.mux.HandleFunc("GET /api/v1/incidents/{id}/investigation", server.handleInvestigation)
+		server.mux.HandleFunc("GET /api/v1/incidents/{id}/compare", server.handleIncidentComparison)
 		server.mux.HandleFunc("GET /api/v1/incidents/{id}/changes", server.handleIncidentChanges)
 		server.mux.HandleFunc("GET /api/v1/live", server.handleLive)
 		if _, ok := server.reader.(storage.PolicyReader); ok {
@@ -129,6 +131,9 @@ func (server *Server) routes() {
 		if _, ok := server.reader.(storage.ShapingReader); ok {
 			server.mux.HandleFunc("GET /api/v1/shaping/stats", server.handleShapingStats)
 			server.mux.HandleFunc("GET /api/v1/shaping/shadow-diffs", server.handleShapingShadowDiffs)
+		}
+		if _, ok := server.reader.(storage.IntelligenceStore); ok {
+			server.mux.HandleFunc("GET /api/v1/investigations", server.handleInvestigationHistory)
 		}
 		if _, ok := server.reader.(storage.OperationalProofReader); ok {
 			server.mux.HandleFunc("GET /api/v1/proofs", server.handleProofs)

@@ -264,3 +264,9 @@ secrets, but its raw evidence can contain operationally sensitive data.
 Store raw proof evidence in an approved artifact system with access controls.
 Use the SHA-256 references in `.tfproof.json` to associate the summary with its
 raw evidence without committing a database dump to the repository.
+
+## v2 intelligence safety boundary
+
+The built-in Evidence-First Investigator is deterministic and operates only on tenant-scoped stored evidence. It does not send incident evidence to an external model.
+
+Recommendations are advisory. The intelligence package has no production configuration mutation capability; activation remains protected by the global `control` scope, immutable lifecycle state, evidence gates and human approval.

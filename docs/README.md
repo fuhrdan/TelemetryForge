@@ -46,6 +46,13 @@ to reconstruct every decision from implementation details.
 - [Automatic incident capture](incidents/automatic-capture.md)
 
 
+## Evidence-First Intelligence
+
+- [Evidence-First Investigator](intelligence/evidence-first-investigator.md)
+- [Incident Comparison](intelligence/incident-comparison.md)
+- [Policy Recommendations](intelligence/policy-recommendations.md)
+- [v2.0.0 delivered scope](roadmap/v2.0.0.md)
+
 ## Evidence Graph
 
 - [Evidence Graph](evidence/evidence-graph.md)

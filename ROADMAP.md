@@ -20,8 +20,8 @@
 | v1.6.0 | Delivered development milestone | Policy lifecycle model, approval/evidence gates, managed configuration state foundation |
 | v1.7.0 | Delivered development milestone | Change Intelligence, before/after analysis, observed blast radius, rollback evidence |
 | v1.8.0 | Delivered development milestone | Connector Platform, OTLP/HTTP JSON, Prometheus Remote Write, Kafka/HTTP/vendor adapters, runtime health |
-| **v1.9.0** | **Current development release** | **Scale, HA, chaos, backup/restore and reproducible operational proof artifacts** |
-| v2.0.0 | Planned | Evidence-first intelligent telemetry control plane |
+| v1.9.0 | Delivered development milestone | Scale, HA, chaos, backup/restore and reproducible operational proof artifacts |
+| **v2.0.0** | **Released** | **Evidence-first investigator, cited incident comparison, human-gated recommendations** |
 
 ## v1.2.0 delivered
 
@@ -176,10 +176,14 @@
 - migration 016
 - ADRs 0046-0048
 
-## v2.0.0 next
+## v2.0.0 delivered
 
-Build the Evidence-First Intelligent Telemetry Control Plane on top of the
-mature evidence, lifecycle, change intelligence, connector, and operational
-proof foundations. Recommendation/AI output should cite captured evidence,
-show contradictions/uncertainty, and require explicit human promotion before
-production policy changes.
+- deterministic Evidence-First Investigator
+- exact Evidence Graph edge/node citations
+- explicit insufficient/mixed/supported states
+- contradictory-evidence visibility
+- tenant-scoped investigation history
+- reproducible incident comparison with cited matching nodes
+- recorded Cost Simulation / Replay-backed policy evaluation recommendations
+- mandatory human lifecycle approval for production changes
+- API, CLI, dashboard, migration 017, tests and ADRs 0049-0051
