@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+source "$(dirname "$0")/_common.sh"; require_execute "$@"; [[ " ${*} " == *" --ack-cluster-change "* ]] || { echo 'Requires --ack-cluster-change' >&2; exit 2; }; started=$(iso_now); stamp=$(date +%s); log="$RESULTS/raw/k8s-rollout-$stamp.log"; out="$RESULTS/k8s-rollout-$stamp.tfproof.json"; t0=$(date +%s)
+set +e
+{ kubectl -n telemetryforge get pdb,deploy -o wide; kubectl -n telemetryforge rollout restart deployment/gateway deployment/worker deployment/router deployment/dashboard; for d in gateway worker router dashboard; do kubectl -n telemetryforge rollout status deployment/$d --timeout=10m; done; kubectl -n telemetryforge get pdb,deploy -o wide; } >"$log" 2>&1; rc=$?
+set -e; dur=$(($(date +%s)-t0)); status=$([[ $rc -eq 0 ]]&&echo pass||echo fail)
+write_proof --out "$out" --scenario kubernetes-rolling-restart --status "$status" --started-at "$started" --assertion "rollout-complete:$status:all TelemetryForge deployments completed rolling restart" --measurement "rollout_seconds:$dur:s" --evidence "log:$log" --config "k8s-gateway:$ROOT/deployments/kubernetes/base/gateway.yaml" --config "k8s-worker:$ROOT/deployments/kubernetes/base/worker.yaml" --config "k8s-router:$ROOT/deployments/kubernetes/base/router.yaml"; echo "$out"

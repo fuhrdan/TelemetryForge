@@ -1,6 +1,6 @@
 # TelemetryForge Architecture
 
-TelemetryForge v1.8.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v1.9.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
 
@@ -279,6 +279,36 @@ import.
 
 The parser bounds member count, individual member size, total uncompressed
 bytes, event count, JSONL line size, and ZIP member paths.
+
+## Operational Proof plane
+
+v1.9 adds a separate evidence loop around the running control plane:
+
+```text
+executed scenario
+   |
+   +--> raw command / k6 / DB / Kubernetes evidence
+   |
+   v
+.tfproof.json
+   |  Git commit
+   |  environment
+   |  configuration SHA-256
+   |  measurements
+   |  assertions
+   |  raw evidence SHA-256
+   v
+telemetryctl verify / record
+   |
+   v
+operational_proof_runs --> API --> dashboard
+```
+
+Proof tooling does not sit on the production event path. It observes or
+intentionally perturbs approved test infrastructure and records what happened.
+
+Kubernetes availability hardening complements the proof loop with explicit
+RollingUpdate, PDB, HPA, topology-spread, and readiness semantics.
 
 ## Self-observability
 

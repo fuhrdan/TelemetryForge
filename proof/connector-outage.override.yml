@@ -1,0 +1,8 @@
+services:
+  worker:
+    environment:
+      TELEMETRYFORGE_ROUTING_FILE: /etc/telemetryforge/routing/proof-connector-outage.json
+      TELEMETRYFORGE_SHADOW_ROUTING_FILE: disabled
+  router:
+    environment:
+      TELEMETRYFORGE_ROUTING_FILE: /etc/telemetryforge/routing/proof-connector-outage.json

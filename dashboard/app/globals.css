@@ -1571,3 +1571,17 @@ select {
 @media (max-width: 620px) { .change-score-grid,.change-impact-row { grid-template-columns: 1fr; } .change-row { grid-template-columns: 72px 1fr; } .change-row time { display:none; } }
 
 .connector-section{margin-top:14px}.connector-panel{padding:20px}.connector-list{border:1px solid var(--line);border-radius:9px;overflow:hidden}.connector-row{display:grid;grid-template-columns:minmax(180px,1.3fr) minmax(180px,1.3fr) minmax(150px,1fr) 95px;gap:12px;align-items:center;padding:10px 12px;border-top:1px solid var(--line);font-size:.68rem}.connector-row:first-child{border-top:0}.connector-row strong,.connector-row span,.connector-row small{display:block}.connector-row>div>span,.connector-row small{color:var(--muted);margin-top:3px}.connector-signals{display:flex;gap:5px;flex-wrap:wrap}.connector-signals span{border:1px solid var(--line);border-radius:999px;padding:3px 7px;color:var(--muted);font-family:monospace;font-size:.6rem}.connector-ready{justify-self:end;border-radius:999px;padding:4px 8px;text-transform:uppercase;letter-spacing:.05em;font-family:monospace;font-size:.58rem}.connector-ready.ready{color:var(--accent);border:1px solid rgba(78,231,194,.35)}.connector-ready.down{color:var(--danger);border:1px solid rgba(255,101,119,.35)}.connector-footnote{margin-top:10px;color:var(--muted);font-size:.65rem;line-height:1.45}@media(max-width:800px){.connector-row{grid-template-columns:1fr}.connector-ready{justify-self:start}}
+
+
+.proof-section { margin-top: 14px; }
+.proof-panel { padding: 20px; }
+.proof-list { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.proof-row { display:grid; grid-template-columns:minmax(180px,1.2fr) 90px minmax(240px,1.6fr) minmax(140px,.9fr); gap:12px; align-items:center; padding:10px 12px; border-top:1px solid var(--line); font-size:.68rem; }
+.proof-row:first-child { border-top:0; }
+.proof-row strong,.proof-row span,.proof-row small { display:block; }
+.proof-row span,.proof-row small,.proof-hash { color:var(--muted); }
+.proof-status { justify-self:start; border-radius:999px; padding:4px 8px; text-transform:uppercase; font-family:monospace; font-size:.58rem; }
+.proof-status.pass { color:var(--accent); border:1px solid rgba(78,231,194,.35); }
+.proof-status.fail,.proof-status.error { color:var(--danger); border:1px solid rgba(255,101,119,.35); }
+.proof-hash { font-family:monospace; }
+@media (max-width:800px) { .proof-row { grid-template-columns:1fr; } }

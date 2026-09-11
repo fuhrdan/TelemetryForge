@@ -93,3 +93,8 @@ Do not:
 
 The first checked-in benchmark result should be added only after the actual
 environment can run the dependency-backed stack and k6 scenario end to end.
+
+
+## v1.9 operational proof
+
+When a benchmark result is intended for publication, preserve it as a verified `.tfproof.json` and keep the referenced raw k6 output. See [Operational Proof Artifacts](operational-proof.md). A configured threshold is not automatically an achieved capacity claim.

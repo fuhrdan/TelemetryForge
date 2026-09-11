@@ -78,6 +78,10 @@ REQUIRED = [
     ROOT / "docs" / "connectors" / "vendor-adapters.md",
     ROOT / "docs" / "operations" / "connectors.md",
     ROOT / "docs" / "roadmap" / "v1.8.0.md",
+    ROOT / "docs" / "proof" / "operational-proof.md",
+    ROOT / "docs" / "proof" / "ha-scenarios.md",
+    ROOT / "docs" / "proof" / "benchmark-methodology-v1.9.md",
+    ROOT / "docs" / "roadmap" / "v1.9.0.md",
 ]
 
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

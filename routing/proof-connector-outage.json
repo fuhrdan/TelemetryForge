@@ -1,0 +1,30 @@
+{
+  "name": "proof-connector-outage",
+  "version": "1.9.0-proof",
+  "destinations": [
+    {
+      "name": "healthy-kafka",
+      "type": "connector",
+      "enabled": true,
+      "connector": {"kind": "kafka", "topic": "telemetry.routed.primary"},
+      "max_attempts": 3,
+      "base_delay_ms": 250,
+      "max_delay_ms": 2000,
+      "concurrency": 1
+    },
+    {
+      "name": "broken-http",
+      "type": "connector",
+      "enabled": true,
+      "connector": {"kind": "http_json", "endpoint": "http://127.0.0.1:9/unreachable"},
+      "max_attempts": 4,
+      "base_delay_ms": 250,
+      "max_delay_ms": 2000,
+      "concurrency": 1
+    }
+  ],
+  "fallback_destination": "healthy-kafka",
+  "rules": [
+    {"name":"proof-fanout","tenant":"*","source":"proof-*","type":"*","destinations":["healthy-kafka","broken-http"]}
+  ]
+}

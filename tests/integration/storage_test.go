@@ -13,6 +13,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	incidentarchive "github.com/fuhrdan/TelemetryForge/internal/incidentarchive"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
+	"github.com/fuhrdan/TelemetryForge/internal/proof"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
 	"github.com/fuhrdan/TelemetryForge/internal/router"
 	"github.com/fuhrdan/TelemetryForge/internal/schema"
@@ -1021,5 +1022,49 @@ func TestPortableIncidentArchiveRoundTripAcrossTenants(t *testing.T) {
 		provenance,
 	); err == nil {
 		t.Fatal("duplicate archive import should fail")
+	}
+}
+
+func TestOperationalProofPersistence(t *testing.T) {
+	databaseURL := os.Getenv("TELEMETRYFORGE_INTEGRATION_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TELEMETRYFORGE_INTEGRATION_DATABASE_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	store, err := storage.NewPostgresStore(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Now().UTC()
+	runID := fmt.Sprintf("proof-%d", now.UnixNano())
+	run := proof.Run{Format: proof.Format, FormatVersion: proof.Version, RunID: runID, GitCommit: "integration", Scenario: "storage-proof", Status: "pass", StartedAt: now, CompletedAt: now.Add(time.Second), Assertions: []proof.Assertion{{Name: "stored", Passed: true}}, Evidence: []proof.Evidence{{Kind: "integration", Reference: "database"}}, Configuration: []proof.Fingerprint{{Name: "integration", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}
+	sha := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	if err := store.RecordOperationalProof(ctx, run, sha, 123); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordOperationalProof(ctx, run, sha, 123); err != nil {
+		t.Fatalf("idempotent record failed: %v", err)
+	}
+	if err := store.RecordOperationalProof(ctx, run, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", 124); err == nil {
+		t.Fatal("expected run-id provenance conflict")
+	}
+	items, err := store.ListOperationalProofs(ctx, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, item := range items {
+		if item.Run.RunID == runID {
+			found = true
+			if item.ArtifactSHA256 != sha || item.ArtifactBytes != 123 {
+				t.Fatalf("bad provenance: %#v", item)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatal("recorded proof not found")
 	}
 }

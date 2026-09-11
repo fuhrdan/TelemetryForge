@@ -25,6 +25,7 @@ import (
 	incidentarchive "github.com/fuhrdan/TelemetryForge/internal/incidentarchive"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
+	"github.com/fuhrdan/TelemetryForge/internal/proof"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
 	"github.com/fuhrdan/TelemetryForge/internal/router"
 	"github.com/fuhrdan/TelemetryForge/internal/schema"
@@ -121,6 +122,24 @@ func main() {
 		}
 		if err := costSimulate(ctx, os.Args[3:]); err != nil {
 			exitErr(err)
+		}
+	case "proof":
+		switch os.Args[2] {
+		case "verify":
+			if err := proofVerify(os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "record":
+			if err := proofRecord(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "list":
+			if err := proofList(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		default:
+			usage()
+			os.Exit(2)
 		}
 	case "policy":
 		if os.Args[2] != "validate" {
@@ -242,6 +261,69 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
+}
+
+func proofVerify(args []string) error {
+	set := flag.NewFlagSet("proof verify", flag.ContinueOnError)
+	file := set.String("file", "", ".tfproof.json file")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*file) == "" {
+		return errors.New("--file is required")
+	}
+	run, sha, size, err := proof.ReadFile(*file)
+	if err != nil {
+		return err
+	}
+	out, _ := json.MarshalIndent(map[string]any{"run": run, "artifact_sha256": sha, "artifact_bytes": size}, "", "  ")
+	fmt.Println(string(out))
+	return nil
+}
+func proofRecord(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("proof record", flag.ContinueOnError)
+	file := set.String("file", "", "verified .tfproof.json file")
+	db := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*file) == "" {
+		return errors.New("--file is required")
+	}
+	run, sha, size, err := proof.ReadFile(*file)
+	if err != nil {
+		return err
+	}
+	store, err := storage.NewPostgresStore(ctx, *db)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	if err := store.RecordOperationalProof(ctx, run, sha, size); err != nil {
+		return err
+	}
+	fmt.Printf("recorded proof %s scenario=%s status=%s sha256=%s bytes=%d\n", run.RunID, run.Scenario, run.Status, sha, size)
+	return nil
+}
+func proofList(ctx context.Context, args []string) error {
+	set := flag.NewFlagSet("proof list", flag.ContinueOnError)
+	limit := set.Int("limit", 25, "maximum proof rows")
+	db := set.String("database-url", env("TELEMETRYFORGE_DATABASE_URL", ""), "PostgreSQL URL")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	store, err := storage.NewPostgresStore(ctx, *db)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	items, err := store.ListOperationalProofs(ctx, *limit)
+	if err != nil {
+		return err
+	}
+	out, _ := json.MarshalIndent(map[string]any{"count": len(items), "proofs": items}, "", "  ")
+	fmt.Println(string(out))
+	return nil
 }
 
 func incidentFreeze(ctx context.Context, args []string) error {
@@ -1536,6 +1618,9 @@ func usage() {
   telemetryctl schema inspect --source checkout-api --type request.duration [--tenant default]
   telemetryctl schema diff --source checkout-api --type request.duration --from 1.0 --to 2.0 [--tenant default]
   telemetryctl schema prune [--older-than 840h] [--tenant default]
+  telemetryctl proof verify --file run.tfproof.json
+  telemetryctl proof record --file run.tfproof.json
+  telemetryctl proof list [--limit 25]
   telemetryctl connector catalog
   telemetryctl connector validate [--file routing/active.json]
   telemetryctl connector list [--limit 100]

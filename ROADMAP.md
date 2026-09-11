@@ -19,8 +19,8 @@
 | v1.5.0 | Delivered development milestone | Portable `.tfincident` archives, encryption, import provenance, offline investigation |
 | v1.6.0 | Delivered development milestone | Policy lifecycle model, approval/evidence gates, managed configuration state foundation |
 | v1.7.0 | Delivered development milestone | Change Intelligence, before/after analysis, observed blast radius, rollback evidence |
-| **v1.8.0** | **Current development release** | **Connector Platform, OTLP/HTTP JSON, Prometheus Remote Write, Kafka/HTTP/vendor adapters, runtime health** |
-| v1.9.0 | Planned | Scale, HA, chaos and operational proof |
+| v1.8.0 | Delivered development milestone | Connector Platform, OTLP/HTTP JSON, Prometheus Remote Write, Kafka/HTTP/vendor adapters, runtime health |
+| **v1.9.0** | **Current development release** | **Scale, HA, chaos, backup/restore and reproducible operational proof artifacts** |
 | v2.0.0 | Planned | Evidence-first intelligent telemetry control plane |
 
 ## v1.2.0 delivered
@@ -119,13 +119,6 @@
 - archive import history API/dashboard
 - ADRs 0036-0039
 
-## v1.6.0 next
-
-Turn policy/shaping/routing files into managed lifecycle objects with
-draft/shadow/approved/scheduled/active/retired state, approvals, replay/archive
-evidence gates, promotion, and rollback.
-
-
 ## v1.6.0 delivered foundation
 
 - immutable policy/shaping/routing artifact model
@@ -152,10 +145,6 @@ evidence gates, promotion, and rollback.
 - corrected shaping-before-cardinality worker ordering
 - ADRs 0040-0042
 
-## v1.8.0 next
-
-Build the Connector Platform around stable destination interfaces: OTLP export, Prometheus remote write, generic HTTP/Kafka connectors, connector health/config validation, and backend-specific adapters without coupling vendor code into the core pipeline.
-
 ## v1.8.0 delivered
 
 - stable connector contract and capability catalog
@@ -166,6 +155,31 @@ Build the Connector Platform around stable destination interfaces: OTLP export, 
 - connector catalog/runtime APIs, dashboard, metric, and CLI
 - migration 015 and ADRs 0043-0045
 
-## v1.9.0 next
+## v1.9.0 delivered
 
-Scale, HA & Operational Proof: chaos tests, rolling-upgrade proof, broker/database/connector outage scenarios, backup/restore validation, and measured benchmark/recovery artifacts.
+- versioned `.tfproof.json` operational evidence
+- strict pass/fail/assertion/measurement validation
+- whole-file and raw-evidence SHA-256 provenance
+- proof recording/list API/dashboard
+- k6 benchmark result capture
+- Compose preflight and Kafka outage/recovery proof
+- PostgreSQL outage/recovery persistence proof
+- connector outage isolation proof
+- multi-worker crash/failover persistence proof
+- real TimescaleDB dump/restore verification
+- explicit Kubernetes rolling-restart proof
+- manual GitHub Actions proof workflow
+- zero-unavailable gateway/router/dashboard rolling defaults
+- bounded worker rolling unavailability
+- topology spread, router PDB, router HPA
+- Compose graceful-stop periods
+- migration 016
+- ADRs 0046-0048
+
+## v2.0.0 next
+
+Build the Evidence-First Intelligent Telemetry Control Plane on top of the
+mature evidence, lifecycle, change intelligence, connector, and operational
+proof foundations. Recommendation/AI output should cite captured evidence,
+show contradictions/uncertainty, and require explicit human promotion before
+production policy changes.

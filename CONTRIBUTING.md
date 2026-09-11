@@ -197,6 +197,23 @@ Changes must preserve:
 
 Do not add password encryption without a reviewed, versioned KDF design.
 
+### Operational proof changes
+
+Operational proof is an evidence-integrity boundary.
+
+Changes must preserve:
+
+- strict versioned `.tfproof.json` decoding;
+- pass results requiring all assertions to pass;
+- pass results requiring measured/evidence data;
+- whole-file/configuration/raw-evidence SHA-256 provenance;
+- no secret environment values in environment metadata;
+- explicit opt-in for disruptive Docker scenarios;
+- double acknowledgement for Kubernetes rollout restarts;
+- no fabricated throughput, latency, RPO, RTO, or recovery claims.
+
+Raw database dumps/logs must remain outside ordinary source control.
+
 ## Documentation standards
 
 Human-readable documentation is a project requirement.

@@ -423,3 +423,10 @@ The change-analysis response explicitly treats timing relationships as observati
 ## Connector Platform and OTLP/HTTP JSON
 
 `POST /v1/logs` and `POST /v1/metrics` accept OTLP/HTTP JSON under `ingest`. `GET /api/v1/connectors/catalog` returns built-in capabilities; `GET /api/v1/connectors/runtime` returns recent secret-free router connector heartbeats.
+
+
+## Operational proof
+
+### `GET /api/v1/proofs`
+
+Returns newest-first verified operational proof records. Each row includes the parsed proof artifact, whole-file SHA-256, artifact byte count, and database recorded time. The endpoint is read-only; proof generation/recording remains an operator CLI workflow.

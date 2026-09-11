@@ -1,0 +1,84 @@
+name: Operational Proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Proof scenario
+        required: true
+        default: smoke
+        type: choice
+        options:
+          - preflight
+          - smoke
+          - sustained
+          - backpressure
+          - kafka-outage
+          - postgres-outage
+          - worker-failover
+          - connector-outage
+          - backup-restore
+
+permissions:
+  contents: read
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.1"
+          cache: true
+      - name: Start baseline stack
+        run: docker compose up -d --build --wait timescaledb kafka kafka-init gateway worker router
+      - name: Run selected proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.scenario }}" in
+            preflight)
+              python3 scripts/run-proof.py preflight
+              ;;
+            smoke|sustained|backpressure)
+              proof/run-k6.sh "${{ inputs.scenario }}" --execute
+              ;;
+            kafka-outage)
+              proof/kafka-outage.sh --execute
+              ;;
+            postgres-outage)
+              proof/postgres-outage.sh --execute
+              ;;
+            worker-failover)
+              proof/worker-failover.sh --execute
+              ;;
+            connector-outage)
+              proof/connector-outage.sh --execute
+              ;;
+            backup-restore)
+              proof/backup-restore.sh --execute
+              ;;
+          esac
+      - name: Verify generated proof artifacts
+        run: |
+          set -euo pipefail
+          found=0
+          for file in proof/results/*.tfproof.json; do
+            [ -e "$file" ] || continue
+            found=1
+            go run ./cmd/telemetryctl proof verify --file "$file"
+          done
+          test "$found" -eq 1
+      - name: Upload proof evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: telemetryforge-proof-${{ inputs.scenario }}-${{ github.run_id }}
+          path: |
+            proof/results/*.tfproof.json
+            proof/results/raw/*
+          if-no-files-found: error
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color > proof/results/raw/docker-compose.log || true

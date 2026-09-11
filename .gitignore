@@ -49,3 +49,8 @@ override.tf.json
 *.tfincident.enc
 *.archive.key
 /incident-exports/
+
+# Operational proof raw/transient evidence
+/proof/results/raw/
+/proof/results/*.dump
+/proof/results/*.log

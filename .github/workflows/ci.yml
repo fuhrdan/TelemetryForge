@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "v1.8.0"]
+    branches: ["main", "v1.9.0"]
   pull_request:
     branches: ["main"]
 
@@ -55,6 +55,12 @@ jobs:
         run: go run ./cmd/telemetryctl connector validate --file routing/connectors.example.json
       - name: Connector protocol tests
         run: go test ./internal/connectors ./internal/router
+      - name: Operational proof model tests
+        run: go test ./internal/proof
+      - name: Validate connector-outage proof routing fixture
+        run: go run ./cmd/telemetryctl routing validate --file routing/proof-connector-outage.json
+      - name: Validate proof Python helpers
+        run: python3 -m py_compile scripts/proof_common.py scripts/run-proof.py scripts/run-benchmark.py scripts/proof-db-restore.py scripts/proof-k8s-rollout.py
 
   kafka-integration:
     runs-on: ubuntu-latest

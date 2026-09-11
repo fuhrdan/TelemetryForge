@@ -17,6 +17,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/incidentarchive"
 	"github.com/fuhrdan/TelemetryForge/internal/lifecycle"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
+	"github.com/fuhrdan/TelemetryForge/internal/proof"
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
 	"github.com/fuhrdan/TelemetryForge/internal/router"
 	"github.com/fuhrdan/TelemetryForge/internal/schema"
@@ -127,4 +128,9 @@ type ChangeIntelligenceReader interface {
 // ConnectorReader exposes secret-free live Connector Platform runtime state.
 type ConnectorReader interface {
 	ListConnectorRuntimeStates(ctx context.Context, limit int) ([]connectors.RuntimeState, error)
+}
+
+// OperationalProofReader exposes recorded reproducible HA/benchmark evidence.
+type OperationalProofReader interface {
+	ListOperationalProofs(context.Context, int) ([]proof.Stored, error)
 }

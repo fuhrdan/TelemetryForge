@@ -1,7 +1,7 @@
 # TelemetryForge Dashboard
 
-**Package version:** `1.8.0`
-**Release:** `v1.8.0`
+**Package version:** `1.9.0`
+**Release:** `v1.9.0`
 
 The dashboard is intentionally small and readable.
 
@@ -167,3 +167,12 @@ Change analysis is observational evidence; the dashboard does not label temporal
 - router-instance heartbeat visibility
 
 The dashboard receives no connector credentials.
+
+
+## v1.9.0 additions
+
+- Operational Proof panel for reviewed `.tfproof.json` results
+- assertion/measurement summaries
+- whole-file artifact SHA-256 provenance
+
+The dashboard displays recorded evidence; it does not invent or extrapolate benchmark claims.

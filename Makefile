@@ -1,4 +1,4 @@
-.PHONY: build run run-worker run-router routing-check telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence demo-schema demo-routing test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check demo-shaping archive-check demo-change connector-check
+.PHONY: build run run-worker run-router routing-check telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence demo-schema demo-routing test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check demo-shaping archive-check demo-change connector-check proof-check proof-verify proof-k6-smoke proof-k6-sustained proof-k6-backpressure proof-kafka-outage proof-postgres-outage proof-worker-failover proof-connector-outage proof-backup-restore
 
 build:
 	go build ./...
@@ -144,3 +144,35 @@ connector-check:
 	go run ./cmd/telemetryctl connector validate --file routing/shadow.json
 	go run ./cmd/telemetryctl connector validate --file routing/connectors.example.json
 	go test ./internal/connectors ./internal/router
+
+proof-check:
+	go test ./internal/proof
+	python3 -m py_compile scripts/proof_common.py
+
+proof-verify:
+	@test -n "$(FILE)" || (echo "FILE=proof/results/run.tfproof.json is required" >&2; exit 2)
+	go run ./cmd/telemetryctl proof verify --file "$(FILE)"
+
+proof-k6-smoke:
+	proof/run-k6.sh smoke --execute
+
+proof-k6-sustained:
+	proof/run-k6.sh sustained --execute
+
+proof-k6-backpressure:
+	proof/run-k6.sh backpressure --execute
+
+proof-kafka-outage:
+	proof/kafka-outage.sh --execute
+
+proof-postgres-outage:
+	proof/postgres-outage.sh --execute
+
+proof-worker-failover:
+	proof/worker-failover.sh --execute
+
+proof-connector-outage:
+	proof/connector-outage.sh --execute
+
+proof-backup-restore:
+	proof/backup-restore.sh --execute

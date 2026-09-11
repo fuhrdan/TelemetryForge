@@ -163,3 +163,15 @@ or long-term maintainability.
 - [Vendor adapters](connectors/vendor-adapters.md)
 - [Connector operations](operations/connectors.md)
 - [v1.8.0 delivered scope](roadmap/v1.8.0.md)
+
+## Operational proof
+
+- [Operational proof artifacts](proof/operational-proof.md)
+- [HA / failure scenarios](proof/ha-scenarios.md)
+- [v1.9 benchmark methodology](proof/benchmark-methodology-v1.9.md)
+- [v1.9.0 delivered scope](roadmap/v1.9.0.md)
+
+- [High availability](ha/high-availability.md)
+- [Failure / chaos testing](operations/chaos-testing.md)
+- [Disaster recovery proof](operations/disaster-recovery.md)
+- [Kubernetes rolling proof](operations/rolling-proof.md)

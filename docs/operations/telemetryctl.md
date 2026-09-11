@@ -276,3 +276,26 @@ never activates configuration snapshots.
 ## Connector Platform commands
 
 Use `connector catalog`, `connector validate`, `connector list`, and `connector test`. `connector test` performs no delivery unless `--send-sample` is explicit.
+
+
+## Operational proof commands
+
+Verify a generated artifact without a database:
+
+```bash
+telemetryctl proof verify --file proof/results/run.tfproof.json
+```
+
+Record the exact verified file:
+
+```bash
+telemetryctl proof record --file proof/results/run.tfproof.json
+```
+
+List recorded proof evidence:
+
+```bash
+telemetryctl proof list --limit 25
+```
+
+Recording is idempotent only for the same run ID, whole-file SHA-256, and byte count.

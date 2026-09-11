@@ -10,7 +10,7 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current development release:** `v1.8.0` — Connector Platform, OTLP/HTTP JSON ingest/export, Prometheus Remote Write, Kafka/HTTP/vendor adapters, connector runtime health, and protocol-isolated delivery.
+> **Current development release:** `v1.9.0` — Scale, HA & Operational Proof: versioned `.tfproof.json` evidence, benchmark/chaos/backup/rolling-update harnesses, and hardened multi-replica Kubernetes rollout defaults.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -71,6 +71,39 @@ Read:
 
 - [Distributed Cardinality Intelligence](docs/cardinality/distributed-cardinality.md)
 - [Cardinality Budgets](docs/cardinality/budgets.md)
+
+### Operational Proof
+
+v1.9 makes scale, HA, backup, recovery, and rollout claims evidence-backed.
+
+Executable harnesses emit:
+
+```text
+proof/results/<run>.tfproof.json
+```
+
+Each result contains the Git commit, environment, relevant configuration
+SHA-256 values, measured values, explicit assertions, and SHA-256 fingerprints
+of raw evidence.
+
+A `pass` artifact is invalid if any assertion fails or if it contains no
+measurement/evidence.
+
+```bash
+telemetryctl proof verify --file proof/results/<run>.tfproof.json
+telemetryctl proof record --file proof/results/<run>.tfproof.json
+telemetryctl proof list
+```
+
+Included proof workflows cover k6 benchmarks, Kafka outage/recovery, worker
+crash/failover, TimescaleDB backup/restore, and acknowledged Kubernetes rolling
+restarts.
+
+TelemetryForge deliberately ships **no invented throughput or recovery
+numbers**. Run the harness on real infrastructure and record what it actually
+observed.
+
+Read [Operational Proof Artifacts](docs/performance/operational-proof.md).
 
 ### Connector Platform
 

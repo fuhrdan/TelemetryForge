@@ -4,6 +4,13 @@ metadata:
   name: gateway
   namespace: telemetryforge
 spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  minReadySeconds: 5
+  progressDeadlineSeconds: 600
   replicas: 2
   selector:
     matchLabels:
@@ -19,13 +26,20 @@ spec:
         app.kubernetes.io/part-of: telemetryforge
     spec:
       automountServiceAccountToken: false
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: telemetryforge-gateway
       securityContext:
         seccompProfile:
           type: RuntimeDefault
       terminationGracePeriodSeconds: 30
       containers:
         - name: gateway
-          image: ghcr.io/fuhrdan/telemetryforge:v1.8.0
+          image: ghcr.io/fuhrdan/telemetryforge:v1.9.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

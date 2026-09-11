@@ -4,6 +4,21 @@
 
 _No changes yet._
 
+## [1.9.0-dev] - 2026-09-10
+
+### Scale, HA & Operational Proof
+- Added versioned `.tfproof.json` evidence with strict pass/assertion/measurement/hash validation.
+- Added proof verification/record/list CLI, migration 016, proof history API, and dashboard panel.
+- Added k6 summary-to-proof capture for smoke/sustained/backpressure workloads.
+- Added Compose preflight, Kafka outage/recovery, and two-worker crash/failover proof harnesses.
+- Added real TimescaleDB `pg_dump`/restore verification with selected row-count equality checks.
+- Added explicitly acknowledged Kubernetes rolling-restart proof.
+- Added manual GitHub Actions Operational Proof workflow with result/raw-evidence artifact upload.
+- Hardened Kubernetes rolling strategies, topology spread, router PDB, and router HPA.
+- Added explicit Compose graceful-stop periods.
+- Added ADRs 0046-0048 and HA/chaos/DR/rolling-upgrade/operational-proof documentation.
+- Deliberately publish no unmeasured throughput/RPO/RTO/recovery claims.
+
 ## [1.8.0-dev] - 2026-09-10
 
 ### Connector Platform

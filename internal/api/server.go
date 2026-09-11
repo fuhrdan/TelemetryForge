@@ -130,6 +130,9 @@ func (server *Server) routes() {
 			server.mux.HandleFunc("GET /api/v1/shaping/stats", server.handleShapingStats)
 			server.mux.HandleFunc("GET /api/v1/shaping/shadow-diffs", server.handleShapingShadowDiffs)
 		}
+		if _, ok := server.reader.(storage.OperationalProofReader); ok {
+			server.mux.HandleFunc("GET /api/v1/proofs", server.handleProofs)
+		}
 		if _, ok := server.reader.(storage.ConnectorReader); ok {
 			server.mux.HandleFunc("GET /api/v1/connectors/runtime", server.handleConnectorRuntime)
 		}

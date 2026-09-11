@@ -148,3 +148,10 @@ Multiple router replicas safely share the PostgreSQL outbox through leased
 
 The production overlay mounts the API-key hash document so `/metrics` can use
 the same admin-scope authentication model as worker/gateway.
+
+
+## v1.9 HA rollout defaults
+
+Gateway, router, and dashboard use rolling updates with `maxUnavailable: 0`; worker permits one unavailable replica. All four Deployments set `maxSurge: 1`, `minReadySeconds`, `progressDeadlineSeconds`, and hostname topology spreading. Router now has a PodDisruptionBudget and HPA in addition to gateway/worker/dashboard controls.
+
+To generate evidence from a real cluster, use `proof/k8s-rollout.sh --execute --ack-cluster-change` or `scripts/proof-k8s-rollout.py --execute --acknowledge-cluster-change`.

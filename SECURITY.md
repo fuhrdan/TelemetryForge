@@ -247,3 +247,20 @@ evidence, even though they contain no external scripts/assets.
 ## Connector credentials
 
 Connector configuration stores secret references (`header_env`, `bearer_token_env`, `api_key_env`) rather than raw secrets. Credential-bearing static headers and URL credentials are rejected. Prometheus labels require explicit allowlisting. OTLP protobuf ingestion is explicitly unsupported in v1.8 rather than partially decoded.
+
+
+## Operational proof evidence
+
+`.tfproof.json` is designed to avoid environment-variable values and connector
+secrets, but its raw evidence can contain operationally sensitive data.
+
+`proof/results/raw/` is Git-ignored by default and can contain:
+
+- service logs;
+- Kubernetes workload snapshots;
+- k6 raw summaries;
+- PostgreSQL/TimescaleDB custom-format dumps.
+
+Store raw proof evidence in an approved artifact system with access controls.
+Use the SHA-256 references in `.tfproof.json` to associate the summary with its
+raw evidence without committing a database dump to the repository.

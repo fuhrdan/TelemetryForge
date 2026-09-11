@@ -121,6 +121,7 @@ services:
         condition: service_healthy
       db-migrate:
         condition: service_completed_successfully
+    stop_grace_period: 30s
     restart: unless-stopped
 
 
@@ -167,6 +168,7 @@ services:
         condition: service_healthy
       db-migrate:
         condition: service_completed_successfully
+    stop_grace_period: 45s
     restart: unless-stopped
 
 
@@ -197,6 +199,7 @@ services:
         condition: service_healthy
       db-migrate:
         condition: service_completed_successfully
+    stop_grace_period: 30s
     restart: unless-stopped
 
 
@@ -212,6 +215,7 @@ services:
     depends_on:
       gateway:
         condition: service_healthy
+    stop_grace_period: 20s
     restart: unless-stopped
 
 

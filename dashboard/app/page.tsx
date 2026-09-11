@@ -357,6 +357,26 @@ type ChangeAnalysis = {
   notes: string[];
 };
 
+type OperationalProof = {
+  run: {
+    format: string;
+    format_version: number;
+    run_id: string;
+    scenario: string;
+    status: "pass" | "fail" | "error";
+    started_at: string;
+    completed_at: string;
+    assertions?: { name: string; passed: boolean; detail?: string }[];
+    measurements?: { name: string; value: number; unit?: string }[];
+    evidence?: { kind: string; reference: string; detail?: string }[];
+    configuration_fingerprints?: { name: string; sha256: string }[];
+    notes?: string[];
+  };
+  artifact_sha256: string;
+  artifact_bytes: number;
+  recorded_at: string;
+};
+
 type CostSimulation = {
   simulation_id: string;
   incident_id: string;
@@ -439,6 +459,7 @@ export default function Dashboard() {
   const [cardinalityStates, setCardinalityStates] = useState<DistributedCardinalityState[]>([]);
   const [cardinalityBudgets, setCardinalityBudgets] = useState<CardinalityBudgetStatus[]>([]);
   const [connectorRuntime, setConnectorRuntime] = useState<ConnectorRuntimeState[]>([]);
+  const [operationalProofs, setOperationalProofs] = useState<OperationalProof[]>([]);
   const [routingDestinations, setRoutingDestinations] = useState<RoutingDestinationHealth[]>([]);
   const [routingDiffs, setRoutingDiffs] = useState<RoutingShadowDiff[]>([]);
   const [routingDeadLetters, setRoutingDeadLetters] = useState<RoutingDeadLetter[]>([]);
@@ -465,6 +486,7 @@ export default function Dashboard() {
       cardinalityStateResponse,
       cardinalityBudgetResponse,
       connectorRuntimeResponse,
+      proofResponse,
       routingDestinationResponse,
       routingDiffResponse,
       routingDeadLetterResponse,
@@ -484,6 +506,7 @@ export default function Dashboard() {
       fetch("/telemetry-api/api/v1/cardinality/state?mode=active&limit=30", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/cardinality/budgets?limit=30", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/connectors/runtime?limit=100", { cache: "no-store" }),
+      fetch("/telemetry-api/api/v1/proofs?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/routing/destinations?limit=30", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/routing/shadow-diffs?limit=20", { cache: "no-store" }),
       fetch("/telemetry-api/api/v1/routing/dead-letters?limit=20", { cache: "no-store" }),
@@ -520,6 +543,10 @@ export default function Dashboard() {
     if (connectorRuntimeResponse.ok) {
       const payload = await connectorRuntimeResponse.json();
       setConnectorRuntime(payload.connectors ?? []);
+    }
+    if (proofResponse.ok) {
+      const payload = await proofResponse.json();
+      setOperationalProofs(payload.proofs ?? []);
     }
     if (routingDestinationResponse.ok) {
       const payload = await routingDestinationResponse.json();
@@ -1103,6 +1130,27 @@ export default function Dashboard() {
             ))}
             {shapingDiffs.length === 0 && <div className="empty shaping-empty">Active and shadow shaping have not diverged yet.</div>}
           </div>
+        </article>
+      </section>
+
+      <section className="proof-section">
+        <article className="panel proof-panel">
+          <div className="panel-heading">
+            <div><div className="eyebrow">OPERATIONAL PROOF</div><h2>Measured HA, recovery & benchmark evidence</h2></div>
+            <span className="count-badge">{operationalProofs.length}</span>
+          </div>
+          <div className="proof-list">
+            {operationalProofs.slice(0, 12).map((item) => (
+              <div className="proof-row" key={item.run.run_id}>
+                <div><strong>{item.run.scenario}</strong><span>{item.run.run_id}</span></div>
+                <span className={`proof-status ${item.run.status}`}>{item.run.status}</span>
+                <div><span>{(item.run.measurements ?? []).map((m) => `${m.name}=${m.value}${m.unit ? ` ${m.unit}` : ""}`).join(" · ") || "assertion/evidence only"}</span><small>{(item.run.assertions ?? []).filter((a) => a.passed).length}/{(item.run.assertions ?? []).length} assertions passed</small></div>
+                <div className="proof-hash"><span>{item.artifact_sha256.slice(0, 16)}…</span><small>{clock(item.recorded_at)}</small></div>
+              </div>
+            ))}
+            {operationalProofs.length === 0 && (<div className="empty routing-empty">No reviewed .tfproof.json artifacts have been recorded yet.</div>)}
+          </div>
+          <div className="connector-footnote">Proof artifacts are recorded only after structural validation and whole-file SHA-256 verification. No capacity or recovery number is inferred unless a harness actually measured it.</div>
         </article>
       </section>
 

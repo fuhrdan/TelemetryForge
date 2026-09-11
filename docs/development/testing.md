@@ -267,3 +267,10 @@ Checks include:
 ## v1.8.0 Connector Platform coverage
 
 Focused tests cover connector catalog/protocols, vendor credential health probes, permanent/transient failure classification, OTLP path selection, Prometheus label allowlisting, and legacy routing translation. CI remains responsible for the full dependency-backed suite.
+
+
+## v1.9.0 operational proof coverage
+
+Focused checks cover strict proof validation, non-finite measurement rejection, whole-file provenance, proof storage idempotency boundaries, API serialization, CLI verification, Python-to-Go artifact compatibility, dashboard TypeScript, Kubernetes HA invariants, and YAML/Compose structure.
+
+Disruptive outage/restore/rollout harnesses require explicit execution and are not silently run by ordinary unit tests.
