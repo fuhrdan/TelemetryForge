@@ -1,7 +1,7 @@
 # TelemetryForge Dashboard
 
-**Package version:** `2.4.0`
-**Release:** `v2.4.0`
+**Package version:** `2.5.0`
+**Release:** `v2.5.0`
 
 The dashboard is intentionally small and readable.
 

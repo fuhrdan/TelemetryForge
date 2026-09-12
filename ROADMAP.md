@@ -25,7 +25,8 @@
 | v2.1.0 | Released | Durable Edge WAL, crash recovery, ordered replay, capacity backpressure |
 | v2.2.0 | Released | Replicated durability, quorum acceptance, failure-domain awareness |
 | v2.3.0 | Released | Global routing mesh, deterministic ownership, health-aware failover |
-| **v2.4.0** | **Released** | **Cryptographic lineage, Merkle segment seals, Ed25519 audit verification** |
+| v2.4.0 | Released | Cryptographic lineage, Merkle segment seals, Ed25519 audit verification |
+| **v2.5.0** | **Released** | **TLA+ safety models, bounded exhaustive checking, fuzzed protocol schedules** |
 
 ## v1.2.0 delivered
 
@@ -205,6 +206,30 @@
 - status API, tests, proof harness, docs, ADR 0052
 
 
+
+## v2.5.0 delivered
+
+### Machine-checkable protocol safety
+
+- TLA+ specifications for durable ingest, replicated durability, mesh failover, and cryptographic lineage
+- finite TLC model configurations with named safety invariants
+- SANY syntax validation followed by TLC model checking in dedicated CI
+- pinned TLA+ tools version for reproducible CI behavior
+
+### Independent executable checker
+
+- dependency-free Go bounded state explorer
+- machine-readable model-check report format
+- explicit explored state/transition/invariant counts
+- adversarial fuzzed action schedules for replicated durability
+
+### Operations and evidence
+
+- `go run ./cmd/formalcheck`
+- `scripts/run-tlc.sh`
+- `proof/formal-verification.sh`
+- `.tfproof.json` integration
+- ADR 0056 and formal proof-boundary documentation
 
 ## v2.4.0 delivered
 

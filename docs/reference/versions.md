@@ -1,10 +1,11 @@
 # Technology Version Baseline
 
-Verified for the v2.4.0 release work on **2026-09-12**.
+Verified for the v2.5.0 release work on **2026-09-12**.
 
 | Component | Project baseline | Rationale |
 |---|---:|---|
 | [Go](https://go.dev/doc/devel/release) | 1.27.1 | Current supported Go patch baseline |
+| [TLA+ tools / TLC](https://github.com/tlaplus/tlaplus/releases) | 1.8.0 + repository SHA-256 pin | Formal safety model checker; upstream rolling asset is digest-verified before use |
 | [Kubernetes](https://kubernetes.io/releases/) | 1.37.0 upstream / 1.36 EKS | Upstream stable plus current Amazon EKS standard-support boundary |
 | [Terraform](https://github.com/hashicorp/terraform/releases) | 1.16.2 | Current Terraform project baseline |
 | [AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest) | 6.62.0 | Current project AWS provider baseline |
@@ -26,7 +27,7 @@ Verified for the v2.4.0 release work on **2026-09-12**.
 | [React / React DOM](https://www.npmjs.com/package/react) | 19.2.8 | Dashboard UI runtime |
 | [TypeScript](https://www.npmjs.com/package/typescript) | 5.9.3 | Compatibility pin for the selected stable Next.js build path |
 | [Alpine Linux](https://www.alpinelinux.org/) | 3.24.1 | Backend runtime image |
-| GitHub Actions | checkout/setup-go/setup-node v7; setup-kubectl v5; setup-terraform v4 | CI action baseline |
+| GitHub Actions | checkout/setup-go/setup-node v7; setup-java v6; setup-kubectl v5; setup-terraform v4 | CI action baseline |
 
 ## Dashboard container note
 

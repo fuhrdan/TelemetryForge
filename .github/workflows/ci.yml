@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "v2.4.0"]
+    branches: ["main", "v2.5.0"]
   pull_request:
     branches: ["main"]
 
@@ -59,10 +59,47 @@ jobs:
         run: go test ./internal/proof
       - name: Replicated durable edge and mesh tests
         run: go test ./internal/lineage ./internal/wal ./internal/replication ./internal/mesh ./internal/edge
+      - name: Bounded formal protocol models
+        run: |
+          go test ./internal/formal
+          go run ./cmd/formalcheck --output /tmp/telemetryforge-formal-check.json
+      - name: Fuzz formal protocol schedules
+        run: go test -run=^$ -fuzz=FuzzProtocolActions -fuzztime=5s ./internal/formal
       - name: Validate connector-outage proof routing fixture
         run: go run ./cmd/telemetryctl routing validate --file routing/proof-connector-outage.json
       - name: Validate proof Python helpers
         run: python3 -m py_compile scripts/proof_common.py scripts/run-proof.py scripts/run-benchmark.py scripts/proof-db-restore.py scripts/proof-k8s-rollout.py
+
+  formal-verification:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.1"
+          cache: true
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Run dependency-free bounded checker
+        run: |
+          go test -race ./internal/formal
+          go run ./cmd/formalcheck --output /tmp/telemetryforge-formal-check.json
+      - name: Download pinned TLA+ tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(cat formal/tla2tools.version)
+          curl -fsSL --retry 3 --retry-delay 2 \
+            "https://github.com/tlaplus/tlaplus/releases/download/v${version}/tla2tools.jar" \
+            -o /tmp/tla2tools.jar
+          expected=$(cat formal/tla2tools.sha256)
+          echo "${expected}  /tmp/tla2tools.jar" | sha256sum -c -
+      - name: Model-check TLA+ safety specifications
+        env:
+          TLA2TOOLS_JAR: /tmp/tla2tools.jar
+        run: scripts/run-tlc.sh
 
   kafka-integration:
     runs-on: ubuntu-latest

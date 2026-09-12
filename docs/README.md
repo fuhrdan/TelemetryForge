@@ -6,6 +6,7 @@ to reconstruct every decision from implementation details.
 
 ## Start here
 
+- [Formal Verification](formal/formal-verification.md)
 - [Global Routing Mesh](mesh/global-routing-mesh.md)
 - [Replicated Durability](edge/replicated-durability.md)
 - [Durable Edge Ingestion](edge/durable-edge.md)
@@ -60,6 +61,7 @@ to reconstruct every decision from implementation details.
 - [v2.2.0 delivered scope](roadmap/v2.2.0.md)
 - [v2.3.0 delivered scope](roadmap/v2.3.0.md)
 - [v2.4.0 delivered scope](roadmap/v2.4.0.md)
+- [v2.5.0 delivered scope](roadmap/v2.5.0.md)
 - [Durable Edge ingestion](edge/durable-edge.md)
 - [Cryptographic Lineage](security/cryptographic-lineage.md)
 

@@ -19,7 +19,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/replay"
 )
 
-const ProductVersion = "2.4.0"
+const ProductVersion = "2.5.0"
 
 // EdgeCitation is an exact Evidence Graph relationship cited by a finding.
 type EdgeCitation struct {

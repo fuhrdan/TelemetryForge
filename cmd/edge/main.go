@@ -25,7 +25,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/wal"
 )
 
-const version = "2.4.0"
+const version = "2.5.0"
 
 func main() {
 	logger := logging.New()

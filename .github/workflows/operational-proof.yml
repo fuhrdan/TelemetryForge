@@ -22,6 +22,7 @@ on:
           - edge-replication
           - mesh-failover
           - cryptographic-lineage
+          - formal-verification
 
 permissions:
   contents: read
@@ -36,7 +37,24 @@ jobs:
         with:
           go-version: "1.27.1"
           cache: true
+      - uses: actions/setup-java@v6
+        if: inputs.scenario == 'formal-verification'
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Download pinned TLA+ tools
+        if: inputs.scenario == 'formal-verification'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(cat formal/tla2tools.version)
+          curl -fsSL --retry 3 --retry-delay 2 \
+            "https://github.com/tlaplus/tlaplus/releases/download/v${version}/tla2tools.jar" \
+            -o /tmp/tla2tools.jar
+          expected=$(cat formal/tla2tools.sha256)
+          echo "${expected}  /tmp/tla2tools.jar" | sha256sum -c -
       - name: Start baseline stack
+        if: inputs.scenario != 'formal-verification'
         run: docker compose up -d --build --wait timescaledb kafka kafka-init gateway edge worker router
       - name: Run selected proof
         shell: bash
@@ -75,6 +93,9 @@ jobs:
               ;;
             cryptographic-lineage)
               proof/cryptographic-lineage.sh --execute
+              ;;
+            formal-verification)
+              TLA2TOOLS_JAR=/tmp/tla2tools.jar proof/formal-verification.sh --execute
               ;;
           esac
       - name: Verify generated proof artifacts

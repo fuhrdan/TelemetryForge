@@ -288,3 +288,14 @@ Focused coverage verifies:
 - migration/document/version consistency.
 
 The complete Go 1.27.1 dependency-backed suite remains part of CI.
+
+
+## v2.5.0 formal verification coverage
+
+The release adds four finite formal safety models: durable ingest, replicated durability, mesh failover, and cryptographic lineage. CI checks the same release boundary in three ways:
+
+- dependency-free exhaustive state exploration through `go run ./cmd/formalcheck`;
+- adversarial protocol action-schedule fuzzing through `FuzzProtocolActions`; and
+- SANY + TLC model checking of every `formal/*.tla` specification.
+
+The formal checks are safety evidence, not a substitute for Kafka/TimescaleDB integration tests, race detection, operational outage proofs, or real infrastructure measurements.

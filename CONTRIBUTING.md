@@ -11,6 +11,7 @@ For direct development:
 - Node.js 24.21 LTS for the dashboard
 - Docker with Docker Compose for Kafka/TimescaleDB integration
 - Python 3 for demo/documentation helper scripts
+- Java 21 + a digest-verified TLA+ tools JAR when changing formal models
 
 The easiest full environment remains:
 
@@ -196,6 +197,24 @@ Changes must preserve:
 - authenticated encryption when encryption is requested.
 
 Do not add password encryption without a reviewed, versioned KDF design.
+
+### Formal model changes
+
+The TLA+ specifications and `internal/formal` checker describe the same release safety boundary from two different executable surfaces. A protocol change affecting acknowledgement, durable-copy release, failover, or lineage must update both when the abstraction changes.
+
+Run the dependency-free layer with:
+
+```bash
+make formal-check
+```
+
+Run the TLC layer with:
+
+```bash
+TLA2TOOLS_JAR=/path/to/tla2tools.jar scripts/run-tlc.sh
+```
+
+Do not broaden a finite safety result into an unbounded liveness or zero-loss claim. Document assumptions and bounds explicitly.
 
 ### Operational proof changes
 

@@ -4,6 +4,17 @@
 
 _No changes yet._
 
+## [2.5.0] - 2026-09-12
+
+### Formal Verification
+- Added TLA+ specifications and finite TLC model configurations for durable ingest, replicated durability, mesh failover, and cryptographic lineage.
+- Added a dependency-free Go bounded state-space checker with machine-readable reports.
+- Added adversarial protocol action-schedule fuzzing.
+- Added SANY/TLC formal-verification CI using a pinned TLA+ tools release.
+- Added a formal-verification operational proof scenario and `.tfproof.json` evidence integration.
+- Added ADR 0056, formal verification documentation, and explicit safety/liveness claim boundaries.
+- Product/service versions advanced to v2.5.0.
+
 ## [2.4.0] - 2026-09-12
 
 ### Cryptographic Lineage

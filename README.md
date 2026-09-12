@@ -10,7 +10,7 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current release:** `v2.4.0` — Cryptographic Lineage with hash-chained WAL records, Merkle-rooted segments, and Ed25519 audit verification.
+> **Current release:** `v2.5.0` — Formal Verification with TLA+ safety models, exhaustive bounded state exploration, and fuzzed protocol schedules.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -18,6 +18,19 @@ backend. It controls telemetry **before** downstream cost, cardinality, policy,
 and evidence decisions become irreversible.
 
 ## Signature capabilities
+
+### Formal Verification
+
+v2.5 turns the core Durable Edge protocol claims into executable state-machine invariants. TLA+ specifications cover local durable acceptance, replicated quorum, mesh failover, and cryptographic lineage; finite TLC models run in CI. A dependency-free Go checker explores the mirrored bounded state spaces during normal Go CI and emits machine-readable evidence.
+
+```bash
+go test ./internal/formal
+go run ./cmd/formalcheck
+```
+
+The formal claim is deliberately narrow: these checks establish bounded **safety** properties under the model assumptions. They do not claim arbitrary network liveness, exactly-once delivery, hardware infallibility, or bug-free production code.
+
+Read [Formal Verification](docs/formal/formal-verification.md).
 
 ### Cryptographic Lineage
 
@@ -148,8 +161,8 @@ telemetryctl proof list
 ```
 
 Included proof workflows cover k6 benchmarks, Kafka outage/recovery, worker
-crash/failover, TimescaleDB backup/restore, and acknowledged Kubernetes rolling
-restarts.
+crash/failover, TimescaleDB backup/restore, acknowledged Kubernetes rolling
+restarts, cryptographic lineage, and v2.5 formal model verification.
 
 TelemetryForge deliberately ships **no invented throughput or recovery
 numbers**. Run the harness on real infrastructure and record what it actually

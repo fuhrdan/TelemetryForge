@@ -1,8 +1,16 @@
 # TelemetryForge Architecture
 
-TelemetryForge v2.4.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v2.5.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
+
+## v2.5 formal safety model
+
+The durability path now has a machine-checkable protocol layer in addition to implementation tests. TLA+ specifications abstract local WAL acknowledgement, replicated quorum/release, bounded mesh failover, and cryptographic lineage into explicit state transitions and invariants. TLC checks finite model configurations in CI; `internal/formal` mirrors the release invariants in a dependency-free Go state-space checker used by ordinary CI and proof evidence.
+
+Formal verification does not sit in the runtime data path and does not change v2.4 storage or routing semantics. It constrains what future implementations are allowed to do: no acknowledgement without durable evidence, no early durable-copy release, no unbounded forwarding loop in one abstract delivery, and no successful verification of post-seal tamper.
+
+See `docs/formal/formal-verification.md` and ADR 0056.
 
 ## v2.4 cryptographic lineage
 

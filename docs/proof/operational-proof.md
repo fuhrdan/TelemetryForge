@@ -62,3 +62,12 @@ Do not turn a harness exit code into an unstated performance claim. A measured
 throughput/RTO/recovery number may be published only when the artifact or its
 referenced raw evidence actually contains that measurement and the test
 configuration is fingerprinted.
+
+
+## Formal verification proof
+
+v2.5 adds a `formal-verification` scenario. Unlike outage scenarios, it does not start the runtime stack. It runs the bounded Go state-space checker and all pinned TLA+/TLC models, then fingerprints the model sources and stores the raw checker report/log alongside the `.tfproof.json` artifact.
+
+```bash
+TLA2TOOLS_JAR=/path/to/tla2tools.jar proof/formal-verification.sh --execute
+```

@@ -27,7 +27,7 @@ func main() {
 
 	metrics := observability.NewMetrics("router")
 	traceShutdown, err := observability.InitTracing(
-		ctx, "telemetryforge-router", "2.4.0", os.Getenv("TELEMETRYFORGE_OTLP_TRACES_ENDPOINT"),
+		ctx, "telemetryforge-router", "2.5.0", os.Getenv("TELEMETRYFORGE_OTLP_TRACES_ENDPOINT"),
 	)
 	if err != nil {
 		logger.Error("OpenTelemetry initialization failed", "error", err)

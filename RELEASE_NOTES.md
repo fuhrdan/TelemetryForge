@@ -1,101 +1,82 @@
-# TelemetryForge v2.4.0 Release Notes
+# TelemetryForge v2.5.0 Release Notes
 
-**Release:** Cryptographic Lineage
+**Release:** Formal Verification
 **Date:** 2026-09-12
 
-v2.4.0 adds a cryptographically verifiable audit lineage to the Durable Edge while preserving the v2.2 durability contract and v2.3 routing semantics. It is intentionally not a blockchain: the implementation uses ordered SHA-256 record chaining, Merkle-rooted WAL segments, and Ed25519 signatures.
+v2.5.0 makes the Durable Edge protocol claims executable. The release adds TLA+ safety specifications, finite TLC model configurations, a dependency-free Go state-space checker, property-based schedule fuzzing, and proof/CI integration for the durability, replication, routing, and lineage boundaries delivered in v2.1-v2.4.
 
 ## Highlights
 
-- WAL record format v2 with `previous_record_hash` and `record_hash`;
-- backward-readable legacy v1 WAL records;
-- deterministic upgrade anchoring from v1 into v2 lineage;
-- SHA-256 Merkle roots over every closed segment's ordered record digests;
-- Ed25519-signed `.tfseal` segment attestations;
-- previous-segment-root chaining;
-- persistent edge signer identity and key ID;
-- default local/dev key generation inside the WAL volume;
-- explicit production private/public key paths;
-- fail-closed signer mismatch when historical seals already exist;
-- signed seal retention after normal WAL segment compaction;
-- `telemetryctl audit keygen`;
-- `telemetryctl audit verify` with optional trusted-public-key authentication;
-- lineage key/root state in `/edge/status`;
-- ADR 0055 and `proof/cryptographic-lineage.sh`.
+- `formal/DurableIngest.tla` models fsync, acknowledgement, delivery, and compaction;
+- `formal/ReplicatedDurability.tla` models origin persistence, peer quorum, delivery, and release;
+- `formal/MeshFailover.tla` models bounded owner attempts and no-route termination;
+- `formal/CryptographicLineage.tla` models segment sealing, tamper, verification, and rejection;
+- finite TLC configurations under `formal/models/`;
+- SANY syntax validation before each TLC run;
+- pinned TLA+ tool version in `formal/tla2tools.version`;
+- `internal/formal` dependency-free exhaustive checker;
+- `cmd/formalcheck` human and JSON output;
+- adversarial Go fuzz target for durability action schedules;
+- dedicated CI formal-verification job;
+- `proof/formal-verification.sh` and `.tfproof.json` integration;
+- ADR 0056 and formal proof-boundary documentation.
 
-## Record lineage
+## Checked safety properties
 
-New records form this chain:
+### Durable ingest
 
 ```text
-Event payload
-    |
-    v
-payload_sha256
-    |
-    + previous_record_hash
-    + edge/source sequence
-    + topic / acceptance metadata
-    |
-    v
-record_hash N
-    |
-    v
-previous_record_hash N+1
+client acknowledgement
+        => durable evidence exists
+
+acked + not delivered
+        => local WAL remains durable
+
+compacted
+        => downstream delivery occurred
 ```
 
-Changing an event payload, routing metadata, sequence, timestamp, record order, or predecessor breaks verification.
-
-## Segment lineage
-
-On rotation or clean shutdown:
+### Replicated durability
 
 ```text
-record hashes
-    |
-    v
-SHA-256 Merkle root
-    |
-    + previous segment root
-    + edge identity / sequence range
-    |
-    v
-Ed25519 signature
-    |
-    v
-<segment>.tfseal
+replicated acknowledgement
+        => configured quorum exists
+
+acked + not delivered
+        => quorum remains present
+
+release replicas
+        => downstream delivery occurred
 ```
 
-The `.tfseal` file remains after its delivered `.tfwal` is compacted. If WAL content is still present, verification recomputes the full record chain and Merkle root. If content has aged out, the signed seal still preserves the segment commitment and segment-to-segment continuity.
+### Mesh failover
 
-## Trust modes
+Each candidate owner can be attempted at most once in one abstract delivery path. Terminal routing failure requires the eligible candidate set to be empty, so the model cannot represent recursive edge-to-edge bouncing as a successful failover strategy.
 
-Integrity verification:
+### Cryptographic lineage
+
+A sealed history may verify only while the committed chain remains untampered in the model. Post-seal mutation transitions into rejection, never successful verification.
+
+## Dual model-checking path
+
+The normal Go toolchain can run:
 
 ```bash
-telemetryctl audit verify --wal-dir data/edge-wal
+go test ./internal/formal
+go run ./cmd/formalcheck
 ```
 
-This verifies each seal using its embedded public key.
+The full formal CI job additionally runs all TLA+ models through SANY and TLC with the pinned TLA+ tools release.
 
-Identity-authenticated verification:
+The operational proof requires both layers and stores their logs/report as evidence:
 
 ```bash
-telemetryctl audit verify \
-  --wal-dir data/edge-wal \
-  --public-key data/edge-wal/lineage.ed25519.pub.pem
+TLA2TOOLS_JAR=/path/to/tla2tools.jar \
+  proof/formal-verification.sh --execute
 ```
 
-This additionally requires every seal signer to match the operator-provided trust anchor.
+## Proof scope
 
-## Upgrade behavior
+This release deliberately does not call the result “mathematically proven zero loss.” The checked models establish bounded safety properties under the model assumptions. They do not prove that networks recover, hardware never destroys all copies, downstream systems eventually respond, or the production implementation contains no unrelated defect.
 
-Existing v2.3 WAL v1 records remain readable. At first v2.4 startup, completed legacy segments are hashed and signed as upgrade-time anchors; new writes begin with WAL record format v2. This proves the legacy bytes observed at upgrade time, not their historical state before v2.4 existed.
-
-## Security boundary
-
-The signing key must be protected independently in production. An attacker who can both rewrite telemetry history and use the trusted private key can create new valid signatures. v2.4 makes unauthorized mutation detectable under the configured key-trust assumptions; it does not claim an external transparency ledger or consensus guarantee.
-
-## Validation
-
-CI is configured to run race/vet/build coverage, the lineage/WAL/replication/mesh/edge suite, Docker/Kubernetes validation, and the manual cryptographic-lineage operational proof scenario under Go 1.27.1.
+Formal models, implementation tests, race/fuzz checks, integration tests, cryptographic audit verification, and operational proof remain separate evidence layers.
