@@ -1,50 +1,101 @@
-# TelemetryForge v2.3.0 Release Notes
+# TelemetryForge v2.4.0 Release Notes
 
-**Release:** Global Routing Mesh
+**Release:** Cryptographic Lineage
 **Date:** 2026-09-12
 
-v2.3.0 turns the replicated Durable Edge into a health-aware routing fabric. The v2.2 WAL/quorum contract still controls successful acceptance; v2.3 adds a separate downstream ownership layer that can move replay between healthy edge/relay nodes without weakening durability.
+v2.4.0 adds a cryptographically verifiable audit lineage to the Durable Edge while preserving the v2.2 durability contract and v2.3 routing semantics. It is intentionally not a blockchain: the implementation uses ordered SHA-256 record chaining, Merkle-rooted WAL segments, and Ed25519 signatures.
 
 ## Highlights
 
-- authenticated edge/relay topology advertisements;
-- active health probing with stale-peer rejection;
-- cloud, region, and zone failure-domain awareness;
-- deterministic highest-random-weight (rendezvous) ownership;
-- `locality` and active-active `global` routing policies;
-- WAL-pressure and planned-drain route exclusion;
-- automatic ordered-candidate failover;
-- terminal peer forwarding with target identity validation and loop prevention;
-- mesh topology in `/edge/status`;
-- route inspection through `/edge/route?key=...`;
-- three-edge active-active Docker Compose example;
-- Kubernetes mesh configuration and secret surface;
-- ADR 0054 and `proof/mesh-failover.sh`.
+- WAL record format v2 with `previous_record_hash` and `record_hash`;
+- backward-readable legacy v1 WAL records;
+- deterministic upgrade anchoring from v1 into v2 lineage;
+- SHA-256 Merkle roots over every closed segment's ordered record digests;
+- Ed25519-signed `.tfseal` segment attestations;
+- previous-segment-root chaining;
+- persistent edge signer identity and key ID;
+- default local/dev key generation inside the WAL volume;
+- explicit production private/public key paths;
+- fail-closed signer mismatch when historical seals already exist;
+- signed seal retention after normal WAL segment compaction;
+- `telemetryctl audit keygen`;
+- `telemetryctl audit verify` with optional trusted-public-key authentication;
+- lineage key/root state in `/edge/status`;
+- ADR 0055 and `proof/cryptographic-lineage.sh`.
 
-## Delivery semantics
+## Record lineage
 
-The lifecycle is now:
+New records form this chain:
 
 ```text
-client
-  -> local WAL fsync
-  -> configured replication quorum
-  -> successful acceptance
-  -> deterministic mesh owner selection
-  -> local Kafka OR authenticated terminal peer forward
-  -> downstream acknowledgement
-  -> origin WAL checkpoint
-  -> peer replica release/compaction
+Event payload
+    |
+    v
+payload_sha256
+    |
+    + previous_record_hash
+    + edge/source sequence
+    + topic / acceptance metadata
+    |
+    v
+record_hash N
+    |
+    v
+previous_record_hash N+1
 ```
 
-A routing outage therefore does not erase an accepted event. The origin WAL remains pending until one route succeeds. The mesh remains explicitly at-least-once: a remote request that succeeds downstream but loses its HTTP response can be retried, so stable event IDs remain the deduplication boundary.
+Changing an event payload, routing metadata, sequence, timestamp, record order, or predecessor breaks verification.
 
-## Route policies
+## Segment lineage
 
-`locality` prefers the closest healthy failure-domain tier and only fails outward as required. `global` places every eligible configured node in one rendezvous ownership set for active-active distribution.
+On rotation or clean shutdown:
 
-Nodes are excluded from new ownership when their downstream is not ready, their advertisement is stale, they are marked draining, active probing fails, or WAL pressure reaches the configured threshold.
+```text
+record hashes
+    |
+    v
+SHA-256 Merkle root
+    |
+    + previous segment root
+    + edge identity / sequence range
+    |
+    v
+Ed25519 signature
+    |
+    v
+<segment>.tfseal
+```
 
-## Scope boundary
+The `.tfseal` file remains after its delivered `.tfwal` is compacted. If WAL content is still present, verification recomputes the full record chain and Merkle root. If content has aged out, the signed seal still preserves the segment commitment and segment-to-segment continuity.
 
-v2.3 intentionally keeps static peer configuration. Dynamic cloud discovery, gossip, signed topology advertisements, WAN prediction, and autonomous cost/latency optimization remain future milestones.
+## Trust modes
+
+Integrity verification:
+
+```bash
+telemetryctl audit verify --wal-dir data/edge-wal
+```
+
+This verifies each seal using its embedded public key.
+
+Identity-authenticated verification:
+
+```bash
+telemetryctl audit verify \
+  --wal-dir data/edge-wal \
+  --public-key data/edge-wal/lineage.ed25519.pub.pem
+```
+
+This additionally requires every seal signer to match the operator-provided trust anchor.
+
+## Upgrade behavior
+
+Existing v2.3 WAL v1 records remain readable. At first v2.4 startup, completed legacy segments are hashed and signed as upgrade-time anchors; new writes begin with WAL record format v2. This proves the legacy bytes observed at upgrade time, not their historical state before v2.4 existed.
+
+## Security boundary
+
+The signing key must be protected independently in production. An attacker who can both rewrite telemetry history and use the trusted private key can create new valid signatures. v2.4 makes unauthorized mutation detectable under the configured key-trust assumptions; it does not claim an external transparency ledger or consensus guarantee.
+
+## Validation
+
+CI is configured to run race/vet/build coverage, the lineage/WAL/replication/mesh/edge suite, Docker/Kubernetes validation, and the manual cryptographic-lineage operational proof scenario under Go 1.27.1.

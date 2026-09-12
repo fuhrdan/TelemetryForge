@@ -176,7 +176,15 @@ func testRecord(t *testing.T, edgeID string, sequence uint64, eventID string) wa
 	if err != nil {
 		t.Fatal(err)
 	}
-	return wal.Record{Format: wal.Format, FormatVersion: wal.Version, EdgeID: edgeID, Topic: "telemetry.raw", EdgeSequence: sequence, SourceSequence: sequence, AcceptedAt: time.Unix(1700000001, 0).UTC(), PayloadSHA256: hash, Event: event}
+	record := wal.Record{Format: wal.Format, FormatVersion: wal.Version, EdgeID: edgeID, Topic: "telemetry.raw", EdgeSequence: sequence, SourceSequence: sequence, AcceptedAt: time.Unix(1700000001, 0).UTC(), PayloadSHA256: hash, LineageVersion: wal.LineageVersion, Event: event}
+	if sequence > 1 {
+		record.PreviousRecordHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	}
+	record.RecordHash, err = wal.ComputeRecordHash(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return record
 }
 
 func TestAckJSONShape(t *testing.T) {
@@ -226,7 +234,16 @@ func TestReplicaPressureCompactsReleasedRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	maxBytes := int64(len(replicaHeader) + replicaFrameHeaderBytes + len(payload) + 32)
+	second := testRecord(t, "edge-origin", 2, "evt-2")
+	_, secondPayload, err := fingerprintRecord(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	largest := len(payload)
+	if len(secondPayload) > largest {
+		largest = len(secondPayload)
+	}
+	maxBytes := int64(len(replicaHeader) + replicaFrameHeaderBytes + largest + 32)
 	store, err := OpenStoreWithConfig(StoreConfig{Directory: directory, MaxBytes: maxBytes})
 	if err != nil {
 		t.Fatal(err)
@@ -235,7 +252,6 @@ func TestReplicaPressureCompactsReleasedRecords(t *testing.T) {
 	if _, err := store.Put(probe); err != nil {
 		t.Fatal(err)
 	}
-	second := testRecord(t, "edge-origin", 2, "evt-2")
 	if _, err := store.Put(second); !errors.Is(err, ErrReplicaPressure) {
 		t.Fatalf("expected replica pressure, got %v", err)
 	}

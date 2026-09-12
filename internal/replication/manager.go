@@ -43,7 +43,7 @@ func NewManager(config Config) (*Manager, error) {
 }
 
 func (manager *Manager) Replicate(ctx context.Context, record wal.Record) (Result, error) {
-	acknowledgements := []Ack{{Node: manager.config.Local, EdgeID: record.EdgeID, EdgeSequence: record.EdgeSequence, PayloadSHA256: record.PayloadSHA256, DurableAt: record.AcceptedAt}}
+	acknowledgements := []Ack{{Node: manager.config.Local, EdgeID: record.EdgeID, EdgeSequence: record.EdgeSequence, PayloadSHA256: record.PayloadSHA256, RecordHash: record.RecordHash, DurableAt: record.AcceptedAt}}
 	if manager.config.Mode == ModeLocal {
 		result := evaluate(manager.config, acknowledgements)
 		manager.record(result, nil)

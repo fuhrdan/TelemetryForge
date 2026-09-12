@@ -119,6 +119,16 @@ Do not commit:
 
 Use the organization's approved secret manager.
 
+## Cryptographic lineage signing keys
+
+v2.4 edge segment seals use Ed25519. The private lineage key is a production secret and must not be committed, copied into images, or stored in a public artifact.
+
+Local development can allow the edge to create a persistent key pair inside the WAL volume. Production should provision the private key from an approved secret manager and configure `TELEMETRYFORGE_EDGE_LINEAGE_PRIVATE_KEY`. Pin the corresponding public key when running external audit verification.
+
+A signer mismatch against existing `.tfseal` history fails closed. Current v2.4 does not implement authenticated key rotation; replace a production key only through a separately reviewed migration procedure.
+
+See [Cryptographic Lineage](docs/security/cryptographic-lineage.md).
+
 ## Reporting
 
 Do not open a public issue containing credentials, exploit details, or real

@@ -84,7 +84,7 @@ func (handler *Handler) replicate(writer http.ResponseWriter, request *http.Requ
 		http.Error(writer, "replication persistence failed", status)
 		return
 	}
-	acknowledgement := Ack{Node: handler.local, EdgeID: record.EdgeID, EdgeSequence: record.EdgeSequence, PayloadSHA256: record.PayloadSHA256, Duplicate: duplicate, DurableAt: time.Now().UTC()}
+	acknowledgement := Ack{Node: handler.local, EdgeID: record.EdgeID, EdgeSequence: record.EdgeSequence, PayloadSHA256: record.PayloadSHA256, RecordHash: record.RecordHash, Duplicate: duplicate, DurableAt: time.Now().UTC()}
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(writer).Encode(acknowledgement)
@@ -157,7 +157,7 @@ func replicateToPeer(ctx context.Context, client *http.Client, peer Node, token 
 	if err := decoder.Decode(&acknowledgement); err != nil {
 		return Ack{}, err
 	}
-	if acknowledgement.Node.ID != peer.ID || acknowledgement.EdgeID != record.EdgeID || acknowledgement.EdgeSequence != record.EdgeSequence || acknowledgement.PayloadSHA256 != record.PayloadSHA256 {
+	if acknowledgement.Node.ID != peer.ID || acknowledgement.EdgeID != record.EdgeID || acknowledgement.EdgeSequence != record.EdgeSequence || acknowledgement.PayloadSHA256 != record.PayloadSHA256 || acknowledgement.RecordHash != record.RecordHash {
 		return Ack{}, errors.New("peer acknowledgement does not match replicated record")
 	}
 	return acknowledgement, nil

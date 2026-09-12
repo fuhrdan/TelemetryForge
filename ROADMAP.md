@@ -24,7 +24,8 @@
 | v2.0.0 | Released | Evidence-first investigator, cited incident comparison, human-gated recommendations |
 | v2.1.0 | Released | Durable Edge WAL, crash recovery, ordered replay, capacity backpressure |
 | v2.2.0 | Released | Replicated durability, quorum acceptance, failure-domain awareness |
-| **v2.3.0** | **Released** | **Global routing mesh, deterministic ownership, health-aware failover** |
+| v2.3.0 | Released | Global routing mesh, deterministic ownership, health-aware failover |
+| **v2.4.0** | **Released** | **Cryptographic lineage, Merkle segment seals, Ed25519 audit verification** |
 
 ## v1.2.0 delivered
 
@@ -203,6 +204,32 @@
 - Docker Compose persistence, Kubernetes StatefulSet/PVC
 - status API, tests, proof harness, docs, ADR 0052
 
+
+
+## v2.4.0 delivered
+
+### Record and segment lineage
+
+- WAL record format v2 with previous-record and current-record SHA-256 hashes
+- deterministic anchoring for legacy v1 records during upgrade
+- Merkle root over ordered record digests for every closed segment
+- chained previous-segment roots across retained history
+
+### Signed audit evidence
+
+- Ed25519 segment signatures
+- persistent signer key ID and embedded verification key
+- fail-closed mismatch if the configured signer changes underneath existing seals
+- `.tfseal` retention after normal WAL data compaction
+- trusted-public-key mode for signer identity authentication
+
+### Operations and evidence
+
+- `telemetryctl audit keygen`
+- `telemetryctl audit verify`
+- lineage state in `/edge/status`
+- `proof/cryptographic-lineage.sh`
+- ADR 0055 and operator/security documentation
 
 ## v2.3.0 delivered
 

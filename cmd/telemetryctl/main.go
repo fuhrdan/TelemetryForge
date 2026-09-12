@@ -24,6 +24,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/evidence"
 	incidentarchive "github.com/fuhrdan/TelemetryForge/internal/incidentarchive"
 	"github.com/fuhrdan/TelemetryForge/internal/intelligence"
+	"github.com/fuhrdan/TelemetryForge/internal/lineage"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
 	"github.com/fuhrdan/TelemetryForge/internal/policy"
 	"github.com/fuhrdan/TelemetryForge/internal/proof"
@@ -34,6 +35,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/shaping"
 	"github.com/fuhrdan/TelemetryForge/internal/storage"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
+	"github.com/fuhrdan/TelemetryForge/internal/wal"
 )
 
 func main() {
@@ -136,6 +138,20 @@ func main() {
 			}
 		case "list":
 			if err := intelligenceList(ctx, os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		default:
+			usage()
+			os.Exit(2)
+		}
+	case "audit":
+		switch os.Args[2] {
+		case "verify":
+			if err := auditVerify(os.Args[3:]); err != nil {
+				exitErr(err)
+			}
+		case "keygen":
+			if err := auditKeygen(os.Args[3:]); err != nil {
 				exitErr(err)
 			}
 		default:
@@ -399,6 +415,39 @@ func intelligenceInputs(ctx context.Context, store *storage.PostgresStore, tenan
 	graph := evidence.BuildWithChanges(tenant, incidentID, events, runs, simulations, changes)
 	_ = store.SaveEvidenceGraph(ctx, graph)
 	return graph, runs, simulations, nil
+}
+
+func auditVerify(args []string) error {
+	set := flag.NewFlagSet("audit verify", flag.ContinueOnError)
+	directory := set.String("wal-dir", env("TELEMETRYFORGE_EDGE_WAL_DIR", "data/edge-wal"), "edge WAL directory")
+	publicKey := set.String("public-key", "", "trusted Ed25519 public-key PEM; omitted verifies embedded signatures without external identity trust")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	report, err := wal.AuditDirectory(*directory, *publicKey)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(report, "", "  ")
+	fmt.Println(string(payload))
+	return nil
+}
+
+func auditKeygen(args []string) error {
+	set := flag.NewFlagSet("audit keygen", flag.ContinueOnError)
+	privatePath := set.String("private", "lineage.ed25519.pem", "private Ed25519 key PEM")
+	publicPath := set.String("public", "lineage.ed25519.pub.pem", "public Ed25519 key PEM")
+	force := set.Bool("force", false, "replace existing key files")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	keyID, err := lineage.GenerateKeyPair(*privatePath, *publicPath, *force)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.MarshalIndent(map[string]any{"algorithm": lineage.Algorithm, "key_id": keyID, "private_key": *privatePath, "public_key": *publicPath}, "", "  ")
+	fmt.Println(string(payload))
+	return nil
 }
 
 func proofVerify(args []string) error {
@@ -1759,6 +1808,8 @@ func usage() {
   telemetryctl intelligence investigate --id INC-42 [--tenant default]
   telemetryctl intelligence compare --left INC-42 --right INC-17 [--tenant default]
   telemetryctl intelligence list [--limit 25] [--tenant default]
+  telemetryctl audit verify [--wal-dir data/edge-wal] [--public-key lineage.ed25519.pub.pem]
+  telemetryctl audit keygen [--private lineage.ed25519.pem] [--public lineage.ed25519.pub.pem]
   telemetryctl proof verify --file run.tfproof.json
   telemetryctl proof record --file run.tfproof.json
   telemetryctl proof list [--limit 25]

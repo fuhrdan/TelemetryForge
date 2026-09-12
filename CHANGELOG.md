@@ -4,6 +4,18 @@
 
 _No changes yet._
 
+## [2.4.0] - 2026-09-12
+
+### Cryptographic Lineage
+- Added WAL record format v2 with chained SHA-256 record lineage while retaining v1 read compatibility.
+- Added deterministic SHA-256 Merkle roots for closed WAL segments.
+- Added Ed25519-signed `.tfseal` attestations chained by previous segment root.
+- Added persistent signer identity, explicit production key paths, and fail-closed signer mismatch.
+- Retained signed seals after normal WAL compaction so historical segment commitments survive payload cleanup.
+- Added `telemetryctl audit keygen` and `telemetryctl audit verify`, including optional trusted-key authentication.
+- Added lineage state to edge status, ADR 0055, tests, documentation, and cryptographic-lineage proof harness.
+- Product/service versions advanced to v2.4.0.
+
 ## [2.3.0] - 2026-09-12
 
 ### Added

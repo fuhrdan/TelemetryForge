@@ -54,3 +54,7 @@ override.tf.json
 /proof/results/raw/
 /proof/results/*.dump
 /proof/results/*.log
+
+# Cryptographic lineage private keys / local WAL identity
+lineage.ed25519.pem
+/data/edge-wal/

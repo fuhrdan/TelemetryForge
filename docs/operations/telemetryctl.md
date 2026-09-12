@@ -309,3 +309,29 @@ telemetryctl intelligence list --limit 25 --tenant production
 ```
 
 Investigation and comparison are read/analysis workflows. They do not promote policy or mutate production configuration.
+
+## Verify Durable Edge cryptographic lineage
+
+Generate a production key pair outside the repository and protect the private file:
+
+```bash
+telemetryctl audit keygen \
+  --private lineage.ed25519.pem \
+  --public lineage.ed25519.pub.pem
+```
+
+Verify retained WAL content and signed segment continuity using embedded public keys:
+
+```bash
+telemetryctl audit verify --wal-dir data/edge-wal
+```
+
+Pin the expected edge identity with a trusted public key:
+
+```bash
+telemetryctl audit verify \
+  --wal-dir data/edge-wal \
+  --public-key lineage.ed25519.pub.pem
+```
+
+Embedded-key mode proves signature integrity but does not independently establish who owns the embedded key. Trusted-key mode adds that identity assertion.

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "v2.3.0"]
+    branches: ["main", "v2.4.0"]
   pull_request:
     branches: ["main"]
 
@@ -58,7 +58,7 @@ jobs:
       - name: Operational proof model tests
         run: go test ./internal/proof
       - name: Replicated durable edge and mesh tests
-        run: go test ./internal/wal ./internal/replication ./internal/mesh ./internal/edge
+        run: go test ./internal/lineage ./internal/wal ./internal/replication ./internal/mesh ./internal/edge
       - name: Validate connector-outage proof routing fixture
         run: go run ./cmd/telemetryctl routing validate --file routing/proof-connector-outage.json
       - name: Validate proof Python helpers

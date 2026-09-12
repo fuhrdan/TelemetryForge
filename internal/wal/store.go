@@ -11,11 +11,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/lineage"
 )
 
 var (
@@ -30,6 +32,9 @@ const (
 	defaultSegmentBytes = int64(64 << 20)
 	defaultMaxBytes     = int64(4 << 30)
 	checkpointFile      = "checkpoint.json"
+	checkpointVersion   = 1
+	defaultPrivateKey   = "lineage.ed25519.pem"
+	defaultPublicKey    = "lineage.ed25519.pub.pem"
 )
 
 type Config struct {
@@ -37,14 +42,19 @@ type Config struct {
 	EdgeID           string
 	SegmentSizeBytes int64
 	MaxBytes         int64
+	SigningKeyPath   string
+	PublicKeyPath    string
 }
 
 type segmentMeta struct {
-	path        string
-	first       uint64
-	last        uint64
-	size        int64
-	recordCount uint64
+	path              string
+	first             uint64
+	last              uint64
+	size              int64
+	recordCount       uint64
+	startPreviousHash string
+	sealPath          string
+	sealed            bool
 }
 
 type checkpoint struct {
@@ -55,21 +65,25 @@ type checkpoint struct {
 }
 
 type Store struct {
-	mutex          sync.Mutex
-	directory      string
-	edgeID         string
-	segmentBytes   int64
-	maxBytes       int64
-	segments       []segmentMeta
-	current        *os.File
-	currentSize    int64
-	totalBytes     int64
-	nextSequence   uint64
-	sourceSequence map[string]uint64
-	committed      uint64
-	failed         error
-	pressure       bool
-	closed         bool
+	mutex           sync.Mutex
+	directory       string
+	edgeID          string
+	segmentBytes    int64
+	maxBytes        int64
+	segments        []segmentMeta
+	current         *os.File
+	currentSize     int64
+	totalBytes      int64
+	nextSequence    uint64
+	sourceSequence  map[string]uint64
+	committed       uint64
+	failed          error
+	pressure        bool
+	closed          bool
+	signer          *lineage.Signer
+	lastLineageHash string
+	lastSegmentRoot string
+	sealedSegments  int
 }
 
 func Open(config Config) (*Store, error) {
@@ -95,7 +109,19 @@ func Open(config Config) (*Store, error) {
 	if err := os.MkdirAll(directory, 0o750); err != nil {
 		return nil, fmt.Errorf("create WAL directory: %w", err)
 	}
-	store := &Store{directory: directory, edgeID: edgeID, segmentBytes: segmentBytes, maxBytes: maxBytes, nextSequence: 1, sourceSequence: make(map[string]uint64)}
+	privateKeyPath := strings.TrimSpace(config.SigningKeyPath)
+	if privateKeyPath == "" {
+		privateKeyPath = filepath.Join(directory, defaultPrivateKey)
+	}
+	publicKeyPath := strings.TrimSpace(config.PublicKeyPath)
+	if publicKeyPath == "" {
+		publicKeyPath = filepath.Join(directory, defaultPublicKey)
+	}
+	signer, err := lineage.LoadOrCreateSigner(privateKeyPath, publicKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("initialize WAL lineage signer: %w", err)
+	}
+	store := &Store{directory: directory, edgeID: edgeID, segmentBytes: segmentBytes, maxBytes: maxBytes, nextSequence: 1, sourceSequence: make(map[string]uint64), signer: signer}
 	if err := store.loadCheckpoint(); err != nil {
 		return nil, err
 	}
@@ -125,7 +151,11 @@ func (store *Store) Append(topic string, event domain.Event) (Record, error) {
 	if err != nil {
 		return Record{}, err
 	}
-	record := Record{Format: Format, FormatVersion: Version, EdgeID: store.edgeID, Topic: topic, EdgeSequence: store.nextSequence, SourceSequence: store.sourceSequence[key] + 1, AcceptedAt: time.Now().UTC(), PayloadSHA256: hash, Event: event}
+	record := Record{Format: Format, FormatVersion: Version, EdgeID: store.edgeID, Topic: topic, EdgeSequence: store.nextSequence, SourceSequence: store.sourceSequence[key] + 1, AcceptedAt: time.Now().UTC(), PayloadSHA256: hash, LineageVersion: LineageVersion, PreviousRecordHash: store.lastLineageHash, Event: event}
+	record.RecordHash, err = ComputeRecordHash(record)
+	if err != nil {
+		return Record{}, err
+	}
 	payload, err := json.Marshal(record)
 	if err != nil {
 		return Record{}, fmt.Errorf("encode WAL record: %w", err)
@@ -174,6 +204,7 @@ func (store *Store) Append(topic string, event domain.Event) (Record, error) {
 	current.recordCount++
 	store.nextSequence++
 	store.sourceSequence[key] = record.SourceSequence
+	store.lastLineageHash = record.RecordHash
 	return record, nil
 }
 
@@ -258,7 +289,7 @@ func (store *Store) Stats() Stats {
 	if last > store.committed {
 		pending = last - store.committed
 	}
-	return Stats{Directory: store.directory, Segments: len(store.segments), Bytes: store.totalBytes, MaxBytes: store.maxBytes, PendingRecords: pending, CommittedSequence: store.committed, LastSequence: last}
+	return Stats{Directory: store.directory, Segments: len(store.segments), Bytes: store.totalBytes, MaxBytes: store.maxBytes, PendingRecords: pending, CommittedSequence: store.committed, LastSequence: last, LineageKeyID: store.signer.KeyID(), SealedSegments: store.sealedSegments, LastRecordHash: store.lastLineageHash, LastSegmentRoot: store.lastSegmentRoot}
 }
 
 func (store *Store) Close() error {
@@ -275,30 +306,81 @@ func (store *Store) Close() error {
 		_ = store.current.Close()
 		return err
 	}
-	return store.current.Close()
+	if err := store.current.Close(); err != nil {
+		return err
+	}
+	store.current = nil
+	if len(store.segments) > 0 {
+		current := &store.segments[len(store.segments)-1]
+		if current.recordCount > 0 && !current.sealed {
+			if err := store.sealSegment(current); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (store *Store) recover() error {
+	sealEntries, err := store.loadSealChain()
+	if err != nil {
+		return err
+	}
+	sealsBySegment := make(map[string]lineage.Seal, len(sealEntries))
+	for _, seal := range sealEntries {
+		sealsBySegment[seal.Segment] = seal
+	}
+
 	paths, err := filepath.Glob(filepath.Join(store.directory, "*.tfwal"))
 	if err != nil {
 		return fmt.Errorf("list WAL segments: %w", err)
 	}
 	sort.Strings(paths)
-	var previous uint64
+
+	// If compacted segments precede the oldest retained WAL, their latest seal
+	// is the cryptographic anchor for the first retained record.
+	var previousSequence uint64
+	var previousHash string
+	var previousRoot string
+	priorSealCount := 0
+	if len(paths) > 0 {
+		firstSequence, err := segmentSequence(paths[0])
+		if err != nil {
+			return err
+		}
+		for _, seal := range sealEntries {
+			if seal.LastSequence < firstSequence {
+				previousHash = seal.LastRecordHash
+				previousRoot = seal.MerkleRoot
+				previousSequence = seal.LastSequence
+				priorSealCount++
+			}
+		}
+	} else if len(sealEntries) > 0 {
+		latest := sealEntries[len(sealEntries)-1]
+		previousHash = latest.LastRecordHash
+		previousRoot = latest.MerkleRoot
+		previousSequence = latest.LastSequence
+		priorSealCount = len(sealEntries)
+	}
+	store.lastLineageHash = previousHash
+	store.lastSegmentRoot = previousRoot
+	store.sealedSegments = priorSealCount
+
 	for index, path := range paths {
 		records, size, _, err := scanSegment(path, index == len(paths)-1)
 		if err != nil {
 			return err
 		}
-		meta := segmentMeta{path: path, size: size, recordCount: uint64(len(records))}
+		meta := segmentMeta{path: path, size: size, recordCount: uint64(len(records)), startPreviousHash: store.lastLineageHash, sealPath: sealPathForSegment(path)}
 		for _, record := range records {
 			if record.EdgeID != store.edgeID {
 				return fmt.Errorf("WAL segment %s belongs to edge %q, expected %q", filepath.Base(path), record.EdgeID, store.edgeID)
 			}
-			if previous != 0 && record.EdgeSequence != previous+1 {
-				return fmt.Errorf("WAL sequence gap/corruption: previous=%d current=%d", previous, record.EdgeSequence)
+			if previousSequence != 0 && record.EdgeSequence != previousSequence+1 {
+				return fmt.Errorf("WAL sequence gap/corruption: previous=%d current=%d", previousSequence, record.EdgeSequence)
 			}
-			previous = record.EdgeSequence
+			previousSequence = record.EdgeSequence
 			if meta.first == 0 {
 				meta.first = record.EdgeSequence
 			}
@@ -308,32 +390,192 @@ func (store *Store) recover() error {
 				store.sourceSequence[key] = record.SourceSequence
 			}
 		}
+		finalHash, leaves, err := VerifyRecordChain(records, store.lastLineageHash)
+		if err != nil {
+			return fmt.Errorf("verify WAL lineage in %s: %w", filepath.Base(path), err)
+		}
+		if len(records) > 0 {
+			store.lastLineageHash = finalHash
+		}
+
+		if seal, ok := sealsBySegment[filepath.Base(path)]; ok {
+			if seal.KeyID != store.signer.KeyID() {
+				return fmt.Errorf("lineage signer mismatch for %s: seal=%s configured=%s", filepath.Base(path), seal.KeyID, store.signer.KeyID())
+			}
+			if seal.PreviousSegmentRoot != store.lastSegmentRoot {
+				return fmt.Errorf("lineage segment-root discontinuity at %s", filepath.Base(path))
+			}
+			if err := verifySealAgainstRecords(seal, records, leaves); err != nil {
+				return err
+			}
+			meta.sealed = true
+			store.lastSegmentRoot = seal.MerkleRoot
+			store.sealedSegments++
+		}
+
 		store.segments = append(store.segments, meta)
 		store.totalBytes += size
 	}
-	if previous > 0 {
-		store.nextSequence = previous + 1
+
+	if previousSequence > 0 {
+		store.nextSequence = previousSequence + 1
 	}
 	if store.committed >= store.nextSequence {
 		store.nextSequence = store.committed + 1
 	}
-	if len(store.segments) == 0 {
-		if err := store.createSegment(store.nextSequence); err != nil {
-			return err
-		}
-	} else {
-		last := store.segments[len(store.segments)-1]
-		file, err := os.OpenFile(last.path, os.O_RDWR|os.O_APPEND, 0o640)
-		if err != nil {
-			return fmt.Errorf("open active WAL segment: %w", err)
-		}
-		store.current = file
-		store.currentSize = last.size
+	if store.committed > previousSequence && previousSequence != 0 && len(paths) > 0 {
+		return fmt.Errorf("WAL checkpoint %d is ahead of recovered sequence %d", store.committed, previousSequence)
 	}
-	if store.committed > previous && previous != 0 {
-		return fmt.Errorf("WAL checkpoint %d is ahead of recovered sequence %d", store.committed, previous)
+
+	if len(store.segments) == 0 {
+		return store.createSegment(store.nextSequence)
+	}
+
+	// Upgrade safety: close/seal every completed predecessor. A legacy v1
+	// final segment is sealed as an upgrade-time anchor and v2 starts fresh.
+	for index := 0; index < len(store.segments)-1; index++ {
+		meta := &store.segments[index]
+		if meta.recordCount > 0 && !meta.sealed {
+			if err := store.sealSegment(meta); err != nil {
+				return err
+			}
+		}
+	}
+	last := &store.segments[len(store.segments)-1]
+	lastRecords, _, _, err := scanSegment(last.path, false)
+	if err != nil {
+		return err
+	}
+	legacyLast := false
+	for _, record := range lastRecords {
+		if record.FormatVersion == LegacyVersion {
+			legacyLast = true
+			break
+		}
+	}
+	if last.sealed || (legacyLast && last.recordCount > 0) {
+		if !last.sealed {
+			if err := store.sealSegment(last); err != nil {
+				return err
+			}
+		}
+		return store.createSegment(store.nextSequence)
+	}
+
+	file, err := os.OpenFile(last.path, os.O_RDWR|os.O_APPEND, 0o640)
+	if err != nil {
+		return fmt.Errorf("open active WAL segment: %w", err)
+	}
+	store.current = file
+	store.currentSize = last.size
+	return nil
+}
+
+func (store *Store) loadSealChain() ([]lineage.Seal, error) {
+	paths, err := filepath.Glob(filepath.Join(store.directory, "*.tfseal"))
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(paths)
+	seals := make([]lineage.Seal, 0, len(paths))
+	var previousRoot string
+	var previousLast uint64
+	for _, path := range paths {
+		seal, err := lineage.ReadSeal(path)
+		if err != nil {
+			return nil, fmt.Errorf("read lineage seal %s: %w", filepath.Base(path), err)
+		}
+		if err := lineage.VerifySeal(seal, nil); err != nil {
+			return nil, fmt.Errorf("verify lineage seal %s: %w", filepath.Base(path), err)
+		}
+		if seal.EdgeID != store.edgeID {
+			return nil, fmt.Errorf("lineage seal %s belongs to edge %q, expected %q", filepath.Base(path), seal.EdgeID, store.edgeID)
+		}
+		if seal.KeyID != store.signer.KeyID() {
+			return nil, fmt.Errorf("lineage signer mismatch for %s: seal=%s configured=%s", filepath.Base(path), seal.KeyID, store.signer.KeyID())
+		}
+		if len(seals) > 0 {
+			if seal.PreviousSegmentRoot != previousRoot {
+				return nil, fmt.Errorf("lineage seal chain broken at %s", filepath.Base(path))
+			}
+			if seal.FirstSequence != previousLast+1 {
+				return nil, fmt.Errorf("lineage seal sequence gap at %s", filepath.Base(path))
+			}
+		} else if seal.PreviousSegmentRoot != "" {
+			return nil, fmt.Errorf("first retained lineage seal %s unexpectedly references a previous root", filepath.Base(path))
+		}
+		previousRoot = seal.MerkleRoot
+		previousLast = seal.LastSequence
+		seals = append(seals, seal)
+	}
+	return seals, nil
+}
+
+func (store *Store) sealSegment(meta *segmentMeta) error {
+	if meta == nil || meta.recordCount == 0 || meta.sealed {
+		return nil
+	}
+	records, _, _, err := scanSegment(meta.path, false)
+	if err != nil {
+		return err
+	}
+	finalHash, leaves, err := VerifyRecordChain(records, meta.startPreviousHash)
+	if err != nil {
+		return err
+	}
+	if len(leaves) == 0 {
+		return nil
+	}
+	root, err := lineage.MerkleRoot(leaves)
+	if err != nil {
+		return err
+	}
+	seal, err := store.signer.SignSeal(lineage.Seal{
+		EdgeID: store.edgeID, Segment: filepath.Base(meta.path), FirstSequence: records[0].EdgeSequence,
+		LastSequence: records[len(records)-1].EdgeSequence, RecordCount: uint64(len(records)),
+		FirstRecordHash: leaves[0], LastRecordHash: finalHash, MerkleRoot: root,
+		PreviousSegmentRoot: store.lastSegmentRoot, SealedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		return err
+	}
+	if err := lineage.WriteSeal(meta.sealPath, seal); err != nil {
+		return fmt.Errorf("write lineage seal: %w", err)
+	}
+	meta.sealed = true
+	store.lastSegmentRoot = root
+	store.sealedSegments++
+	return nil
+}
+
+func verifySealAgainstRecords(seal lineage.Seal, records []Record, leaves []string) error {
+	if len(records) == 0 || len(leaves) == 0 {
+		return errors.New("sealed WAL segment contains no records")
+	}
+	root, err := lineage.MerkleRoot(leaves)
+	if err != nil {
+		return err
+	}
+	if seal.FirstSequence != records[0].EdgeSequence || seal.LastSequence != records[len(records)-1].EdgeSequence || seal.RecordCount != uint64(len(records)) {
+		return fmt.Errorf("lineage seal sequence/count mismatch for %s", seal.Segment)
+	}
+	if seal.FirstRecordHash != leaves[0] || seal.LastRecordHash != leaves[len(leaves)-1] || seal.MerkleRoot != root {
+		return fmt.Errorf("lineage seal Merkle/hash mismatch for %s", seal.Segment)
 	}
 	return nil
+}
+
+func sealPathForSegment(path string) string {
+	return strings.TrimSuffix(path, filepath.Ext(path)) + ".tfseal"
+}
+
+func segmentSequence(path string) (uint64, error) {
+	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	sequence, err := strconv.ParseUint(name, 10, 64)
+	if err != nil || sequence == 0 {
+		return 0, fmt.Errorf("invalid WAL segment filename %s", filepath.Base(path))
+	}
+	return sequence, nil
 }
 
 func (store *Store) rotate(next uint64) error {
@@ -344,8 +586,16 @@ func (store *Store) rotate(next uint64) error {
 		if err := store.current.Close(); err != nil {
 			return fmt.Errorf("close WAL before rotation: %w", err)
 		}
+		store.current = nil
+		if len(store.segments) > 0 {
+			current := &store.segments[len(store.segments)-1]
+			if current.recordCount > 0 && !current.sealed {
+				if err := store.sealSegment(current); err != nil {
+					return err
+				}
+			}
+		}
 	}
-	store.current = nil
 	return store.createSegment(next)
 }
 
@@ -366,7 +616,7 @@ func (store *Store) createSegment(firstSequence uint64) error {
 	store.current = file
 	store.currentSize = segmentHeaderBytes
 	store.totalBytes += segmentHeaderBytes
-	store.segments = append(store.segments, segmentMeta{path: path, size: segmentHeaderBytes})
+	store.segments = append(store.segments, segmentMeta{path: path, size: segmentHeaderBytes, startPreviousHash: store.lastLineageHash, sealPath: sealPathForSegment(path)})
 	return nil
 }
 
@@ -408,7 +658,7 @@ func (store *Store) loadCheckpoint() error {
 	if err := decoder.Decode(&cp); err != nil {
 		return fmt.Errorf("decode WAL checkpoint: %w", err)
 	}
-	if cp.Format != Format || cp.FormatVersion != Version {
+	if cp.Format != Format || cp.FormatVersion != checkpointVersion {
 		return errors.New("unsupported WAL checkpoint format/version")
 	}
 	store.committed = cp.CommittedSequence
@@ -423,7 +673,7 @@ func (store *Store) writeCheckpoint(sequence uint64) error {
 	for key, value := range store.sourceSequence {
 		sequences[key] = value
 	}
-	cp := checkpoint{Format: Format, FormatVersion: Version, CommittedSequence: sequence, SourceSequences: sequences}
+	cp := checkpoint{Format: Format, FormatVersion: checkpointVersion, CommittedSequence: sequence, SourceSequences: sequences}
 	payload, err := json.MarshalIndent(cp, "", "  ")
 	if err != nil {
 		return err

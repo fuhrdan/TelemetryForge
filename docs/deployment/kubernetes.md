@@ -169,3 +169,8 @@ the same admin-scope authentication model as worker/gateway.
 Gateway, router, and dashboard use rolling updates with `maxUnavailable: 0`; worker permits one unavailable replica. All four Deployments set `maxSurge: 1`, `minReadySeconds`, `progressDeadlineSeconds`, and hostname topology spreading. Router now has a PodDisruptionBudget and HPA in addition to gateway/worker/dashboard controls.
 
 To generate evidence from a real cluster, use `proof/k8s-rollout.sh --execute --ack-cluster-change` or `scripts/proof-k8s-rollout.py --execute --acknowledge-cluster-change`.
+
+
+## v2.4 lineage key
+
+The base StatefulSet persists its default development lineage key in the WAL PVC. For production, mount an Ed25519 private/public key pair from your external-secret workflow and set `TELEMETRYFORGE_EDGE_LINEAGE_PRIVATE_KEY` / `TELEMETRYFORGE_EDGE_LINEAGE_PUBLIC_KEY` to those mounted paths. Do not place the private PEM directly in Git-managed manifests.

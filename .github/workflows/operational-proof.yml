@@ -21,6 +21,7 @@ on:
           - wal-crash-recovery
           - edge-replication
           - mesh-failover
+          - cryptographic-lineage
 
 permissions:
   contents: read
@@ -71,6 +72,9 @@ jobs:
               ;;
             mesh-failover)
               proof/mesh-failover.sh --execute
+              ;;
+            cryptographic-lineage)
+              proof/cryptographic-lineage.sh --execute
               ;;
           esac
       - name: Verify generated proof artifacts

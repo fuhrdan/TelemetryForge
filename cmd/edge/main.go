@@ -25,7 +25,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/wal"
 )
 
-const version = "2.3.0"
+const version = "2.4.0"
 
 func main() {
 	logger := logging.New()
@@ -90,7 +90,7 @@ func main() {
 	}
 	defer replicaStore.Close()
 
-	walStore, err := wal.Open(wal.Config{Directory: envOrDefault("TELEMETRYFORGE_EDGE_WAL_DIR", "data/edge-wal"), EdgeID: edgeID, SegmentSizeBytes: int64Env("TELEMETRYFORGE_EDGE_WAL_SEGMENT_BYTES", 64<<20), MaxBytes: int64Env("TELEMETRYFORGE_EDGE_WAL_MAX_BYTES", 4<<30)})
+	walStore, err := wal.Open(wal.Config{Directory: envOrDefault("TELEMETRYFORGE_EDGE_WAL_DIR", "data/edge-wal"), EdgeID: edgeID, SegmentSizeBytes: int64Env("TELEMETRYFORGE_EDGE_WAL_SEGMENT_BYTES", 64<<20), MaxBytes: int64Env("TELEMETRYFORGE_EDGE_WAL_MAX_BYTES", 4<<30), SigningKeyPath: strings.TrimSpace(os.Getenv("TELEMETRYFORGE_EDGE_LINEAGE_PRIVATE_KEY")), PublicKeyPath: strings.TrimSpace(os.Getenv("TELEMETRYFORGE_EDGE_LINEAGE_PUBLIC_KEY"))})
 	if err != nil {
 		logger.Error("edge WAL initialization failed", "error", err)
 		os.Exit(1)
@@ -204,7 +204,7 @@ func main() {
 	errorChannel := make(chan error, 1)
 	go func() {
 		stats := durablePublisher.Stats()
-		logger.Info("TelemetryForge global mesh edge starting", "version", version, "edge_id", edgeID, "address", address, "wal_directory", stats.Directory, "wal_max_bytes", stats.MaxBytes, "pending_records", stats.PendingRecords, "durability_mode", stats.Replication.Mode, "replication_quorum", stats.Replication.Quorum, "configured_replication_peers", stats.Replication.ConfiguredPeers, "mesh_policy", meshManager.Config().Policy, "configured_mesh_peers", len(meshManager.Config().Peers))
+		logger.Info("TelemetryForge global mesh edge starting", "version", version, "edge_id", edgeID, "address", address, "wal_directory", stats.Directory, "wal_max_bytes", stats.MaxBytes, "pending_records", stats.PendingRecords, "durability_mode", stats.Replication.Mode, "replication_quorum", stats.Replication.Quorum, "configured_replication_peers", stats.Replication.ConfiguredPeers, "mesh_policy", meshManager.Config().Policy, "configured_mesh_peers", len(meshManager.Config().Peers), "lineage_key_id", stats.LineageKeyID, "sealed_segments", stats.SealedSegments)
 		errorChannel <- httpServer.ListenAndServe()
 	}()
 	signalContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

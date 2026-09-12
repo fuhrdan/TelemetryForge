@@ -1,8 +1,18 @@
 # TelemetryForge Architecture
 
-TelemetryForge v2.3.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v2.4.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
+
+## v2.4 cryptographic lineage
+
+The Durable Edge WAL now carries a cryptographic history in addition to frame CRC and event payload hashes. WAL v2 records bind immutable routing/sequencing metadata to `payload_sha256` and `previous_record_hash`. Closed segments reduce ordered record digests to a SHA-256 Merkle root, link that root to the previous segment, and sign the resulting seal with Ed25519.
+
+Segment seals remain after normal WAL compaction. Retained WAL plus a seal permits full record/Merkle verification; a seal-only historical segment preserves signed continuity after payload retention has expired. `telemetryctl audit verify` can verify embedded signatures or pin a trusted public key to authenticate edge identity.
+
+Legacy WAL v1 records remain readable. On upgrade they are deterministically hashed and the final legacy segment is signed as an upgrade-time anchor before new v2 lineage records are written. This does not claim retroactive proof about pre-v2.4 creation history.
+
+See [Cryptographic Lineage](docs/security/cryptographic-lineage.md) and ADR 0055.
 
 ## v2.3 global routing mesh
 
@@ -94,7 +104,8 @@ OpenTelemetry traces.
 15. **Corruption fails closed.** Only an incomplete final WAL frame is auto-truncated; completed-frame integrity failure blocks recovery.
 16. **Durability class cannot silently degrade.** If live peers cannot satisfy the configured quorum/failure-domain rule, edge readiness and successful acceptance fail instead of falling back to a weaker class.
 17. **Route optimization cannot weaken acceptance durability.** Mesh ownership is evaluated only after the origin WAL/quorum boundary; the origin record remains pending until local or remote terminal downstream delivery succeeds.
-17. **Replica acknowledgement follows fsync.** Receiving peers acknowledge only after the origin record is durably appended to the replica log.
+18. **Replica acknowledgement follows fsync.** Receiving peers acknowledge only after the origin record is durably appended to the replica log.
+19. **Lineage changes fail verification.** WAL v2 record chaining, Merkle segment roots, and Ed25519 seals make retained-history mutation detectable; a pinned public key additionally authenticates the signer.
 
 ## Durable Edge boundary
 

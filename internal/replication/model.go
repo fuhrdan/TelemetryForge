@@ -49,6 +49,7 @@ type Ack struct {
 	EdgeID        string    `json:"origin_edge_id"`
 	EdgeSequence  uint64    `json:"edge_sequence"`
 	PayloadSHA256 string    `json:"payload_sha256"`
+	RecordHash    string    `json:"record_hash,omitempty"`
 	Duplicate     bool      `json:"duplicate"`
 	DurableAt     time.Time `json:"durable_at"`
 }

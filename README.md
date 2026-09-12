@@ -10,7 +10,7 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current release:** `v2.3.0` — Global Routing Mesh with health-aware deterministic ownership and automatic edge failover.
+> **Current release:** `v2.4.0` — Cryptographic Lineage with hash-chained WAL records, Merkle-rooted segments, and Ed25519 audit verification.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -18,6 +18,19 @@ backend. It controls telemetry **before** downstream cost, cardinality, policy,
 and evidence decisions become irreversible.
 
 ## Signature capabilities
+
+### Cryptographic Lineage
+
+v2.4 adds tamper-evident lineage to the Durable Edge. New WAL records link to the previous record hash, closed segments are reduced to SHA-256 Merkle roots, and each segment seal is signed with an Ed25519 edge identity. The signed segment-root chain is retained even after delivered WAL data is compacted.
+
+```bash
+telemetryctl audit verify --wal-dir data/edge-wal
+telemetryctl audit verify --wal-dir data/edge-wal --public-key data/edge-wal/lineage.ed25519.pub.pem
+```
+
+The first command verifies embedded signatures for integrity. Supplying a trusted public key also authenticates the expected edge signer. This is deliberately a cryptographic audit chain, not a blockchain or consensus ledger.
+
+Read [Cryptographic Lineage](docs/security/cryptographic-lineage.md).
 
 ### Global Routing Mesh
 
