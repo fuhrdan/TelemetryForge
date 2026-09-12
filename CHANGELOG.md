@@ -4,6 +4,15 @@
 
 _No changes yet._
 
+## [2.1.0] - 2026-09-12
+
+### Durable Edge
+- Added `telemetryforge-edge` with fsync-before-acceptance local WAL semantics.
+- Added segmented crash recovery, CRC32 frame checks, event SHA-256 verification, and fail-closed completed-frame corruption handling.
+- Added global edge and per-tenant/source sequences with restart/compaction continuity.
+- Added ordered asynchronous Kafka replay, atomic delivery checkpointing, bounded retry, and WAL-capacity backpressure.
+- Added `/edge/status`, Docker/Kubernetes persistence, CI coverage, proof harness, documentation, and ADR 0052.
+
 ## [2.0.0] - 2026-09-11
 
 ### Evidence-First Intelligence

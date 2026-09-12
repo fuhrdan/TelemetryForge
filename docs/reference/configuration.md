@@ -302,3 +302,15 @@ snapshot.
 ## Connector Platform
 
 New routing documents use `type: connector` with nested `connector.kind`. Secrets use `header_env`, `bearer_token_env`, or `api_key_env`; raw credentials are not stored. `TELEMETRYFORGE_ROUTER_INSTANCE_ID` optionally sets the heartbeat identity. Routing is bounded to 64 destinations and 512 rules; connector headers/Prometheus label allowlists are bounded.
+
+
+## v2.1 Durable Edge
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TELEMETRYFORGE_EDGE_ADDRESS` | `:8083` | Edge HTTP listen address |
+| `TELEMETRYFORGE_EDGE_ID` | host name | Identity stored in WAL records |
+| `TELEMETRYFORGE_EDGE_WAL_DIR` | `data/edge-wal` | Durable WAL directory |
+| `TELEMETRYFORGE_EDGE_WAL_SEGMENT_BYTES` | `67108864` | 64 MiB segment target |
+| `TELEMETRYFORGE_EDGE_WAL_MAX_BYTES` | `4294967296` | 4 GiB local capacity |
+| `TELEMETRYFORGE_EDGE_KAFKA_CLIENT_ID` | `telemetryforge-edge-<edge-id>` | Kafka producer client ID |

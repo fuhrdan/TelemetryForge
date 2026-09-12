@@ -4,6 +4,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge-gateway ./cmd/gateway
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge-edge ./cmd/edge
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge-worker ./cmd/worker
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge-router ./cmd/router
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryctl ./cmd/telemetryctl
@@ -11,6 +12,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemet
 FROM alpine:3.24.1
 RUN addgroup -S telemetryforge && adduser -S -G telemetryforge telemetryforge
 COPY --from=build /out/telemetryforge-gateway /usr/local/bin/telemetryforge-gateway
+COPY --from=build /out/telemetryforge-edge /usr/local/bin/telemetryforge-edge
 COPY --from=build /out/telemetryforge-worker /usr/local/bin/telemetryforge-worker
 COPY --from=build /out/telemetryforge-router /usr/local/bin/telemetryforge-router
 COPY --from=build /out/telemetryctl /usr/local/bin/telemetryctl
@@ -18,5 +20,5 @@ COPY policies /etc/telemetryforge/policies
 COPY routing /etc/telemetryforge/routing
 COPY shaping /etc/telemetryforge/shaping
 USER telemetryforge
-EXPOSE 8080 8081 8082
+EXPOSE 8080 8081 8082 8083
 ENTRYPOINT ["/usr/local/bin/telemetryforge-gateway"]

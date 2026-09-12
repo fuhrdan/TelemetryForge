@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: edge
+  namespace: telemetryforge
+spec:
+  serviceName: edge
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: telemetryforge-edge
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: telemetryforge-edge
+        app.kubernetes.io/part-of: telemetryforge
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: edge
+          image: ghcr.io/fuhrdan/telemetryforge:v2.1.0
+          command: ["/usr/local/bin/telemetryforge-edge"]
+          ports:
+            - name: http
+              containerPort: 8083
+          env:
+            - name: TELEMETRYFORGE_EDGE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          envFrom:
+            - configMapRef:
+                name: telemetryforge-config
+            - secretRef:
+                name: telemetryforge-secrets
+          volumeMounts:
+            - name: wal
+              mountPath: /var/lib/telemetryforge/wal
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+  volumeClaimTemplates:
+    - metadata:
+        name: wal
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 8Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: edge
+  namespace: telemetryforge
+spec:
+  selector:
+    app.kubernetes.io/name: telemetryforge-edge
+  ports:
+    - name: http
+      port: 8083
+      targetPort: http

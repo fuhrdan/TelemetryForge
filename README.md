@@ -10,7 +10,7 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current release:** `v2.0.0` — Evidence-First Intelligent Telemetry Control Plane with cited investigations, incident comparison, and human-gated policy recommendations.
+> **Current release:** `v2.1.0` — Durable Edge ingestion with fsync-before-acceptance WAL, crash recovery, ordered replay, and capacity backpressure.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -18,6 +18,19 @@ backend. It controls telemetry **before** downstream cost, cardinality, policy,
 and evidence decisions become irreversible.
 
 ## Signature capabilities
+
+### Durable Edge Ingestion
+
+v2.1 adds an optional `telemetryforge-edge` process that fsyncs accepted events to a segmented local WAL before acknowledging the client. Kafka delivery happens asynchronously in edge-sequence order, so temporary broker outages consume bounded WAL capacity instead of discarding accepted data.
+
+The edge verifies CRC32 frames plus canonical-event SHA-256 hashes, restores monotonic edge/source sequences after restart, truncates only incomplete final writes, and fails closed on completed-frame corruption. When capacity is exhausted it rejects new acceptance rather than overwriting pending records.
+
+```bash
+make run-edge
+curl -s http://localhost:8083/edge/status
+```
+
+Read [Durable Edge Ingestion](docs/edge/durable-edge.md).
 
 ### Evidence-First Investigator
 

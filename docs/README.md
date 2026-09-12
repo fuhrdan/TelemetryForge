@@ -52,6 +52,8 @@ to reconstruct every decision from implementation details.
 - [Incident Comparison](intelligence/incident-comparison.md)
 - [Policy Recommendations](intelligence/policy-recommendations.md)
 - [v2.0.0 delivered scope](roadmap/v2.0.0.md)
+- [v2.1.0 delivered scope](roadmap/v2.1.0.md)
+- [Durable Edge ingestion](edge/durable-edge.md)
 
 ## Evidence Graph
 

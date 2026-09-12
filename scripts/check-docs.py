@@ -86,6 +86,8 @@ REQUIRED = [
     ROOT / "docs" / "intelligence" / "incident-comparison.md",
     ROOT / "docs" / "intelligence" / "policy-recommendations.md",
     ROOT / "docs" / "roadmap" / "v2.0.0.md",
+    ROOT / "docs" / "roadmap" / "v2.1.0.md",
+    ROOT / "docs" / "edge" / "durable-edge.md",
 ]
 
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

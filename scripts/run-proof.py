@@ -9,6 +9,7 @@ MAP={
  'postgres-outage':['proof/postgres-outage.sh'],
  'connector-outage':['proof/connector-outage.sh'],
  'worker-failover':['proof/worker-failover.sh'],
+ 'wal-crash-recovery':['proof/wal-crash-recovery.sh'],
  'preflight':[],
 }
 def main():

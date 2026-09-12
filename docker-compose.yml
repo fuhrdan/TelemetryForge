@@ -91,6 +91,39 @@ services:
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --describe --topic telemetry.routed.archive
 
 
+  edge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["/usr/local/bin/telemetryforge-edge"]
+    environment:
+      TELEMETRYFORGE_EDGE_ADDRESS: ":8083"
+      TELEMETRYFORGE_EDGE_ID: "compose-edge-01"
+      TELEMETRYFORGE_EDGE_WAL_DIR: "/var/lib/telemetryforge/wal"
+      TELEMETRYFORGE_EDGE_WAL_SEGMENT_BYTES: "67108864"
+      TELEMETRYFORGE_EDGE_WAL_MAX_BYTES: "4294967296"
+      TELEMETRYFORGE_KAFKA_BROKERS: "kafka:19092"
+      TELEMETRYFORGE_KAFKA_RAW_TOPIC: "telemetry.raw"
+      TELEMETRYFORGE_KAFKA_METRIC_TOPIC: "telemetry.metrics"
+      TELEMETRYFORGE_AUTH_MODE: "disabled"
+      TELEMETRYFORGE_DEFAULT_TENANT: "default"
+    ports:
+      - "8083:8083"
+    volumes:
+      - telemetryforge-edge-wal:/var/lib/telemetryforge/wal
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8083/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+
   gateway:
     build:
       context: .
@@ -280,6 +313,7 @@ services:
 
 volumes:
   telemetryforge-db:
+  telemetryforge-edge-wal:
   telemetryforge-prometheus:
   telemetryforge-grafana:
   telemetryforge-tempo:

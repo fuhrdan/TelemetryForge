@@ -159,10 +159,10 @@ func (server *Server) handleReady(writer http.ResponseWriter, request *http.Requ
 	defer cancel()
 
 	if err := server.publisher.Ready(ctx); err != nil {
-		server.logger.Warn("gateway not ready", "dependency", "kafka", "error", err)
+		server.logger.Warn("gateway not ready", "dependency", "publisher", "error", err)
 		writeJSON(writer, http.StatusServiceUnavailable, map[string]string{
 			"status":     "not_ready",
-			"dependency": "kafka",
+			"dependency": "publisher",
 		})
 		return
 	}

@@ -6,6 +6,7 @@ resources:
   - namespace.yaml
   - configmap.yaml
   - gateway.yaml
+  - edge.yaml
   - worker.yaml
   - router.yaml
   - dashboard.yaml

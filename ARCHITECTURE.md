@@ -1,6 +1,6 @@
 # TelemetryForge Architecture
 
-TelemetryForge v2.0.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v2.1.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
 
@@ -63,7 +63,7 @@ OpenTelemetry traces.
 
 ## Core guarantees
 
-1. **Durable acceptance.** HTTP `202` follows Kafka acknowledgement.
+1. **Explicit durable acceptance boundary.** The gateway returns success after Kafka acknowledgement; the optional edge returns success after local WAL fsync and checkpoints Kafka delivery asynchronously.
 2. **Bounded memory.** Worker queues, incident state, and cardinality state have
    configured bounds.
 3. **At-least-once processing.** Offsets advance after successful or durable DLQ
@@ -84,6 +84,14 @@ OpenTelemetry traces.
 12. **Tenant identity comes from authentication.** Client-supplied tenant IDs
     are rejected.
 13. **Change association is not causality.** Deployment-before-failure and rollback-before-recovery relationships remain observational evidence.
+14. **Edge backpressure before overwrite.** The edge rejects new acceptance when WAL capacity cannot contain the next record.
+15. **Corruption fails closed.** Only an incomplete final WAL frame is auto-truncated; completed-frame integrity failure blocks recovery.
+
+## Durable Edge boundary
+
+v2.1 adds an optional local WAL in front of Kafka. Each record has global and per-tenant/source sequences, a CRC-protected frame, and an event SHA-256. The edge fsyncs before acknowledgement, replays in sequence order, and advances an atomic checkpoint only after downstream acknowledgement. A temporary Kafka outage can therefore be absorbed until the configured WAL capacity is exhausted.
+
+See `docs/edge/durable-edge.md`.
 
 ## Authentication / tenant propagation
 

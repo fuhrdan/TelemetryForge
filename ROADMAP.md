@@ -21,7 +21,8 @@
 | v1.7.0 | Delivered development milestone | Change Intelligence, before/after analysis, observed blast radius, rollback evidence |
 | v1.8.0 | Delivered development milestone | Connector Platform, OTLP/HTTP JSON, Prometheus Remote Write, Kafka/HTTP/vendor adapters, runtime health |
 | v1.9.0 | Delivered development milestone | Scale, HA, chaos, backup/restore and reproducible operational proof artifacts |
-| **v2.0.0** | **Released** | **Evidence-first investigator, cited incident comparison, human-gated recommendations** |
+| v2.0.0 | Released | Evidence-first investigator, cited incident comparison, human-gated recommendations |
+| **v2.1.0** | **Released** | **Durable Edge WAL, crash recovery, ordered replay, capacity backpressure** |
 
 ## v1.2.0 delivered
 
@@ -187,3 +188,15 @@
 - recorded Cost Simulation / Replay-backed policy evaluation recommendations
 - mandatory human lifecycle approval for production changes
 - API, CLI, dashboard, migration 017, tests and ADRs 0049-0051
+
+
+## v2.1.0 delivered
+
+- `telemetryforge-edge` service with fsync-before-acceptance segmented WAL
+- CRC32 + event SHA-256 integrity
+- edge/source sequence continuity
+- atomic checkpoint and ordered Kafka replay
+- capacity backpressure and segment compaction
+- torn-tail recovery / completed-frame fail-closed behavior
+- Docker Compose persistence, Kubernetes StatefulSet/PVC
+- status API, tests, proof harness, docs, ADR 0052

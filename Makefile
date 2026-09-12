@@ -1,10 +1,13 @@
-.PHONY: build run run-worker run-router routing-check telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence demo-schema demo-routing test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check demo-shaping archive-check demo-change connector-check proof-check proof-verify proof-k6-smoke proof-k6-sustained proof-k6-backpressure proof-kafka-outage proof-postgres-outage proof-worker-failover proof-connector-outage proof-backup-restore intelligence-check
+.PHONY: build run run-edge run-worker run-router routing-check telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence demo-schema demo-routing test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check demo-shaping archive-check demo-change connector-check proof-check proof-verify proof-k6-smoke proof-k6-sustained proof-k6-backpressure proof-kafka-outage proof-postgres-outage proof-worker-failover proof-connector-outage proof-backup-restore proof-wal-crash-recovery edge-check intelligence-check
 
 build:
 	go build ./...
 
 run:
 	go run ./cmd/gateway
+
+run-edge:
+	go run ./cmd/edge
 
 run-worker:
 	go run ./cmd/worker
@@ -176,6 +179,13 @@ proof-connector-outage:
 
 proof-backup-restore:
 	proof/backup-restore.sh --execute
+
+proof-wal-crash-recovery:
+	proof/wal-crash-recovery.sh --execute
+
+edge-check:
+	go test ./internal/wal ./internal/edge
+	go build ./cmd/edge
 
 intelligence-check:
 	go test ./internal/intelligence
