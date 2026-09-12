@@ -324,3 +324,22 @@ New routing documents use `type: connector` with nested `connector.kind`. Secret
 | `TELEMETRYFORGE_EDGE_WAL_SEGMENT_BYTES` | `67108864` | 64 MiB origin WAL segment target |
 | `TELEMETRYFORGE_EDGE_WAL_MAX_BYTES` | `4294967296` | 4 GiB origin WAL capacity |
 | `TELEMETRYFORGE_EDGE_KAFKA_CLIENT_ID` | `telemetryforge-edge-<edge-id>` | Kafka producer client ID |
+
+
+## v2.3 Global Routing Mesh
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TELEMETRYFORGE_MESH_POLICY` | `locality` | `locality` or active-active `global` route ownership |
+| `TELEMETRYFORGE_MESH_TOKEN` | empty | Bearer token for internal mesh state/forward endpoints; required when peers are configured |
+| `TELEMETRYFORGE_MESH_PEERS` | empty | Comma-separated `id|url|cloud|region|zone` peers |
+| `TELEMETRYFORGE_MESH_CLOUD` | edge cloud | Optional routing-domain cloud override |
+| `TELEMETRYFORGE_MESH_REGION` | edge region | Optional routing-domain region override |
+| `TELEMETRYFORGE_MESH_ZONE` | edge zone | Optional routing-domain zone override |
+| `TELEMETRYFORGE_MESH_PROBE_INTERVAL` | `5s` | Active health-advertisement probe cadence |
+| `TELEMETRYFORGE_MESH_TIMEOUT` | `2s` | Mesh probe and remote-forward request timeout |
+| `TELEMETRYFORGE_MESH_STALE_AFTER` | `15s` | Maximum age of a peer advertisement before route exclusion |
+| `TELEMETRYFORGE_MESH_MAX_PRESSURE` | `0.90` | WAL utilization at/above which a node stops receiving new mesh routes |
+| `TELEMETRYFORGE_MESH_DRAINING` | `false` | Exclude this node from new route ownership for maintenance |
+
+See [Global Routing Mesh](../mesh/global-routing-mesh.md) for routing semantics and failover behavior.

@@ -126,3 +126,8 @@ TELEMETRYFORGE_DASHBOARD_API_KEY
 and injects it into the server-to-gateway request.
 
 See `docs/security/dashboard-proxy.md`.
+
+
+## Internal edge mesh authentication
+
+The v2.3 edge mesh uses a separate bearer token, `TELEMETRYFORGE_MESH_TOKEN`, for `/internal/v1/mesh/*`. These endpoints bypass tenant API-key authentication because they are node-to-node transport endpoints. Keep them on private networks and store the token in a secret manager. The replication token and mesh token may be rotated independently.

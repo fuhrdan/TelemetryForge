@@ -4,6 +4,20 @@
 
 _No changes yet._
 
+## [2.3.0] - 2026-09-12
+
+### Added
+- Global edge/relay routing mesh with authenticated health advertisements and terminal forwarding.
+- Deterministic rendezvous-hash ownership with `locality` and `global` policies.
+- WAL-pressure, stale-peer, downstream-readiness, and planned-drain route eligibility.
+- Automatic candidate failover while retaining the origin WAL until delivery succeeds.
+- `/edge/route` route inspection and mesh topology in `/edge/status`.
+- Three-edge active-active Compose example, Kubernetes mesh settings, ADR 0054, and mesh proof harness.
+
+### Changed
+- Edge readiness now includes downstream mesh route availability in addition to WAL and replication quorum readiness.
+- Product/service versions advanced to v2.3.0.
+
 ## [2.2.0] - 2026-09-12
 
 ### Replicated Durability

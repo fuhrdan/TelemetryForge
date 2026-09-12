@@ -77,9 +77,11 @@ func (publisher *Publisher) Ready(ctx context.Context) error {
 		return err
 	}
 	if publisher.replicator != nil {
-		return publisher.replicator.Ready(ctx)
+		if err := publisher.replicator.Ready(ctx); err != nil {
+			return err
+		}
 	}
-	return nil
+	return publisher.downstream.Ready(ctx)
 }
 
 func (publisher *Publisher) Stats() Status {

@@ -20,6 +20,7 @@ on:
           - backup-restore
           - wal-crash-recovery
           - edge-replication
+          - mesh-failover
 
 permissions:
   contents: read
@@ -67,6 +68,9 @@ jobs:
               ;;
             edge-replication)
               proof/edge-replication.sh --execute
+              ;;
+            mesh-failover)
+              proof/mesh-failover.sh --execute
               ;;
           esac
       - name: Verify generated proof artifacts

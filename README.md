@@ -10,7 +10,7 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current release:** `v2.2.0` — Replicated Durability with failure-domain-aware quorum acceptance across edge nodes.
+> **Current release:** `v2.3.0` — Global Routing Mesh with health-aware deterministic ownership and automatic edge failover.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -18,6 +18,19 @@ backend. It controls telemetry **before** downstream cost, cardinality, policy,
 and evidence decisions become irreversible.
 
 ## Signature capabilities
+
+### Global Routing Mesh
+
+v2.3 adds an authenticated edge/relay mesh above the Durable Edge acceptance boundary. Telemetry sources are assigned to healthy downstream owners with rendezvous hashing; peers that are stale, draining, unhealthy, or above the configured WAL-pressure threshold are automatically excluded.
+
+`locality` mode keeps delivery in the closest healthy failure-domain tier and fails outward only when required. `global` mode creates an active-active ownership set across configured nodes. Remote forwarding is terminal at the selected node's local Kafka publisher, preventing route loops while the origin WAL remains the durability authority until delivery succeeds.
+
+```bash
+curl -s http://localhost:8083/edge/status
+curl -s 'http://localhost:8083/edge/route?key=tenant-a%7Ccheckout'
+```
+
+Read [Global Routing Mesh](docs/mesh/global-routing-mesh.md).
 
 ### Replicated Durable Edge
 

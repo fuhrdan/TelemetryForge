@@ -17,6 +17,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/config"
 	"github.com/fuhrdan/TelemetryForge/internal/edge"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
+	"github.com/fuhrdan/TelemetryForge/internal/mesh"
 	"github.com/fuhrdan/TelemetryForge/internal/observability"
 	"github.com/fuhrdan/TelemetryForge/internal/replication"
 	"github.com/fuhrdan/TelemetryForge/internal/security"
@@ -24,7 +25,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/wal"
 )
 
-const version = "2.2.0"
+const version = "2.3.0"
 
 func main() {
 	logger := logging.New()
@@ -100,7 +101,63 @@ func main() {
 		logger.Error("Kafka publisher initialization failed", "error", err)
 		os.Exit(1)
 	}
-	durablePublisher := edge.NewPublisher(walStore, kafkaPublisher, logger, replicationManager)
+
+	meshLocal := mesh.Node{
+		ID: edgeID,
+		Domain: mesh.FailureDomain{
+			Cloud:  envOrDefault("TELEMETRYFORGE_MESH_CLOUD", localNode.Domain.Cloud),
+			Region: envOrDefault("TELEMETRYFORGE_MESH_REGION", localNode.Domain.Region),
+			Zone:   envOrDefault("TELEMETRYFORGE_MESH_ZONE", localNode.Domain.Zone),
+		},
+	}
+	meshPeers, err := mesh.ParsePeers(os.Getenv("TELEMETRYFORGE_MESH_PEERS"))
+	if err != nil {
+		kafkaPublisher.Close()
+		_ = walStore.Close()
+		logger.Error("edge mesh peer configuration invalid", "error", err)
+		os.Exit(1)
+	}
+	meshState := func(ctx context.Context) mesh.State {
+		stats := walStore.Stats()
+		pressure := 0.0
+		if stats.MaxBytes > 0 {
+			pressure = float64(stats.Bytes) / float64(stats.MaxBytes)
+		}
+		readyContext, cancel := context.WithTimeout(ctx, time.Second)
+		ready := kafkaPublisher.Ready(readyContext) == nil
+		cancel()
+		return mesh.State{
+			Node:           meshLocal,
+			Ready:          ready,
+			Draining:       boolEnv("TELEMETRYFORGE_MESH_DRAINING", false),
+			PendingRecords: stats.PendingRecords,
+			WALBytes:       stats.Bytes,
+			WALMaxBytes:    stats.MaxBytes,
+			Pressure:       pressure,
+			ObservedAt:     time.Now().UTC(),
+		}
+	}
+	meshManager, err := mesh.NewManager(mesh.Config{
+		Local:         meshLocal,
+		Peers:         meshPeers,
+		Token:         strings.TrimSpace(os.Getenv("TELEMETRYFORGE_MESH_TOKEN")),
+		Policy:        envOrDefault("TELEMETRYFORGE_MESH_POLICY", "locality"),
+		ProbeInterval: mesh.ParseDuration(os.Getenv("TELEMETRYFORGE_MESH_PROBE_INTERVAL"), 5*time.Second),
+		Timeout:       mesh.ParseDuration(os.Getenv("TELEMETRYFORGE_MESH_TIMEOUT"), 2*time.Second),
+		StaleAfter:    mesh.ParseDuration(os.Getenv("TELEMETRYFORGE_MESH_STALE_AFTER"), 15*time.Second),
+		MaxPressure:   mesh.ParsePressure(os.Getenv("TELEMETRYFORGE_MESH_MAX_PRESSURE"), 0.90),
+	}, meshState)
+	if err != nil {
+		kafkaPublisher.Close()
+		_ = walStore.Close()
+		logger.Error("edge mesh configuration invalid", "error", err)
+		os.Exit(1)
+	}
+	meshContext, stopMesh := context.WithCancel(context.Background())
+	defer stopMesh()
+	go meshManager.Run(meshContext)
+	meshPublisher := mesh.NewPublisher(meshManager, kafkaPublisher)
+	durablePublisher := edge.NewPublisher(walStore, meshPublisher, logger, replicationManager)
 	defer durablePublisher.Close()
 
 	apiHandler := api.NewServerWithObserver(logger, durablePublisher, api.Topics{Raw: cfg.KafkaRawTopic, Metric: cfg.KafkaMetricTopic}, nil, metrics)
@@ -108,12 +165,27 @@ func main() {
 
 	publicMux := http.NewServeMux()
 	publicMux.Handle("GET /metrics", metrics.Handler())
-	publicMux.HandleFunc("GET /edge/status", func(writer http.ResponseWriter, _ *http.Request) {
+	publicMux.HandleFunc("GET /edge/status", func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(writer).Encode(struct {
 			edge.Status
 			ReplicaStore replication.StoreStats `json:"replica_store"`
-		}{Status: durablePublisher.Stats(), ReplicaStore: replicaStore.Stats()})
+			Mesh         mesh.Snapshot          `json:"mesh"`
+		}{Status: durablePublisher.Stats(), ReplicaStore: replicaStore.Stats(), Mesh: meshManager.Snapshot(request.Context())})
+	})
+	publicMux.HandleFunc("GET /edge/route", func(writer http.ResponseWriter, request *http.Request) {
+		key := strings.TrimSpace(request.URL.Query().Get("key"))
+		if key == "" {
+			http.Error(writer, "key query parameter is required", http.StatusBadRequest)
+			return
+		}
+		route, routeErr := meshManager.Route(request.Context(), key)
+		if routeErr != nil {
+			http.Error(writer, routeErr.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(route)
 	})
 	publicMux.Handle("/", apiHandler)
 
@@ -121,7 +193,9 @@ func main() {
 	// bypasses tenant API authentication. This allows edge nodes to replicate
 	// even when public ingestion uses a different authentication scheme.
 	replicaHandler := replication.NewHandler(replicaStore, localNode, strings.TrimSpace(os.Getenv("TELEMETRYFORGE_EDGE_REPLICATION_TOKEN")))
+	meshHandler := mesh.NewHandler(meshLocal, strings.TrimSpace(os.Getenv("TELEMETRYFORGE_MESH_TOKEN")), meshState, kafkaPublisher)
 	root := http.NewServeMux()
+	root.Handle("/internal/v1/mesh/", metrics.Middleware(meshHandler))
 	root.Handle("/internal/v1/", metrics.Middleware(replicaHandler))
 	root.Handle("/", authenticator.Middleware(metrics.Middleware(publicMux)))
 
@@ -130,7 +204,7 @@ func main() {
 	errorChannel := make(chan error, 1)
 	go func() {
 		stats := durablePublisher.Stats()
-		logger.Info("TelemetryForge replicated edge starting", "version", version, "edge_id", edgeID, "address", address, "wal_directory", stats.Directory, "wal_max_bytes", stats.MaxBytes, "pending_records", stats.PendingRecords, "durability_mode", stats.Replication.Mode, "replication_quorum", stats.Replication.Quorum, "configured_peers", stats.Replication.ConfiguredPeers)
+		logger.Info("TelemetryForge global mesh edge starting", "version", version, "edge_id", edgeID, "address", address, "wal_directory", stats.Directory, "wal_max_bytes", stats.MaxBytes, "pending_records", stats.PendingRecords, "durability_mode", stats.Replication.Mode, "replication_quorum", stats.Replication.Quorum, "configured_replication_peers", stats.Replication.ConfiguredPeers, "mesh_policy", meshManager.Config().Policy, "configured_mesh_peers", len(meshManager.Config().Peers))
 		errorChannel <- httpServer.ListenAndServe()
 	}()
 	signalContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -167,6 +241,18 @@ func int64Env(name string, fallback int64) int64 {
 	}
 	value, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func boolEnv(name string, fallback bool) bool {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
 		return fallback
 	}
 	return value

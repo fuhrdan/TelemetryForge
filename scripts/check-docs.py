@@ -90,6 +90,8 @@ REQUIRED = [
     ROOT / "docs" / "roadmap" / "v2.2.0.md",
     ROOT / "docs" / "edge" / "durable-edge.md",
     ROOT / "docs" / "edge" / "replicated-durability.md",
+    ROOT / "docs" / "mesh" / "global-routing-mesh.md",
+    ROOT / "docs" / "roadmap" / "v2.3.0.md",
 ]
 
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

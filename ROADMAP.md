@@ -23,7 +23,8 @@
 | v1.9.0 | Delivered development milestone | Scale, HA, chaos, backup/restore and reproducible operational proof artifacts |
 | v2.0.0 | Released | Evidence-first investigator, cited incident comparison, human-gated recommendations |
 | v2.1.0 | Released | Durable Edge WAL, crash recovery, ordered replay, capacity backpressure |
-| **v2.2.0** | **Released** | **Replicated durability, quorum acceptance, failure-domain awareness** |
+| v2.2.0 | Released | Replicated durability, quorum acceptance, failure-domain awareness |
+| **v2.3.0** | **Released** | **Global routing mesh, deterministic ownership, health-aware failover** |
 
 ## v1.2.0 delivered
 
@@ -202,6 +203,41 @@
 - Docker Compose persistence, Kubernetes StatefulSet/PVC
 - status API, tests, proof harness, docs, ADR 0052
 
+
+## v2.3.0 delivered
+
+### Global route ownership
+
+- authenticated peer topology advertisements
+- active health probing and stale-state rejection
+- cloud/region/zone failure-domain metadata
+- rendezvous-hash ownership keyed by tenant/source
+- `locality` and active-active `global` routing modes
+
+### Adaptive eligibility and failover
+
+- exclude draining nodes
+- exclude unhealthy/stale peers
+- exclude nodes above configured WAL-pressure threshold
+- ordered candidate failover when a downstream path fails
+- peer identity validation on health and forward operations
+
+### Safe forwarding boundary
+
+- origin WAL/quorum remains the durability authority
+- remote forwards terminate at the selected node's local Kafka publisher
+- no recursive mesh forwarding
+- origin commits only after downstream success
+- explicit at-least-once behavior for ambiguous network failures
+
+### Operations and evidence
+
+- mesh snapshot in `/edge/status`
+- deterministic `/edge/route?key=...` inspection
+- active-active three-edge Compose example
+- Kubernetes configuration/secrets surface
+- `proof/mesh-failover.sh` operational proof harness
+- ADR 0054
 
 ## v2.2.0 delivered
 

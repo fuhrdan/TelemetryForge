@@ -1,8 +1,14 @@
 # TelemetryForge Architecture
 
-TelemetryForge v2.2.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v2.3.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
+
+## v2.3 global routing mesh
+
+The edge data plane now separates acceptance durability from downstream route ownership. The origin edge still fsyncs its WAL and satisfies the v2.2 failure-domain quorum before successful acceptance. During ordered replay, `internal/mesh` selects an eligible edge/relay using health advertisements, WAL pressure, draining state, failure-domain locality, and rendezvous hashing. A remote owner receives the event through an authenticated terminal-forward endpoint and publishes directly to its local Kafka dependency; it does not re-enter mesh routing. The origin WAL is committed only after that local or remote downstream acknowledgement succeeds.
+
+This keeps routing failover from weakening durability and preserves an explicit at-least-once boundary during ambiguous network failures. See [Global Routing Mesh](docs/mesh/global-routing-mesh.md) and ADR 0054.
 
 ## Runtime path
 
@@ -87,6 +93,7 @@ OpenTelemetry traces.
 14. **Edge backpressure before overwrite.** The edge rejects new acceptance when WAL capacity cannot contain the next record.
 15. **Corruption fails closed.** Only an incomplete final WAL frame is auto-truncated; completed-frame integrity failure blocks recovery.
 16. **Durability class cannot silently degrade.** If live peers cannot satisfy the configured quorum/failure-domain rule, edge readiness and successful acceptance fail instead of falling back to a weaker class.
+17. **Route optimization cannot weaken acceptance durability.** Mesh ownership is evaluated only after the origin WAL/quorum boundary; the origin record remains pending until local or remote terminal downstream delivery succeeds.
 17. **Replica acknowledgement follows fsync.** Receiving peers acknowledge only after the origin record is durably appended to the replica log.
 
 ## Durable Edge boundary
