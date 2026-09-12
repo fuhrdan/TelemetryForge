@@ -6,6 +6,9 @@ to reconstruct every decision from implementation details.
 
 ## Start here
 
+- [Replicated Durability](edge/replicated-durability.md)
+- [Durable Edge Ingestion](edge/durable-edge.md)
+
 - [Architecture overview](architecture/overview.md)
 - [Event flow](architecture/event-flow.md)
 - [Configuration reference](reference/configuration.md)
@@ -53,6 +56,7 @@ to reconstruct every decision from implementation details.
 - [Policy Recommendations](intelligence/policy-recommendations.md)
 - [v2.0.0 delivered scope](roadmap/v2.0.0.md)
 - [v2.1.0 delivered scope](roadmap/v2.1.0.md)
+- [v2.2.0 delivered scope](roadmap/v2.2.0.md)
 - [Durable Edge ingestion](edge/durable-edge.md)
 
 ## Evidence Graph

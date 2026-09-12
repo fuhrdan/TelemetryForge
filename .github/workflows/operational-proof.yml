@@ -19,6 +19,7 @@ on:
           - connector-outage
           - backup-restore
           - wal-crash-recovery
+          - edge-replication
 
 permissions:
   contents: read
@@ -63,6 +64,9 @@ jobs:
               ;;
             wal-crash-recovery)
               proof/wal-crash-recovery.sh --execute
+              ;;
+            edge-replication)
+              proof/edge-replication.sh --execute
               ;;
           esac
       - name: Verify generated proof artifacts

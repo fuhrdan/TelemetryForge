@@ -25,6 +25,7 @@ The base contains:
 - shared non-secret ConfigMap
 - active/shadow policy ConfigMap
 - gateway Deployment + Service
+- edge StatefulSet + Service with persistent WAL/replica storage
 - worker Deployment
 - dashboard Deployment + Service
 - HorizontalPodAutoscalers
@@ -71,6 +72,19 @@ GET :8080/ready
 ```
 
 Readiness verifies Kafka and PostgreSQL.
+
+
+### Edge
+
+```text
+GET :8083/health
+GET :8083/ready
+GET :8083/edge/status
+```
+
+The base manifest keeps `TELEMETRYFORGE_EDGE_DURABILITY_MODE=local` so it can render without environment-specific topology metadata. v2.2 non-local durability requires operators to provide node cloud/region/zone identity, peer URLs, quorum, and `TELEMETRYFORGE_EDGE_REPLICATION_TOKEN`. Incoming replica logs use the persistent edge PVC under `/var/lib/telemetryforge/wal/replicas`.
+
+For regional/cross-region/cross-cloud production placement, use stable per-edge identities and peer DNS names that map to independent failure domains; do not label multiple replicas as different zones unless the underlying scheduling placement actually provides that separation.
 
 ### Worker
 

@@ -4,6 +4,18 @@
 
 _No changes yet._
 
+## [2.2.0] - 2026-09-12
+
+### Replicated Durability
+- Added synchronous edge-to-edge durable replication with fsynced receiver replica logs.
+- Added local, regional, cross-region, and cross-cloud durability modes.
+- Added quorum plus zone/region/cloud failure-domain evaluation before successful non-local acceptance.
+- Added idempotent replica retry and conflicting origin-sequence rejection.
+- Added quorum-aware readiness and replication-before-Kafka replay.
+- Added bearer-token protected internal replication endpoints and replica status reporting.
+- Added bounded replica capacity, durable release-through checkpoints, and safe compaction after downstream commit.
+- Added three-edge Docker Compose topology, Kubernetes configuration hooks, tests, proof harness, docs, and ADR 0053.
+
 ## [2.1.0] - 2026-09-12
 
 ### Durable Edge

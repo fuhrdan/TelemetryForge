@@ -18,12 +18,13 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/edge"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
 	"github.com/fuhrdan/TelemetryForge/internal/observability"
+	"github.com/fuhrdan/TelemetryForge/internal/replication"
 	"github.com/fuhrdan/TelemetryForge/internal/security"
 	"github.com/fuhrdan/TelemetryForge/internal/stream"
 	"github.com/fuhrdan/TelemetryForge/internal/wal"
 )
 
-const version = "2.1.0"
+const version = "2.2.0"
 
 func main() {
 	logger := logging.New()
@@ -56,6 +57,38 @@ func main() {
 	}
 
 	edgeID := envOrDefault("TELEMETRYFORGE_EDGE_ID", hostnameOrDefault("edge-local"))
+	localNode := replication.Node{
+		ID: edgeID,
+		Domain: replication.FailureDomain{
+			Cloud:  strings.TrimSpace(os.Getenv("TELEMETRYFORGE_EDGE_CLOUD")),
+			Region: strings.TrimSpace(os.Getenv("TELEMETRYFORGE_EDGE_REGION")),
+			Zone:   strings.TrimSpace(os.Getenv("TELEMETRYFORGE_EDGE_ZONE")),
+		},
+	}
+	peers, err := replication.ParsePeers(os.Getenv("TELEMETRYFORGE_EDGE_PEERS"))
+	if err != nil {
+		logger.Error("edge replication peer configuration invalid", "error", err)
+		os.Exit(1)
+	}
+	replicationManager, err := replication.NewManager(replication.Config{
+		Local:   localNode,
+		Peers:   peers,
+		Mode:    replication.ParseMode(os.Getenv("TELEMETRYFORGE_EDGE_DURABILITY_MODE")),
+		Quorum:  replication.ParseQuorum(os.Getenv("TELEMETRYFORGE_EDGE_REPLICATION_QUORUM")),
+		Timeout: replication.ParseTimeout(os.Getenv("TELEMETRYFORGE_EDGE_REPLICATION_TIMEOUT"), 3*time.Second),
+		Token:   strings.TrimSpace(os.Getenv("TELEMETRYFORGE_EDGE_REPLICATION_TOKEN")),
+	})
+	if err != nil {
+		logger.Error("edge replication configuration invalid", "error", err)
+		os.Exit(1)
+	}
+	replicaStore, err := replication.OpenStoreWithConfig(replication.StoreConfig{Directory: envOrDefault("TELEMETRYFORGE_EDGE_REPLICA_DIR", "data/edge-replicas"), MaxBytes: int64Env("TELEMETRYFORGE_EDGE_REPLICA_MAX_BYTES", 8<<30)})
+	if err != nil {
+		logger.Error("edge replica store initialization failed", "error", err)
+		os.Exit(1)
+	}
+	defer replicaStore.Close()
+
 	walStore, err := wal.Open(wal.Config{Directory: envOrDefault("TELEMETRYFORGE_EDGE_WAL_DIR", "data/edge-wal"), EdgeID: edgeID, SegmentSizeBytes: int64Env("TELEMETRYFORGE_EDGE_WAL_SEGMENT_BYTES", 64<<20), MaxBytes: int64Env("TELEMETRYFORGE_EDGE_WAL_MAX_BYTES", 4<<30)})
 	if err != nil {
 		logger.Error("edge WAL initialization failed", "error", err)
@@ -67,23 +100,37 @@ func main() {
 		logger.Error("Kafka publisher initialization failed", "error", err)
 		os.Exit(1)
 	}
-	durablePublisher := edge.NewPublisher(walStore, kafkaPublisher, logger)
+	durablePublisher := edge.NewPublisher(walStore, kafkaPublisher, logger, replicationManager)
 	defer durablePublisher.Close()
+
 	apiHandler := api.NewServerWithObserver(logger, durablePublisher, api.Topics{Raw: cfg.KafkaRawTopic, Metric: cfg.KafkaMetricTopic}, nil, metrics)
 	apiHandler.SetRedactor(security.NewRedactor(cfg.RedactTags, cfg.RedactPayload))
-	root := http.NewServeMux()
-	root.Handle("GET /metrics", metrics.Handler())
-	root.HandleFunc("GET /edge/status", func(writer http.ResponseWriter, _ *http.Request) {
+
+	publicMux := http.NewServeMux()
+	publicMux.Handle("GET /metrics", metrics.Handler())
+	publicMux.HandleFunc("GET /edge/status", func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(writer).Encode(durablePublisher.Stats())
+		_ = json.NewEncoder(writer).Encode(struct {
+			edge.Status
+			ReplicaStore replication.StoreStats `json:"replica_store"`
+		}{Status: durablePublisher.Stats(), ReplicaStore: replicaStore.Stats()})
 	})
-	root.Handle("/", apiHandler)
+	publicMux.Handle("/", apiHandler)
+
+	// Replication traffic has a separate bearer-token boundary and deliberately
+	// bypasses tenant API authentication. This allows edge nodes to replicate
+	// even when public ingestion uses a different authentication scheme.
+	replicaHandler := replication.NewHandler(replicaStore, localNode, strings.TrimSpace(os.Getenv("TELEMETRYFORGE_EDGE_REPLICATION_TOKEN")))
+	root := http.NewServeMux()
+	root.Handle("/internal/v1/", metrics.Middleware(replicaHandler))
+	root.Handle("/", authenticator.Middleware(metrics.Middleware(publicMux)))
+
 	address := envOrDefault("TELEMETRYFORGE_EDGE_ADDRESS", ":8083")
-	httpServer := &http.Server{Addr: address, Handler: authenticator.Middleware(metrics.Middleware(root)), ReadTimeout: cfg.ReadTimeout, WriteTimeout: cfg.WriteTimeout}
+	httpServer := &http.Server{Addr: address, Handler: root, ReadTimeout: cfg.ReadTimeout, WriteTimeout: maxDuration(cfg.WriteTimeout, 10*time.Second)}
 	errorChannel := make(chan error, 1)
 	go func() {
 		stats := durablePublisher.Stats()
-		logger.Info("TelemetryForge durable edge starting", "version", version, "edge_id", edgeID, "address", address, "wal_directory", stats.Directory, "wal_max_bytes", stats.MaxBytes, "pending_records", stats.PendingRecords)
+		logger.Info("TelemetryForge replicated edge starting", "version", version, "edge_id", edgeID, "address", address, "wal_directory", stats.Directory, "wal_max_bytes", stats.MaxBytes, "pending_records", stats.PendingRecords, "durability_mode", stats.Replication.Mode, "replication_quorum", stats.Replication.Quorum, "configured_peers", stats.Replication.ConfiguredPeers)
 		errorChannel <- httpServer.ListenAndServe()
 	}()
 	signalContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -112,6 +159,7 @@ func envOrDefault(name, fallback string) string {
 	}
 	return value
 }
+
 func int64Env(name string, fallback int64) int64 {
 	raw := strings.TrimSpace(os.Getenv(name))
 	if raw == "" {
@@ -123,10 +171,18 @@ func int64Env(name string, fallback int64) int64 {
 	}
 	return value
 }
+
 func hostnameOrDefault(fallback string) string {
 	hostname, err := os.Hostname()
 	if err != nil || strings.TrimSpace(hostname) == "" {
 		return fallback
 	}
 	return hostname
+}
+
+func maxDuration(left, right time.Duration) time.Duration {
+	if left > right {
+		return left
+	}
+	return right
 }

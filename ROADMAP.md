@@ -22,7 +22,8 @@
 | v1.8.0 | Delivered development milestone | Connector Platform, OTLP/HTTP JSON, Prometheus Remote Write, Kafka/HTTP/vendor adapters, runtime health |
 | v1.9.0 | Delivered development milestone | Scale, HA, chaos, backup/restore and reproducible operational proof artifacts |
 | v2.0.0 | Released | Evidence-first investigator, cited incident comparison, human-gated recommendations |
-| **v2.1.0** | **Released** | **Durable Edge WAL, crash recovery, ordered replay, capacity backpressure** |
+| v2.1.0 | Released | Durable Edge WAL, crash recovery, ordered replay, capacity backpressure |
+| **v2.2.0** | **Released** | **Replicated durability, quorum acceptance, failure-domain awareness** |
 
 ## v1.2.0 delivered
 
@@ -200,3 +201,20 @@
 - torn-tail recovery / completed-frame fail-closed behavior
 - Docker Compose persistence, Kubernetes StatefulSet/PVC
 - status API, tests, proof harness, docs, ADR 0052
+
+
+## v2.2.0 delivered
+
+- synchronous edge-to-edge durable replication
+- crash-safe receiver replica logs
+- idempotent origin-sequence retry and conflict rejection
+- local/regional/cross-region/cross-cloud durability classes
+- configurable quorum including local durable copy
+- zone/region/cloud failure-domain enforcement
+- quorum-aware readiness
+- replication retry before downstream Kafka replay
+- bearer-token protected internal replication API
+- bounded replica retention with release-through checkpoints and compaction
+- three-edge Compose regional quorum topology
+- Kubernetes replica-storage configuration hooks
+- tests, proof harness, docs, ADR 0053

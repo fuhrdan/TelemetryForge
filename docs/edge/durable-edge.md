@@ -30,4 +30,4 @@ Run with `make run-edge`. `GET /ready` reflects local durable capacity rather th
 
 Verification includes append/reopen recovery, torn-tail truncation, completed-frame corruption rejection, capacity backpressure, sequence continuity, and asynchronous replay after a downstream outage. `make proof-wal-crash-recovery` emits the existing versioned `.tfproof.json` evidence format.
 
-v2.1.0 is a single-node durable-edge foundation. Cross-node quorum durability, cross-region replication, formal verification, cryptographic lineage, eBPF collection, and autonomous control remain later milestones.
+v2.1.0 is the single-node durable-edge foundation. v2.2.0 adds failure-domain-aware peer quorum acceptance while preserving this WAL format and recovery behavior. See [Replicated Durability](replicated-durability.md). Formal verification, cryptographic lineage, eBPF collection, and autonomous control remain later milestones.

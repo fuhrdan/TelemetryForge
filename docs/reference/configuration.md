@@ -304,13 +304,23 @@ snapshot.
 New routing documents use `type: connector` with nested `connector.kind`. Secrets use `header_env`, `bearer_token_env`, or `api_key_env`; raw credentials are not stored. `TELEMETRYFORGE_ROUTER_INSTANCE_ID` optionally sets the heartbeat identity. Routing is bounded to 64 destinations and 512 rules; connector headers/Prometheus label allowlists are bounded.
 
 
-## v2.1 Durable Edge
+## v2.2 Replicated Durable Edge
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `TELEMETRYFORGE_EDGE_ADDRESS` | `:8083` | Edge HTTP listen address |
-| `TELEMETRYFORGE_EDGE_ID` | host name | Identity stored in WAL records |
-| `TELEMETRYFORGE_EDGE_WAL_DIR` | `data/edge-wal` | Durable WAL directory |
-| `TELEMETRYFORGE_EDGE_WAL_SEGMENT_BYTES` | `67108864` | 64 MiB segment target |
-| `TELEMETRYFORGE_EDGE_WAL_MAX_BYTES` | `4294967296` | 4 GiB local capacity |
+| `TELEMETRYFORGE_EDGE_ID` | host name | Origin/replica node identity |
+| `TELEMETRYFORGE_EDGE_CLOUD` | empty | Failure-domain cloud identifier |
+| `TELEMETRYFORGE_EDGE_REGION` | empty | Failure-domain region identifier |
+| `TELEMETRYFORGE_EDGE_ZONE` | empty | Failure-domain availability-zone identifier |
+| `TELEMETRYFORGE_EDGE_DURABILITY_MODE` | `local` | `local`, `regional`, `cross-region`, or `cross-cloud` |
+| `TELEMETRYFORGE_EDGE_REPLICATION_QUORUM` | mode default | Durable node count including the origin (`1` local, `2` non-local by default) |
+| `TELEMETRYFORGE_EDGE_REPLICATION_TIMEOUT` | `3s` | Per-attempt peer quorum deadline |
+| `TELEMETRYFORGE_EDGE_REPLICATION_TOKEN` | empty | Bearer secret required for non-local replication |
+| `TELEMETRYFORGE_EDGE_PEERS` | empty | Comma-separated `id|url|cloud|region|zone` peers |
+| `TELEMETRYFORGE_EDGE_WAL_DIR` | `data/edge-wal` | Origin durable WAL directory |
+| `TELEMETRYFORGE_EDGE_REPLICA_DIR` | `data/edge-replicas` | Receiver-side durable replica logs |
+| `TELEMETRYFORGE_EDGE_REPLICA_MAX_BYTES` | `8589934592` | 8 GiB receiver replica capacity before refusing new quorum writes |
+| `TELEMETRYFORGE_EDGE_WAL_SEGMENT_BYTES` | `67108864` | 64 MiB origin WAL segment target |
+| `TELEMETRYFORGE_EDGE_WAL_MAX_BYTES` | `4294967296` | 4 GiB origin WAL capacity |
 | `TELEMETRYFORGE_EDGE_KAFKA_CLIENT_ID` | `telemetryforge-edge-<edge-id>` | Kafka producer client ID |

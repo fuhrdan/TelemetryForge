@@ -10,7 +10,7 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current release:** `v2.1.0` — Durable Edge ingestion with fsync-before-acceptance WAL, crash recovery, ordered replay, and capacity backpressure.
+> **Current release:** `v2.2.0` — Replicated Durability with failure-domain-aware quorum acceptance across edge nodes.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -19,18 +19,18 @@ and evidence decisions become irreversible.
 
 ## Signature capabilities
 
-### Durable Edge Ingestion
+### Replicated Durable Edge
 
-v2.1 adds an optional `telemetryforge-edge` process that fsyncs accepted events to a segmented local WAL before acknowledging the client. Kafka delivery happens asynchronously in edge-sequence order, so temporary broker outages consume bounded WAL capacity instead of discarding accepted data.
+v2.2 extends the Durable Edge WAL into a multi-node acceptance boundary. The origin edge fsyncs locally first, then `regional`, `cross-region`, and `cross-cloud` modes require durable peer acknowledgements across the requested failure domains before HTTP success.
 
-The edge verifies CRC32 frames plus canonical-event SHA-256 hashes, restores monotonic edge/source sequences after restart, truncates only incomplete final writes, and fails closed on completed-frame corruption. When capacity is exhausted it rejects new acceptance rather than overwriting pending records.
+Replica peers persist the original edge sequence into crash-safe logs, exact retries are idempotent, conflicting reuse of an origin sequence fails closed, and loss of quorum removes readiness instead of silently weakening the configured durability class. Kafka replay also re-verifies quorum before downstream delivery.
 
 ```bash
 make run-edge
 curl -s http://localhost:8083/edge/status
 ```
 
-Read [Durable Edge Ingestion](docs/edge/durable-edge.md).
+Read [Replicated Durability](docs/edge/replicated-durability.md) and [Durable Edge Ingestion](docs/edge/durable-edge.md).
 
 ### Evidence-First Investigator
 
