@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
@@ -18,17 +19,38 @@ import (
 type Status struct {
 	wal.Stats
 	Replication replication.Status `json:"replication"`
+	FastPath    FastPathStatus     `json:"fast_path"`
+}
+
+// Config controls replay optimizations. These settings never change the WAL
+// acceptance boundary or replication quorum requirements.
+type Config struct {
+	ReplayBatchSize int
+}
+
+// FastPathStatus exposes bounded replay behavior for operators.
+type FastPathStatus struct {
+	ReplayBatchSize int    `json:"replay_batch_size"`
+	BatchCalls      uint64 `json:"batch_calls"`
+	BatchEvents     uint64 `json:"batch_events"`
+	SingleEvents    uint64 `json:"single_events"`
+	PartialFailures uint64 `json:"partial_failures"`
 }
 
 type Publisher struct {
-	store      *wal.Store
-	downstream stream.Publisher
-	replicator *replication.Manager
-	logger     *slog.Logger
-	notify     chan struct{}
-	stop       chan struct{}
-	done       chan struct{}
-	closeOnce  sync.Once
+	store           *wal.Store
+	downstream      stream.Publisher
+	replicator      *replication.Manager
+	logger          *slog.Logger
+	notify          chan struct{}
+	stop            chan struct{}
+	done            chan struct{}
+	closeOnce       sync.Once
+	batchSize       int
+	batchCalls      atomic.Uint64
+	batchEvents     atomic.Uint64
+	singleEvents    atomic.Uint64
+	partialFailures atomic.Uint64
 }
 
 // NewPublisher accepts an optional replication manager. The variadic form keeps
@@ -38,7 +60,18 @@ func NewPublisher(store *wal.Store, downstream stream.Publisher, logger *slog.Lo
 	if len(replicators) > 0 {
 		replicator = replicators[0]
 	}
-	publisher := &Publisher{store: store, downstream: downstream, replicator: replicator, logger: logger, notify: make(chan struct{}, 1), stop: make(chan struct{}), done: make(chan struct{})}
+	return NewPublisherWithConfig(store, downstream, logger, Config{}, replicator)
+}
+
+func NewPublisherWithConfig(store *wal.Store, downstream stream.Publisher, logger *slog.Logger, config Config, replicator *replication.Manager) *Publisher {
+	batchSize := config.ReplayBatchSize
+	if batchSize <= 0 {
+		batchSize = 64
+	}
+	if batchSize > 1024 {
+		batchSize = 1024
+	}
+	publisher := &Publisher{store: store, downstream: downstream, replicator: replicator, logger: logger, notify: make(chan struct{}, 1), stop: make(chan struct{}), done: make(chan struct{}), batchSize: batchSize}
 	go publisher.run()
 	publisher.signal()
 	return publisher
@@ -91,6 +124,7 @@ func (publisher *Publisher) Stats() Status {
 	} else {
 		status.Replication = replication.Status{Mode: replication.ModeLocal, Quorum: 1, LastSatisfied: true, LastAckCount: 1}
 	}
+	status.FastPath = FastPathStatus{ReplayBatchSize: publisher.batchSize, BatchCalls: publisher.batchCalls.Load(), BatchEvents: publisher.batchEvents.Load(), SingleEvents: publisher.singleEvents.Load(), PartialFailures: publisher.partialFailures.Load()}
 	return status
 }
 
@@ -139,7 +173,7 @@ func (publisher *Publisher) run() {
 			return
 		default:
 		}
-		records, err := publisher.store.Pending(1)
+		records, err := publisher.store.Pending(publisher.batchSize)
 		if err != nil {
 			if !errors.Is(err, wal.ErrClosed) {
 				publisher.logger.Error("edge WAL replay failed", "error", err)
@@ -160,17 +194,52 @@ func (publisher *Publisher) run() {
 			}
 			continue
 		}
-		record := records[0]
 
-		// Replication is always re-verified before downstream delivery. Peer
-		// writes are idempotent, so restart/replay safely reconstructs quorum
-		// without requiring a separate replication checkpoint file.
+		readyCount := len(records)
+		replicationBlocked := false
 		if publisher.replicator != nil {
-			replicationContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			result, replicationErr := publisher.replicator.Replicate(replicationContext, record)
+			for index, record := range records {
+				replicationContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				result, replicationErr := publisher.replicator.Replicate(replicationContext, record)
+				cancel()
+				if replicationErr != nil {
+					readyCount = index
+					replicationBlocked = true
+					publisher.logger.Warn("edge replay waiting for replication quorum", "edge_sequence", record.EdgeSequence, "event_id", record.Event.ID, "acks", result.AckCount, "quorum", result.Quorum, "mode", result.Mode, "error", replicationErr)
+					break
+				}
+			}
+		}
+
+		if readyCount > 0 {
+			batch := records[:readyCount]
+			deliveryContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			results := publisher.publishBatch(deliveryContext, batch)
 			cancel()
-			if replicationErr != nil {
-				publisher.logger.Warn("edge replay waiting for replication quorum", "edge_sequence", record.EdgeSequence, "event_id", record.Event.ID, "acks", result.AckCount, "quorum", result.Quorum, "mode", result.Mode, "error", replicationErr)
+			failed := false
+			for index, record := range batch {
+				if index >= len(results) || results[index] != nil {
+					var deliveryErr error
+					if index >= len(results) {
+						deliveryErr = errors.New("downstream batch returned incomplete result set")
+					} else {
+						deliveryErr = results[index]
+					}
+					publisher.partialFailures.Add(1)
+					publisher.logger.Warn("edge downstream delivery deferred", "edge_sequence", record.EdgeSequence, "event_id", record.Event.ID, "error", deliveryErr)
+					failed = true
+					break
+				}
+				if err := publisher.store.Commit(record.EdgeSequence); err != nil {
+					publisher.logger.Error("edge WAL checkpoint failed", "edge_sequence", record.EdgeSequence, "error", err)
+					failed = true
+					break
+				}
+				if record.EdgeSequence-lastReleased >= 64 {
+					releaseCommitted(true)
+				}
+			}
+			if failed {
 				if !publisher.wait(backoff) {
 					return
 				}
@@ -184,11 +253,7 @@ func (publisher *Publisher) run() {
 			}
 		}
 
-		deliveryContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		err = publisher.downstream.Publish(deliveryContext, record.Topic, record.Event)
-		cancel()
-		if err != nil {
-			publisher.logger.Warn("edge downstream delivery deferred", "edge_sequence", record.EdgeSequence, "event_id", record.Event.ID, "error", err)
+		if replicationBlocked {
 			if !publisher.wait(backoff) {
 				return
 			}
@@ -200,18 +265,29 @@ func (publisher *Publisher) run() {
 			}
 			continue
 		}
-		if err := publisher.store.Commit(record.EdgeSequence); err != nil {
-			publisher.logger.Error("edge WAL checkpoint failed", "edge_sequence", record.EdgeSequence, "error", err)
-			if !publisher.wait(backoff) {
-				return
-			}
-			continue
-		}
-		if record.EdgeSequence-lastReleased >= 64 {
-			releaseCommitted(true)
-		}
 		backoff = 100 * time.Millisecond
 	}
+}
+
+func (publisher *Publisher) publishBatch(ctx context.Context, records []wal.Record) []error {
+	items := make([]stream.BatchItem, len(records))
+	for index, record := range records {
+		items[index] = stream.BatchItem{Topic: record.Topic, Event: record.Event}
+	}
+	if batchPublisher, ok := publisher.downstream.(stream.BatchPublisher); ok && len(items) > 1 {
+		publisher.batchCalls.Add(1)
+		publisher.batchEvents.Add(uint64(len(items)))
+		return batchPublisher.PublishBatch(ctx, items)
+	}
+	results := make([]error, len(items))
+	for index, item := range items {
+		publisher.singleEvents.Add(1)
+		results[index] = publisher.downstream.Publish(ctx, item.Topic, item.Event)
+		if results[index] != nil {
+			break
+		}
+	}
+	return results
 }
 
 func (publisher *Publisher) signal() {

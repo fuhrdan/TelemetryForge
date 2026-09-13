@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/fastpath"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -18,6 +20,8 @@ import (
 )
 
 const defaultProduceTimeout = 5 * time.Second
+
+var kafkaJSONBuffers = fastpath.NewBufferPool(1 << 20)
 
 // KafkaPublisher publishes canonical TelemetryForge envelopes to Kafka.
 //
@@ -85,22 +89,72 @@ func NewKafkaPublisher(config KafkaConfig, logger *slog.Logger) (*KafkaPublisher
 
 // Publish serializes one canonical event and waits for Kafka acknowledgement.
 func (publisher *KafkaPublisher) Publish(ctx context.Context, topic string, event domain.Event) error {
-	payload, err := json.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("encode event: %w", err)
+	results := publisher.PublishBatch(ctx, []BatchItem{{Topic: topic, Event: event}})
+	if len(results) == 0 {
+		return errors.New("Kafka batch publisher returned no result")
+	}
+	return results[0]
+}
+
+// PublishBatch submits an ordered batch to franz-go without a synchronous
+// broker round trip per record. Pooled JSON buffers remain owned by the record
+// until its callback fires, then are immediately returned to the bounded pool.
+func (publisher *KafkaPublisher) PublishBatch(ctx context.Context, items []BatchItem) []error {
+	results := make([]error, len(items))
+	if len(items) == 0 {
+		return results
 	}
 
 	tracer := otel.Tracer("github.com/fuhrdan/TelemetryForge/kafka")
-	spanContext, span := tracer.Start(ctx, "kafka.produce")
-	span.SetAttributes(
-		attribute.String("messaging.system", "kafka"),
-		attribute.String("messaging.destination.name", topic),
-	)
+	spanContext, span := tracer.Start(ctx, "kafka.produce.batch")
+	span.SetAttributes(attribute.Int("messaging.batch.message_count", len(items)))
 	defer span.End()
 
 	publishContext, cancel := context.WithTimeout(spanContext, publisher.produceTimeout)
 	defer cancel()
 
+	var wait sync.WaitGroup
+	for index, item := range items {
+		buffer := kafkaJSONBuffers.Get()
+		encoder := json.NewEncoder(buffer)
+		if err := encoder.Encode(item.Event); err != nil {
+			kafkaJSONBuffers.Put(buffer)
+			results[index] = fmt.Errorf("encode event: %w", err)
+			continue
+		}
+		payload := buffer.Bytes()
+		if len(payload) > 0 && payload[len(payload)-1] == '\n' {
+			payload = payload[:len(payload)-1]
+		}
+		record := newKafkaRecord(spanContext, item.Topic, item.Event, payload)
+		wait.Add(1)
+		idx := index
+		ownedBuffer := buffer
+		ownedTopic := item.Topic
+		ownedEvent := item.Event
+		publisher.client.Produce(publishContext, record, func(delivered *kgo.Record, err error) {
+			defer wait.Done()
+			defer kafkaJSONBuffers.Put(ownedBuffer)
+			if err != nil {
+				results[idx] = fmt.Errorf("publish to topic %q: %w", ownedTopic, err)
+				return
+			}
+			publisher.logger.Debug("telemetry event published", "event_id", ownedEvent.ID, "topic", ownedTopic, "partition", delivered.Partition, "offset", delivered.Offset)
+		})
+	}
+	wait.Wait()
+
+	for _, err := range results {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "Kafka batch publish failed")
+			break
+		}
+	}
+	return results
+}
+
+func newKafkaRecord(ctx context.Context, topic string, event domain.Event, payload []byte) *kgo.Record {
 	record := &kgo.Record{
 		Topic: topic,
 		Key:   []byte(event.TenantID + "|" + event.Source),
@@ -113,34 +167,15 @@ func (publisher *KafkaPublisher) Publish(ctx context.Context, topic string, even
 		},
 	}
 	carrier := propagation.MapCarrier{}
-	otel.GetTextMapPropagator().Inject(spanContext, carrier)
+	otel.GetTextMapPropagator().Inject(ctx, carrier)
 	for key, value := range carrier {
 		record.Headers = append(record.Headers, kgo.RecordHeader{Key: key, Value: []byte(value)})
 	}
-
-	result := publisher.client.ProduceSync(publishContext, record)
-	if err := result.FirstErr(); err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "Kafka publish failed")
-		return fmt.Errorf("publish to topic %q: %w", topic, err)
-	}
-	if len(result) > 0 && result[0].Record != nil {
-		span.SetAttributes(
-			attribute.Int("messaging.kafka.destination.partition", int(result[0].Record.Partition)),
-			attribute.Int64("messaging.kafka.message.offset", result[0].Record.Offset),
-		)
-	}
-
-	publisher.logger.Debug(
-		"telemetry event published",
-		"event_id", event.ID,
-		"topic", topic,
-		"partition", result[0].Record.Partition,
-		"offset", result[0].Record.Offset,
-	)
-
-	return nil
+	return record
 }
+
+// FastPathPoolStats reports process-local JSON buffer reuse for diagnostics.
+func FastPathPoolStats() fastpath.PoolStats { return kafkaJSONBuffers.Stats() }
 
 // Ready verifies that at least one configured Kafka broker is reachable.
 func (publisher *KafkaPublisher) Ready(ctx context.Context) error {

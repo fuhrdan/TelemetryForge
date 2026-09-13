@@ -304,3 +304,14 @@ See [the testing guide](docs/development/testing.md) and
 ### Connector Platform changes
 
 Connector code is a protocol boundary, not a second delivery state machine. Keep retry/DLQ/fallback ownership in the Telemetry Router, use environment-backed secrets, bound connector metadata/response handling, keep connector health separate from router readiness, and preserve legacy Kafka/HTTP routing compatibility.
+
+## Fast-path performance changes
+
+Changes under `internal/fastpath`, edge replay batching, WAL scanning, or Kafka batch publishing should run:
+
+```bash
+go test -race ./internal/fastpath ./internal/wal ./internal/edge
+go test -run '^$' -bench 'Benchmark(Ring|BytePool|JSON)' -benchmem -count=5 ./internal/fastpath
+```
+
+Do not weaken fsync, replication, checkpoint, or audit semantics to improve a benchmark. Include the runner/environment when publishing performance results.

@@ -21,3 +21,17 @@ type Publisher interface {
 	Ready(ctx context.Context) error
 	Close()
 }
+
+// BatchItem is one ordered event handed to an optional batch-capable publisher.
+type BatchItem struct {
+	Topic string
+	Event domain.Event
+}
+
+// BatchPublisher is an optional fast-path extension. Implementations return one
+// error slot per input item. A nil slot means that item was acknowledged. The
+// durable edge only checkpoints the contiguous successful prefix, so partial
+// batch failures preserve at-least-once replay semantics.
+type BatchPublisher interface {
+	PublishBatch(ctx context.Context, items []BatchItem) []error
+}

@@ -299,3 +299,16 @@ The release adds four finite formal safety models: durable ingest, replicated du
 - SANY + TLC model checking of every `formal/*.tla` specification.
 
 The formal checks are safety evidence, not a substitute for Kafka/TimescaleDB integration tests, race detection, operational outage proofs, or real infrastructure measurements.
+
+
+## v2.6.0 fast-path performance coverage
+
+The release adds dependency-free race/unit coverage for `internal/fastpath`, verifies bounded ring saturation without overwrite, and exercises WAL scan-buffer reuse. The full Go 1.27.1 CI suite also tests edge replay batching and the Kafka/mesh batch-capable path.
+
+Allocation-aware microbenchmarks run with repeated `-benchmem` samples:
+
+```bash
+go test -run '^$' -bench 'Benchmark(Ring|BytePool|JSON)' -benchmem -count=5 ./internal/fastpath
+```
+
+`proof/fastpath-performance.sh --execute` preserves the raw benchmark output, a parsed JSON report, and a `.tfproof.json` wrapper. The scenario has no hard-coded vanity throughput threshold: results describe the measured runner only and do not replace the end-to-end k6 methodology.

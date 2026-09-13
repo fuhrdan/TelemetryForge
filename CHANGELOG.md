@@ -4,6 +4,21 @@
 
 _No changes yet._
 
+## [2.6.0] - 2026-09-13
+
+### Added
+- Bounded replay batching with configurable `TELEMETRYFORGE_EDGE_REPLAY_BATCH_SIZE`.
+- Optional per-item-result stream batch publishing contract.
+- Asynchronous Kafka batch produce with bounded pooled JSON buffers.
+- Bounded reusable WAL scan buffers and fixed frame headers.
+- Lock-free bounded MPMC ring primitive with saturation/no-overwrite tests.
+- Fast-path diagnostics, allocation-aware benchmarks, CI artifact capture, and Operational Proof scenario.
+- ADR 0057 and v2.6 performance/roadmap documentation.
+
+### Changed
+- Edge replay checkpoints only the contiguous successful prefix of a batch.
+- Product/service versions advanced to v2.6.0.
+
 ## [2.5.0] - 2026-09-12
 
 ### Formal Verification

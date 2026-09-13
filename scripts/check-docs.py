@@ -96,6 +96,8 @@ REQUIRED = [
     ROOT / "docs" / "security" / "cryptographic-lineage.md",
     ROOT / "docs" / "roadmap" / "v2.5.0.md",
     ROOT / "docs" / "formal" / "formal-verification.md",
+    ROOT / "docs" / "roadmap" / "v2.6.0.md",
+    ROOT / "docs" / "performance" / "fast-path-v2.6.md",
 ]
 
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

@@ -23,6 +23,7 @@ on:
           - mesh-failover
           - cryptographic-lineage
           - formal-verification
+          - fastpath-performance
 
 permissions:
   contents: read
@@ -54,7 +55,7 @@ jobs:
           expected=$(cat formal/tla2tools.sha256)
           echo "${expected}  /tmp/tla2tools.jar" | sha256sum -c -
       - name: Start baseline stack
-        if: inputs.scenario != 'formal-verification'
+        if: inputs.scenario != 'formal-verification' && inputs.scenario != 'fastpath-performance'
         run: docker compose up -d --build --wait timescaledb kafka kafka-init gateway edge worker router
       - name: Run selected proof
         shell: bash
@@ -96,6 +97,9 @@ jobs:
               ;;
             formal-verification)
               TLA2TOOLS_JAR=/tmp/tla2tools.jar proof/formal-verification.sh --execute
+              ;;
+            fastpath-performance)
+              proof/fastpath-performance.sh --execute
               ;;
           esac
       - name: Verify generated proof artifacts

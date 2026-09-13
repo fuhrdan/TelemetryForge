@@ -62,6 +62,8 @@ to reconstruct every decision from implementation details.
 - [v2.3.0 delivered scope](roadmap/v2.3.0.md)
 - [v2.4.0 delivered scope](roadmap/v2.4.0.md)
 - [v2.5.0 delivered scope](roadmap/v2.5.0.md)
+- [v2.6.0 delivered scope](roadmap/v2.6.0.md)
+- [v2.6 High-Performance Fast Path](performance/fast-path-v2.6.md)
 - [Durable Edge ingestion](edge/durable-edge.md)
 - [Cryptographic Lineage](security/cryptographic-lineage.md)
 

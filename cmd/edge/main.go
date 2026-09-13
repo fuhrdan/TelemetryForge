@@ -25,7 +25,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/wal"
 )
 
-const version = "2.5.0"
+const version = "2.6.0"
 
 func main() {
 	logger := logging.New()
@@ -157,7 +157,7 @@ func main() {
 	defer stopMesh()
 	go meshManager.Run(meshContext)
 	meshPublisher := mesh.NewPublisher(meshManager, kafkaPublisher)
-	durablePublisher := edge.NewPublisher(walStore, meshPublisher, logger, replicationManager)
+	durablePublisher := edge.NewPublisherWithConfig(walStore, meshPublisher, logger, edge.Config{ReplayBatchSize: intEnv("TELEMETRYFORGE_EDGE_REPLAY_BATCH_SIZE", 64)}, replicationManager)
 	defer durablePublisher.Close()
 
 	apiHandler := api.NewServerWithObserver(logger, durablePublisher, api.Topics{Raw: cfg.KafkaRawTopic, Metric: cfg.KafkaMetricTopic}, nil, metrics)
@@ -169,9 +169,10 @@ func main() {
 		writer.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(writer).Encode(struct {
 			edge.Status
-			ReplicaStore replication.StoreStats `json:"replica_store"`
-			Mesh         mesh.Snapshot          `json:"mesh"`
-		}{Status: durablePublisher.Stats(), ReplicaStore: replicaStore.Stats(), Mesh: meshManager.Snapshot(request.Context())})
+			ReplicaStore    replication.StoreStats `json:"replica_store"`
+			Mesh            mesh.Snapshot          `json:"mesh"`
+			KafkaBufferPool any                    `json:"kafka_buffer_pool"`
+		}{Status: durablePublisher.Stats(), ReplicaStore: replicaStore.Stats(), Mesh: meshManager.Snapshot(request.Context()), KafkaBufferPool: stream.FastPathPoolStats()})
 	})
 	publicMux.HandleFunc("GET /edge/route", func(writer http.ResponseWriter, request *http.Request) {
 		key := strings.TrimSpace(request.URL.Query().Get("key"))
@@ -229,6 +230,18 @@ func main() {
 func envOrDefault(name, fallback string) string {
 	value := strings.TrimSpace(os.Getenv(name))
 	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func intEnv(name string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
 		return fallback
 	}
 	return value

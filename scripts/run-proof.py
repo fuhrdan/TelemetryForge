@@ -10,6 +10,7 @@ MAP={
  'connector-outage':['proof/connector-outage.sh'],
  'worker-failover':['proof/worker-failover.sh'],
  'wal-crash-recovery':['proof/wal-crash-recovery.sh'],
+ 'fastpath-performance':['proof/fastpath-performance.sh'],
  'preflight':[],
 }
 def main():

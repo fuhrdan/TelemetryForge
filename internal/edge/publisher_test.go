@@ -3,6 +3,7 @@ package edge
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http/httptest"
@@ -118,4 +119,32 @@ func TestPublisherQuorumFailureLeavesLocalRecordPending(t *testing.T) {
 	if len(downstream.Events()) != 0 {
 		t.Fatal("record reached downstream without replication quorum")
 	}
+}
+
+func TestPublisherReplaysPendingRecordsAsBoundedBatch(t *testing.T) {
+	store, err := wal.Open(wal.Config{Directory: t.TempDir(), EdgeID: "edge-batch", SegmentSizeBytes: 1 << 20, MaxBytes: 2 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 8; index++ {
+		event := domain.Event{ID: fmt.Sprintf("evt-%d", index), TenantID: "tenant-a", Source: "orders", Type: "test.event", Timestamp: time.Now().UTC(), SchemaVersion: "1.0"}
+		if _, err := store.Append("telemetry.raw", event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	downstream := stream.NewMemoryPublisher()
+	publisher := NewPublisherWithConfig(store, downstream, slog.New(slog.NewTextHandler(io.Discard, nil)), Config{ReplayBatchSize: 8}, nil)
+	defer publisher.Close()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		status := publisher.Stats()
+		if status.PendingRecords == 0 && len(downstream.Events()) == 8 {
+			if status.FastPath.BatchCalls == 0 || status.FastPath.BatchEvents < 8 {
+				t.Fatalf("fast path not used: %+v", status.FastPath)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("batch replay did not drain: status=%+v events=%d", publisher.Stats(), len(downstream.Events()))
 }

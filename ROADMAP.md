@@ -26,7 +26,8 @@
 | v2.2.0 | Released | Replicated durability, quorum acceptance, failure-domain awareness |
 | v2.3.0 | Released | Global routing mesh, deterministic ownership, health-aware failover |
 | v2.4.0 | Released | Cryptographic lineage, Merkle segment seals, Ed25519 audit verification |
-| **v2.5.0** | **Released** | **TLA+ safety models, bounded exhaustive checking, fuzzed protocol schedules** |
+| v2.5.0 | Released | TLA+ safety models, bounded exhaustive checking, fuzzed protocol schedules |
+| **v2.6.0** | **Released** | **Bounded replay batching, pooled buffers, lock-free ring primitives, allocation-aware benchmark proof** |
 
 ## v1.2.0 delivered
 
@@ -206,6 +207,32 @@
 - status API, tests, proof harness, docs, ADR 0052
 
 
+
+
+## v2.6.0 delivered
+
+### Replay and broker fast path
+
+- configurable bounded replay batches, default 64 and capped at 1024
+- optional batch publisher contract with one result per input item
+- asynchronous Kafka batch produce with ordered per-record completion
+- local mesh-owner batch preservation with normal failover fallback
+- contiguous-prefix WAL checkpointing after partial batch failure
+
+### Allocation and queue primitives
+
+- bounded reusable byte and `bytes.Buffer` pools
+- pooled WAL scan payloads and fixed frame header storage
+- bounded lock-free MPMC ring that refuses overwrite on saturation
+- fast-path and pool diagnostics exposed through `/edge/status`
+
+### Performance evidence
+
+- dependency-free microbenchmarks for ring, byte pool, and JSON buffer reuse
+- repeated `-benchmem` samples preserved as raw and parsed evidence
+- CI benchmark artifact upload and manual `.tfproof.json` performance scenario
+- ADR 0057 explicitly forbids performance shortcuts that weaken durability
+- no universal throughput, tail-latency, or zero-allocation claim
 
 ## v2.5.0 delivered
 

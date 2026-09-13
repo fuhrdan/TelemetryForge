@@ -2,6 +2,7 @@ package wal
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/fastpath"
 	"github.com/fuhrdan/TelemetryForge/internal/lineage"
 )
 
@@ -24,6 +26,8 @@ var (
 	ErrDiskPressure = errors.New("edge WAL capacity reached")
 	ErrClosed       = errors.New("edge WAL is closed")
 )
+
+var walScanBuffers = fastpath.NewBytePool(1 << 20)
 
 const (
 	segmentHeader       = "TFWAL001"
@@ -727,9 +731,9 @@ func scanSegment(path string, recoverTail bool) ([]Record, int64, bool, error) {
 	lastGood := offset
 	records := make([]Record, 0)
 	truncated := false
+	var frameHeader [frameHeaderBytes]byte
 	for {
-		frameHeader := make([]byte, frameHeaderBytes)
-		read, err := io.ReadFull(reader, frameHeader)
+		read, err := io.ReadFull(reader, frameHeader[:])
 		if errors.Is(err, io.EOF) && read == 0 {
 			break
 		}
@@ -748,8 +752,9 @@ func scanSegment(path string, recoverTail bool) ([]Record, int64, bool, error) {
 		if length == 0 || int64(length) > 1<<30 {
 			return nil, 0, false, fmt.Errorf("invalid WAL frame length %d", length)
 		}
-		payload := make([]byte, int(length))
+		payload := walScanBuffers.Get(int(length))
 		if _, err := io.ReadFull(reader, payload); err != nil {
+			walScanBuffers.Put(payload)
 			if (errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF)) && recoverTail {
 				truncated = true
 				break
@@ -757,14 +762,17 @@ func scanSegment(path string, recoverTail bool) ([]Record, int64, bool, error) {
 			return nil, 0, false, err
 		}
 		if crc32.ChecksumIEEE(payload) != expectedCRC {
+			walScanBuffers.Put(payload)
 			return nil, 0, false, fmt.Errorf("WAL frame CRC mismatch in %s at offset %d", filepath.Base(path), offset)
 		}
 		var record Record
-		decoder := json.NewDecoder(strings.NewReader(string(payload)))
+		decoder := json.NewDecoder(bytes.NewReader(payload))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&record); err != nil {
+			walScanBuffers.Put(payload)
 			return nil, 0, false, err
 		}
+		walScanBuffers.Put(payload)
 		if err := record.Validate(); err != nil {
 			return nil, 0, false, err
 		}

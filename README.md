@@ -10,7 +10,7 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current release:** `v2.5.0` — Formal Verification with TLA+ safety models, exhaustive bounded state exploration, and fuzzed protocol schedules.
+> **Current release:** `v2.6.0` — High-Performance Fast Path with bounded replay batching, pooled buffers, lock-free ring primitives, and reproducible allocation-aware benchmarks.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -18,6 +18,19 @@ backend. It controls telemetry **before** downstream cost, cardinality, policy,
 and evidence decisions become irreversible.
 
 ## Signature capabilities
+
+### High-Performance Fast Path
+
+v2.6 accelerates the post-durability replay path without moving the acceptance boundary. Pending WAL records are replayed in bounded batches, local-owner Kafka delivery uses asynchronous batch submission with pooled JSON buffers, WAL scans reuse bounded byte buffers, and the release includes a lock-free bounded MPMC ring primitive for future in-process high-rate handoff paths.
+
+```bash
+make proof-fastpath-performance
+curl -s http://localhost:8083/edge/status
+```
+
+The benchmark claim is intentionally limited: TelemetryForge records `ns/op`, `B/op`, and `allocs/op` for the runner and preserves the raw evidence. It does not turn one microbenchmark into a universal events-per-second or latency guarantee.
+
+Read [v2.6 High-Performance Fast Path](docs/performance/fast-path-v2.6.md).
 
 ### Formal Verification
 

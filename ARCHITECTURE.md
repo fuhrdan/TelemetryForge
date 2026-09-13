@@ -1,8 +1,16 @@
 # TelemetryForge Architecture
 
-TelemetryForge v2.5.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v2.6.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
+
+## v2.6 high-performance fast path
+
+The durable edge replay loop now reads a bounded group of pending WAL records and uses an optional per-item-result batch publishing contract. The Kafka implementation submits the batch asynchronously, allowing franz-go to coalesce broker work while preserving input order. JSON encode buffers are pooled until the Kafka callback releases ownership; WAL scanning also reuses bounded payload buffers and fixed-size frame headers.
+
+The optimization boundary is after fsync and replication quorum. Batch success never advances a checkpoint past the first failed item. The WAL remains authoritative, so in-memory pools and ring structures can be discarded without losing accepted telemetry. The new bounded MPMC ring refuses writes when full rather than overwriting unread values.
+
+See [v2.6 High-Performance Fast Path](docs/performance/fast-path-v2.6.md) and ADR 0057.
 
 ## v2.5 formal safety model
 

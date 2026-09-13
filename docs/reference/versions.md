@@ -1,6 +1,6 @@
 # Technology Version Baseline
 
-Verified for the v2.5.0 release work on **2026-09-12**.
+Verified for the v2.6.0 release work on **2026-09-13**.
 
 | Component | Project baseline | Rationale |
 |---|---:|---|

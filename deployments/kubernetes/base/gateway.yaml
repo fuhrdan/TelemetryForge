@@ -39,7 +39,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: gateway
-          image: ghcr.io/fuhrdan/telemetryforge:v2.5.0
+          image: ghcr.io/fuhrdan/telemetryforge:v2.6.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

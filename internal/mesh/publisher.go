@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	"github.com/fuhrdan/TelemetryForge/internal/stream"
 )
 
 // Downstream is the minimal durable publishing contract required by mesh.
@@ -29,6 +30,41 @@ type Publisher struct {
 
 func NewPublisher(manager *Manager, local Downstream) *Publisher {
 	return &Publisher{manager: manager, local: local, client: &http.Client{Timeout: manager.config.Timeout}, token: manager.config.Token}
+}
+
+// PublishBatch keeps the common local-owner path batched. If any item maps to
+// a remote owner, or if the local batch fails, it falls back to normal per-item
+// mesh delivery so each record retains existing failover behavior.
+func (publisher *Publisher) PublishBatch(ctx context.Context, items []stream.BatchItem) []error {
+	results := make([]error, len(items))
+	if len(items) == 0 {
+		return results
+	}
+	batchLocal, ok := publisher.local.(stream.BatchPublisher)
+	if ok {
+		allLocal := true
+		for index, item := range items {
+			route, err := publisher.manager.Route(ctx, routeKey(item.Event))
+			if err != nil {
+				results[index] = err
+				allLocal = false
+				continue
+			}
+			if route.Selected.ID != publisher.manager.config.Local.ID {
+				allLocal = false
+			}
+		}
+		if allLocal {
+			return batchLocal.PublishBatch(ctx, items)
+		}
+	}
+	for index, item := range items {
+		if results[index] != nil {
+			continue
+		}
+		results[index] = publisher.Publish(ctx, item.Topic, item.Event)
+	}
+	return results
 }
 
 func (publisher *Publisher) Publish(ctx context.Context, topic string, event domain.Event) error {

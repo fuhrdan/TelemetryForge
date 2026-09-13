@@ -324,6 +324,7 @@ New routing documents use `type: connector` with nested `connector.kind`. Secret
 | `TELEMETRYFORGE_EDGE_WAL_SEGMENT_BYTES` | `67108864` | 64 MiB origin WAL segment target |
 | `TELEMETRYFORGE_EDGE_WAL_MAX_BYTES` | `4294967296` | 4 GiB origin WAL capacity |
 | `TELEMETRYFORGE_EDGE_KAFKA_CLIENT_ID` | `telemetryforge-edge-<edge-id>` | Kafka producer client ID |
+| `TELEMETRYFORGE_EDGE_REPLAY_BATCH_SIZE` | `64` | Bounded pending WAL records per replay pass; effective maximum 1024 |
 | `TELEMETRYFORGE_EDGE_LINEAGE_PRIVATE_KEY` | `<WAL dir>/lineage.ed25519.pem` | Ed25519 signing private key; auto-created for local/dev when absent |
 | `TELEMETRYFORGE_EDGE_LINEAGE_PUBLIC_KEY` | `<WAL dir>/lineage.ed25519.pub.pem` | Matching public key written/validated by the edge |
 

@@ -1,82 +1,45 @@
-# TelemetryForge v2.5.0 Release Notes
+# TelemetryForge v2.6.0 Release Notes
 
-**Release:** Formal Verification
-**Date:** 2026-09-12
+**High-Performance Fast Path**
 
-v2.5.0 makes the Durable Edge protocol claims executable. The release adds TLA+ safety specifications, finite TLC model configurations, a dependency-free Go state-space checker, property-based schedule fuzzing, and proof/CI integration for the durability, replication, routing, and lineage boundaries delivered in v2.1-v2.4.
+v2.6.0 accelerates the Durable Edge replay path while keeping every v2.1-v2.5 safety boundary intact. WAL fsync, configured replication quorum, mesh ownership/failover, cryptographic lineage, and ordered checkpointing remain authoritative; the new fast path begins only after those durability requirements have been satisfied.
 
 ## Highlights
 
-- `formal/DurableIngest.tla` models fsync, acknowledgement, delivery, and compaction;
-- `formal/ReplicatedDurability.tla` models origin persistence, peer quorum, delivery, and release;
-- `formal/MeshFailover.tla` models bounded owner attempts and no-route termination;
-- `formal/CryptographicLineage.tla` models segment sealing, tamper, verification, and rejection;
-- finite TLC configurations under `formal/models/`;
-- SANY syntax validation before each TLC run;
-- pinned TLA+ tool version in `formal/tla2tools.version`;
-- `internal/formal` dependency-free exhaustive checker;
-- `cmd/formalcheck` human and JSON output;
-- adversarial Go fuzz target for durability action schedules;
-- dedicated CI formal-verification job;
-- `proof/formal-verification.sh` and `.tfproof.json` integration;
-- ADR 0056 and formal proof-boundary documentation.
+### Bounded replay batching
 
-## Checked safety properties
+The edge replay loop now reads up to a configurable batch of pending WAL records instead of forcing a one-record replay pass. The default is 64 records and the effective maximum is 1024.
 
-### Durable ingest
+`TELEMETRYFORGE_EDGE_REPLAY_BATCH_SIZE=64`
 
-```text
-client acknowledgement
-        => durable evidence exists
+Batch publishers return one result per input item. TelemetryForge advances the WAL checkpoint only through the contiguous successful prefix. A failed item and everything after it remain pending and replayable.
 
-acked + not delivered
-        => local WAL remains durable
+### Kafka batch produce
 
-compacted
-        => downstream delivery occurred
-```
+The Kafka publisher now implements the optional batch contract using franz-go asynchronous produce callbacks. Events are submitted in input order, each callback records its own result, and the replay loop waits for the batch before advancing durable checkpoints.
 
-### Replicated durability
+JSON payloads use bounded reusable `bytes.Buffer` instances. A buffer remains owned by the Kafka record until its callback completes, then returns to the pool. Oversized buffers are discarded instead of being retained indefinitely.
 
-```text
-replicated acknowledgement
-        => configured quorum exists
+### WAL scan allocation reduction
 
-acked + not delivered
-        => quorum remains present
+WAL frame scanning now uses a fixed-size frame-header array and a bounded reusable payload byte pool. JSON decoding reads directly from the payload bytes instead of allocating a temporary string representation.
 
-release replicas
-        => downstream delivery occurred
-```
+### Lock-free bounded ring primitive
 
-### Mesh failover
+`internal/fastpath` adds a generic MPMC ring based on per-slot sequence counters. The ring rounds capacity to a power of two, never blocks, and refuses new writes when full rather than overwriting unread data. It is an acceleration primitive, never the only copy of accepted telemetry.
 
-Each candidate owner can be attempted at most once in one abstract delivery path. Terminal routing failure requires the eligible candidate set to be empty, so the model cannot represent recursive edge-to-edge bouncing as a successful failover strategy.
+### Fast-path diagnostics
 
-### Cryptographic lineage
+`GET /edge/status` now includes replay batch counters plus Kafka JSON buffer-pool reuse/allocation/discard counters.
 
-A sealed history may verify only while the committed chain remains untampered in the model. Post-seal mutation transitions into rejection, never successful verification.
+### Reproducible performance evidence
 
-## Dual model-checking path
+`proof/fastpath-performance.sh --execute` runs correctness checks and five allocation-aware Go microbenchmark samples, preserves raw output, emits a parsed JSON benchmark report, and wraps the evidence in `.tfproof.json`.
 
-The normal Go toolchain can run:
+The repository deliberately does **not** claim a universal event rate, p99.99 latency, or zero allocations across the complete data path. Microbenchmarks describe the runner that produced them. End-to-end capacity claims still require the existing full-stack k6 methodology with durability enabled and backlog/error behavior visible.
 
-```bash
-go test ./internal/formal
-go run ./cmd/formalcheck
-```
+## Local validation boundary
 
-The full formal CI job additionally runs all TLA+ models through SANY and TLC with the pinned TLA+ tools release.
+The dependency-free fast-path, WAL, lineage, and replication packages were validated locally with race detection. The restricted build environment cannot download the repository's Go 1.27.1 toolchain or uncached franz-go/OpenTelemetry modules, so full edge/stream integration remains an authoritative CI check on Go 1.27.1.
 
-The operational proof requires both layers and stores their logs/report as evidence:
-
-```bash
-TLA2TOOLS_JAR=/path/to/tla2tools.jar \
-  proof/formal-verification.sh --execute
-```
-
-## Proof scope
-
-This release deliberately does not call the result “mathematically proven zero loss.” The checked models establish bounded safety properties under the model assumptions. They do not prove that networks recover, hardware never destroys all copies, downstream systems eventually respond, or the production implementation contains no unrelated defect.
-
-Formal models, implementation tests, race/fuzz checks, integration tests, cryptographic audit verification, and operational proof remain separate evidence layers.
+See `docs/performance/fast-path-v2.6.md` and ADR 0057.

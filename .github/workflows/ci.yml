@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "v2.5.0"]
+    branches: ["main", "v2.6.0"]
   pull_request:
     branches: ["main"]
 
@@ -57,8 +57,8 @@ jobs:
         run: go test ./internal/connectors ./internal/router
       - name: Operational proof model tests
         run: go test ./internal/proof
-      - name: Replicated durable edge and mesh tests
-        run: go test ./internal/lineage ./internal/wal ./internal/replication ./internal/mesh ./internal/edge
+      - name: Replicated durable edge, mesh, and fast-path tests
+        run: go test ./internal/fastpath ./internal/lineage ./internal/wal ./internal/replication ./internal/mesh ./internal/edge
       - name: Bounded formal protocol models
         run: |
           go test ./internal/formal
@@ -68,7 +68,32 @@ jobs:
       - name: Validate connector-outage proof routing fixture
         run: go run ./cmd/telemetryctl routing validate --file routing/proof-connector-outage.json
       - name: Validate proof Python helpers
-        run: python3 -m py_compile scripts/proof_common.py scripts/run-proof.py scripts/run-benchmark.py scripts/proof-db-restore.py scripts/proof-k8s-rollout.py
+        run: python3 -m py_compile scripts/proof_common.py scripts/run-proof.py scripts/run-benchmark.py scripts/parse-fastpath-bench.py scripts/proof-db-restore.py scripts/proof-k8s-rollout.py
+
+  fastpath-performance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.1"
+          cache: true
+      - name: Fast-path race tests
+        run: go test -race ./internal/fastpath ./internal/wal ./internal/edge
+      - name: Capture allocation-aware microbenchmarks
+        run: |
+          mkdir -p proof/results/raw
+          go test -run '^$' -bench 'Benchmark(Ring|BytePool|JSON)' -benchmem -count=5 ./internal/fastpath | tee proof/results/raw/fastpath-ci.log
+          python3 scripts/parse-fastpath-bench.py proof/results/raw/fastpath-ci.log --out proof/results/raw/fastpath-ci.json
+      - name: Upload fast-path benchmark evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: telemetryforge-fastpath-${{ github.run_id }}
+          path: |
+            proof/results/raw/fastpath-ci.log
+            proof/results/raw/fastpath-ci.json
+          if-no-files-found: error
+
 
   formal-verification:
     runs-on: ubuntu-latest

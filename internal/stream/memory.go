@@ -40,6 +40,23 @@ func (publisher *MemoryPublisher) Publish(_ context.Context, topic string, event
 	return nil
 }
 
+// PublishBatch records an ordered batch and returns one result per item.
+func (publisher *MemoryPublisher) PublishBatch(_ context.Context, items []BatchItem) []error {
+	publisher.mutex.Lock()
+	defer publisher.mutex.Unlock()
+	results := make([]error, len(items))
+	if publisher.err != nil {
+		for index := range results {
+			results[index] = publisher.err
+		}
+		return results
+	}
+	for _, item := range items {
+		publisher.events = append(publisher.events, PublishedEvent{Topic: item.Topic, Event: item.Event})
+	}
+	return results
+}
+
 // Ready returns the configured test error, if any.
 func (publisher *MemoryPublisher) Ready(_ context.Context) error {
 	publisher.mutex.Lock()
