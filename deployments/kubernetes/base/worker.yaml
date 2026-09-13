@@ -42,7 +42,7 @@ spec:
       terminationGracePeriodSeconds: 45
       containers:
         - name: worker
-          image: ghcr.io/fuhrdan/telemetryforge:v2.6.0
+          image: ghcr.io/fuhrdan/telemetryforge:v2.7.0
           imagePullPolicy: IfNotPresent
           command: ["/usr/local/bin/telemetryforge-worker"]
           ports:

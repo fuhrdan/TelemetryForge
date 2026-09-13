@@ -74,26 +74,27 @@ type Rule struct {
 
 // Decision is the explainable result for one event.
 type Decision struct {
-	TenantID         string            `json:"tenant_id,omitempty"`
-	EventID          string            `json:"event_id"`
-	Source           string            `json:"source"`
-	EventType        string            `json:"event_type"`
-	ObservedAt       time.Time         `json:"observed_at"`
-	ConfigName       string            `json:"config_name"`
-	ConfigVersion    string            `json:"config_version"`
-	Rules            []string          `json:"rules,omitempty"`
-	Keep             bool              `json:"keep"`
-	Protected        bool              `json:"protected"`
-	ProtectionReason string            `json:"protection_reason,omitempty"`
-	BaseRate         float64           `json:"base_rate"`
-	EffectiveRate    float64           `json:"effective_rate"`
-	QueuePressure    float64           `json:"queue_pressure"`
-	DroppedTags      []string          `json:"dropped_tags,omitempty"`
-	RenamedTags      map[string]string `json:"renamed_tags,omitempty"`
-	PayloadDropped   bool              `json:"payload_dropped"`
-	OriginalBytes    int               `json:"original_bytes"`
-	ShapedBytes      int               `json:"shaped_bytes"`
-	Reason           string            `json:"reason"`
+	TenantID           string            `json:"tenant_id,omitempty"`
+	EventID            string            `json:"event_id"`
+	Source             string            `json:"source"`
+	EventType          string            `json:"event_type"`
+	ObservedAt         time.Time         `json:"observed_at"`
+	ConfigName         string            `json:"config_name"`
+	ConfigVersion      string            `json:"config_version"`
+	Rules              []string          `json:"rules,omitempty"`
+	Keep               bool              `json:"keep"`
+	Protected          bool              `json:"protected"`
+	ProtectionReason   string            `json:"protection_reason,omitempty"`
+	BaseRate           float64           `json:"base_rate"`
+	EffectiveRate      float64           `json:"effective_rate"`
+	QueuePressure      float64           `json:"queue_pressure"`
+	AutonomyMultiplier float64           `json:"autonomy_multiplier,omitempty"`
+	DroppedTags        []string          `json:"dropped_tags,omitempty"`
+	RenamedTags        map[string]string `json:"renamed_tags,omitempty"`
+	PayloadDropped     bool              `json:"payload_dropped"`
+	OriginalBytes      int               `json:"original_bytes"`
+	ShapedBytes        int               `json:"shaped_bytes"`
+	Reason             string            `json:"reason"`
 }
 
 // ShadowDiff records a candidate shaping disagreement without mutating the

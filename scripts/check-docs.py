@@ -98,6 +98,9 @@ REQUIRED = [
     ROOT / "docs" / "formal" / "formal-verification.md",
     ROOT / "docs" / "roadmap" / "v2.6.0.md",
     ROOT / "docs" / "performance" / "fast-path-v2.6.md",
+    ROOT / "docs" / "roadmap" / "v2.7.0.md",
+    ROOT / "docs" / "autonomy" / "autonomous-control.md",
+    ROOT / "docs" / "autonomy" / "wasm-plugins.md",
 ]
 
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

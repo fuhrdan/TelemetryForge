@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fuhrdan/TelemetryForge/internal/autonomy"
 	"github.com/fuhrdan/TelemetryForge/internal/health"
 	"github.com/fuhrdan/TelemetryForge/internal/incident"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
@@ -32,7 +34,7 @@ func main() {
 	traceShutdown, err := observability.InitTracing(
 		ctx,
 		"telemetryforge-worker",
-		"2.6.0",
+		"2.7.0",
 		os.Getenv("TELEMETRYFORGE_OTLP_TRACES_ENDPOINT"),
 	)
 	if err != nil {
@@ -131,7 +133,37 @@ func main() {
 		}
 		shadowShaping = &loadedShaping
 	}
-	shapingEngine, err := shaping.NewEngine(activeShaping, shadowShaping)
+	autonomyConfig := autonomy.DefaultConfig()
+	autonomyConfig.Mode = autonomy.ParseMode(env("TELEMETRYFORGE_AUTONOMY_MODE", string(autonomy.ModeOff)))
+	autonomyConfig.Window = envInt("TELEMETRYFORGE_AUTONOMY_WINDOW", autonomyConfig.Window)
+	autonomyConfig.MinObservations = envInt("TELEMETRYFORGE_AUTONOMY_MIN_OBSERVATIONS", autonomyConfig.MinObservations)
+	autonomyConfig.Horizon = envDuration("TELEMETRYFORGE_AUTONOMY_HORIZON", autonomyConfig.Horizon)
+	autonomyConfig.TickInterval = envDuration("TELEMETRYFORGE_AUTONOMY_TICK_INTERVAL", autonomyConfig.TickInterval)
+	autonomyConfig.TriggerPressure = envFloat("TELEMETRYFORGE_AUTONOMY_TRIGGER_PRESSURE", autonomyConfig.TriggerPressure)
+	autonomyConfig.RecoverPressure = envFloatAllowZero("TELEMETRYFORGE_AUTONOMY_RECOVER_PRESSURE", autonomyConfig.RecoverPressure)
+	autonomyConfig.MinMultiplier = envFloat("TELEMETRYFORGE_AUTONOMY_MIN_MULTIPLIER", autonomyConfig.MinMultiplier)
+	autonomyConfig.MaxActionTTL = envDuration("TELEMETRYFORGE_AUTONOMY_MAX_ACTION_TTL", autonomyConfig.MaxActionTTL)
+	autonomyConfig.Cooldown = envDurationAllowZero("TELEMETRYFORGE_AUTONOMY_COOLDOWN", autonomyConfig.Cooldown)
+	autonomyConfig.MaxErrorRateIncrease = envFloatAllowZero("TELEMETRYFORGE_AUTONOMY_MAX_ERROR_RATE_INCREASE", autonomyConfig.MaxErrorRateIncrease)
+	autonomyConfig.MaxLatencyIncreaseRatio = envFloatAllowZero("TELEMETRYFORGE_AUTONOMY_MAX_LATENCY_INCREASE_RATIO", autonomyConfig.MaxLatencyIncreaseRatio)
+
+	var autonomyAudit autonomy.Auditor = autonomy.NopAuditor{}
+	var autonomyAuditFile *autonomy.JSONLAuditor
+	if autonomyConfig.Mode != autonomy.ModeOff {
+		autonomyAuditFile, err = autonomy.OpenJSONLAuditor(env("TELEMETRYFORGE_AUTONOMY_AUDIT_FILE", "data/autonomy/actions.jsonl"))
+		if err != nil {
+			logger.Error("open autonomy audit log", "error", err)
+			os.Exit(1)
+		}
+		defer autonomyAuditFile.Close()
+		autonomyAudit = autonomyAuditFile
+	}
+	autonomyController, err := autonomy.NewController(autonomyConfig, autonomyAudit)
+	if err != nil {
+		logger.Error("create autonomy controller", "error", err)
+		os.Exit(1)
+	}
+	shapingEngine, err := shaping.NewEngineWithMultiplier(activeShaping, shadowShaping, autonomyController)
 	if err != nil {
 		logger.Error("create shaping engine", "error", err)
 		os.Exit(1)
@@ -223,6 +255,22 @@ func main() {
 	}
 	defer consumer.Close()
 
+	go func() {
+		ticker := time.NewTicker(autonomyConfig.TickInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-ticker.C:
+				snapshot := autonomyController.Tick(now)
+				if snapshot.ActiveAction != nil {
+					logger.Info("autonomy control evaluation", "mode", snapshot.Mode, "action", snapshot.ActiveAction.State, "multiplier", snapshot.CurrentMultiplier, "predicted_pressure", snapshot.Forecast.PredictedPressure)
+				}
+			}
+		}
+	}()
+
 	adminAddress := env("TELEMETRYFORGE_WORKER_ADMIN_ADDRESS", ":8081")
 	metricsHandler := http.Handler(metrics.Handler())
 	if strings.EqualFold(env("TELEMETRYFORGE_AUTH_MODE", "disabled"), "api_key") {
@@ -240,6 +288,10 @@ func main() {
 		"kafka":    consumer,
 		"database": store,
 	}, metricsHandler)
+	healthServer.HandleFunc("GET /autonomy/status", func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(autonomyController.Snapshot())
+	})
 	go func() {
 		if err := healthServer.Start(); err != nil {
 			logger.Error("worker health server stopped", "error", err)
@@ -254,7 +306,7 @@ func main() {
 
 	go consumer.RunLagMonitor(ctx, 15*time.Second)
 
-	poolObserver := worker.NewCompositeObserver(metrics, pressureController)
+	poolObserver := worker.NewCompositeObserver(metrics, pressureController, autonomyController)
 	pool, err := worker.NewPoolWithObserver(workers, queueCapacity, pipeline, logger, poolObserver)
 	if err != nil {
 		logger.Error("create worker pool", "error", err)
@@ -276,6 +328,7 @@ func main() {
 		"telemetry_router", activeRouting.Name+"@"+activeRouting.Version,
 		"shadow_routing", shadowRouting != nil,
 		"adaptive_shaping", activeShaping.Name+"@"+activeShaping.Version,
+		"autonomy_mode", autonomyConfig.Mode,
 		"shadow_shaping", shadowShaping != nil,
 		"policy", activePolicy.Name+"@"+activePolicy.Version,
 		"shadow_policy", shadowPolicyPath != "",
@@ -335,4 +388,36 @@ func envBool(name string, fallback bool) bool {
 	default:
 		return fallback
 	}
+}
+
+func envFloatAllowZero(name string, fallback float64) float64 {
+	value, err := strconv.ParseFloat(env(name, ""), 64)
+	if err != nil || value < 0 {
+		return fallback
+	}
+	return value
+}
+
+func envDuration(name string, fallback time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	value, err := time.ParseDuration(raw)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func envDurationAllowZero(name string, fallback time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	value, err := time.ParseDuration(raw)
+	if err != nil || value < 0 {
+		return fallback
+	}
+	return value
 }

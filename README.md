@@ -10,7 +10,7 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current release:** `v2.6.0` — High-Performance Fast Path with bounded replay batching, pooled buffers, lock-free ring primitives, and reproducible allocation-aware benchmarks.
+> **Current release:** `v2.7.0` — Autonomous Control with shadow-first pressure prediction, bounded reversible sampling actions, and a capability-free Wasm predictor boundary.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization

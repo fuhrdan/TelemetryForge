@@ -27,7 +27,8 @@
 | v2.3.0 | Released | Global routing mesh, deterministic ownership, health-aware failover |
 | v2.4.0 | Released | Cryptographic lineage, Merkle segment seals, Ed25519 audit verification |
 | v2.5.0 | Released | TLA+ safety models, bounded exhaustive checking, fuzzed protocol schedules |
-| **v2.6.0** | **Released** | **Bounded replay batching, pooled buffers, lock-free ring primitives, allocation-aware benchmark proof** |
+| v2.6.0 | Released | Bounded replay batching, pooled buffers, lock-free ring primitives, allocation-aware benchmark proof |
+| **v2.7.0** | **Released** | **Shadow-first autonomous control, reversible runtime actions, Wasm predictor boundary** |
 
 ## v1.2.0 delivered
 
@@ -333,3 +334,18 @@
 - three-edge Compose regional quorum topology
 - Kubernetes replica-storage configuration hooks
 - tests, proof harness, docs, ADR 0053
+
+
+## v2.7.0 delivered
+
+- bounded queue-pressure trend forecasting from worker observations
+- `off`, `shadow`, and explicit opt-in `auto` modes
+- temporary non-protected shaping multiplier with configured floor
+- fsync-before-apply local action audit trail
+- automatic rollback on TTL, recovery, error-rate regression, or mean-latency regression
+- cooldown after terminal action transitions
+- retry-stable shaping decisions carrying the applied multiplier
+- worker `/autonomy/status` endpoint
+- capability-free WebAssembly manifest/module validation and sandbox backend contract
+- executable autonomy check and `.tfproof.json` proof scenario
+- ADR 0058

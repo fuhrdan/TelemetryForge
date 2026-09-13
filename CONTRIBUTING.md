@@ -315,3 +315,7 @@ go test -run '^$' -bench 'Benchmark(Ring|BytePool|JSON)' -benchmem -count=5 ./in
 ```
 
 Do not weaken fsync, replication, checkpoint, or audit semantics to improve a benchmark. Include the runner/environment when publishing performance results.
+
+## Autonomous-control changes
+
+Changes under `internal/autonomy`, shaping multiplier integration, or `internal/wasmplugin` must preserve ADR 0058. Add/adjust tests proving shadow non-mutation, protected-event preservation, retry-stable decisions, rollback, audit failure behavior, and plugin capability restrictions. Run `make autonomy-check` and `make plugin-check` before submitting.

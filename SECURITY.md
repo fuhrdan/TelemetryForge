@@ -280,3 +280,7 @@ raw evidence without committing a database dump to the repository.
 The built-in Evidence-First Investigator is deterministic and operates only on tenant-scoped stored evidence. It does not send incident evidence to an external model.
 
 Recommendations are advisory. The intelligence package has no production configuration mutation capability; activation remains protected by the global `control` scope, immutable lifecycle state, evidence gates and human approval.
+
+## v2.7 autonomous control and WebAssembly boundary
+
+Autonomous control is disabled by default. `auto` mode can only adjust the temporary non-protected shaping multiplier and must fsync an audit record before mutation. It cannot mutate lifecycle artifacts, routing, replication, cryptographic lineage, or protected telemetry. The WebAssembly plugin host is capability-free; module validation is not treated as an execution sandbox, and a future/configured execution backend must independently enforce memory/instruction isolation.

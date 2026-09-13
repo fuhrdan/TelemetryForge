@@ -8,6 +8,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemet
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge-worker ./cmd/worker
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge-router ./cmd/router
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryctl ./cmd/telemetryctl
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge-autonomycheck ./cmd/autonomycheck
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge-plugincheck ./cmd/plugincheck
 
 FROM alpine:3.24.1
 RUN addgroup -S telemetryforge && adduser -S -G telemetryforge telemetryforge
@@ -16,6 +18,8 @@ COPY --from=build /out/telemetryforge-edge /usr/local/bin/telemetryforge-edge
 COPY --from=build /out/telemetryforge-worker /usr/local/bin/telemetryforge-worker
 COPY --from=build /out/telemetryforge-router /usr/local/bin/telemetryforge-router
 COPY --from=build /out/telemetryctl /usr/local/bin/telemetryctl
+COPY --from=build /out/telemetryforge-autonomycheck /usr/local/bin/telemetryforge-autonomycheck
+COPY --from=build /out/telemetryforge-plugincheck /usr/local/bin/telemetryforge-plugincheck
 COPY policies /etc/telemetryforge/policies
 COPY routing /etc/telemetryforge/routing
 COPY shaping /etc/telemetryforge/shaping

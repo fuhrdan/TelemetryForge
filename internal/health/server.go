@@ -17,6 +17,7 @@ type Checker interface {
 // Server exposes liveness and dependency-aware readiness.
 type Server struct {
 	http   *http.Server
+	mux    *http.ServeMux
 	logger *slog.Logger
 	checks map[string]Checker
 }
@@ -30,6 +31,7 @@ func New(address string, logger *slog.Logger, checks map[string]Checker, metrics
 			Handler:           mux,
 			ReadHeaderTimeout: 2 * time.Second,
 		},
+		mux:    mux,
 		logger: logger,
 		checks: checks,
 	}
@@ -39,6 +41,11 @@ func New(address string, logger *slog.Logger, checks map[string]Checker, metrics
 		mux.Handle("GET /metrics", metricsHandlers[0])
 	}
 	return server
+}
+
+// HandleFunc registers an additional admin endpoint on the worker/router health server.
+func (server *Server) HandleFunc(pattern string, handler http.HandlerFunc) {
+	server.mux.HandleFunc(pattern, handler)
 }
 
 // Start serves until shutdown or a fatal listener error.

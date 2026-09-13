@@ -1,0 +1,10 @@
+{
+  "format_version": 1,
+  "name": "noop-pressure-predictor",
+  "version": "1.0.0",
+  "module_sha256": "64722996b00b0c4457a9899d7a9c23f4c5a3802abfe3f2ad967a64a67cc8a87c",
+  "entrypoint": "predict",
+  "timeout": 50000000,
+  "max_input_bytes": 65536,
+  "max_output_bytes": 65536
+}

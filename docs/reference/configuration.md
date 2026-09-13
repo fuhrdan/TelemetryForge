@@ -347,3 +347,26 @@ See [Cryptographic Lineage](../security/cryptographic-lineage.md) for key handli
 | `TELEMETRYFORGE_MESH_DRAINING` | `false` | Exclude this node from new route ownership for maintenance |
 
 See [Global Routing Mesh](../mesh/global-routing-mesh.md) for routing semantics and failover behavior.
+
+
+## Autonomous control (v2.7)
+
+The worker binary defaults to autonomy `off`. Use `shadow` before `auto`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TELEMETRYFORGE_AUTONOMY_MODE` | `off` | `off`, `shadow`, or explicit opt-in `auto` |
+| `TELEMETRYFORGE_AUTONOMY_AUDIT_FILE` | `data/autonomy/actions.jsonl` | fsynced local action audit trail |
+| `TELEMETRYFORGE_AUTONOMY_WINDOW` | `12` | bounded pressure-history samples |
+| `TELEMETRYFORGE_AUTONOMY_MIN_OBSERVATIONS` | `4` | observations required before an action |
+| `TELEMETRYFORGE_AUTONOMY_HORIZON` | `30s` | prediction horizon |
+| `TELEMETRYFORGE_AUTONOMY_TICK_INTERVAL` | `5s` | observation/evaluation cadence |
+| `TELEMETRYFORGE_AUTONOMY_TRIGGER_PRESSURE` | `0.82` | predicted pressure action threshold |
+| `TELEMETRYFORGE_AUTONOMY_RECOVER_PRESSURE` | `0.55` | rollback threshold after recovery |
+| `TELEMETRYFORGE_AUTONOMY_MIN_MULTIPLIER` | `0.35` | lower bound for auto sampling multiplier |
+| `TELEMETRYFORGE_AUTONOMY_MAX_ACTION_TTL` | `2m` | maximum action lifetime |
+| `TELEMETRYFORGE_AUTONOMY_COOLDOWN` | `30s` | cooldown after rollback/expiry |
+| `TELEMETRYFORGE_AUTONOMY_MAX_ERROR_RATE_INCREASE` | `0.02` | absolute error-rate increase rollback guardrail |
+| `TELEMETRYFORGE_AUTONOMY_MAX_LATENCY_INCREASE_RATIO` | `0.25` | relative mean-latency increase rollback guardrail |
+
+Kubernetes production manifests leave autonomy disabled unless operators provide explicit configuration and writable audit storage.

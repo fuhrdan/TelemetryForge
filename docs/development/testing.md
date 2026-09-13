@@ -312,3 +312,8 @@ go test -run '^$' -bench 'Benchmark(Ring|BytePool|JSON)' -benchmem -count=5 ./in
 ```
 
 `proof/fastpath-performance.sh --execute` preserves the raw benchmark output, a parsed JSON report, and a `.tfproof.json` wrapper. The scenario has no hard-coded vanity throughput threshold: results describe the measured runner only and do not replace the end-to-end k6 methodology.
+
+
+## v2.7.0 autonomous-control coverage
+
+Run `make autonomy-check`, `make plugin-check`, and `make proof-autonomous-control`. Unit tests cover shadow non-mutation, bounded auto application, rollback, audit-failure suppression, pressure forecasting, protected telemetry, retry-stable multipliers, Wasm digest/entrypoint validation, capability rejection, and backend failure propagation.

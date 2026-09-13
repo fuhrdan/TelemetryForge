@@ -151,3 +151,32 @@ func TestProtectedTelemetryCanBeExplicitlyShaped(t *testing.T) {
 		t.Fatalf("explicit protected shaping was not applied: output=%#v decision=%#v", output, decision)
 	}
 }
+
+type fixedMultiplier float64
+
+func (m fixedMultiplier) CurrentMultiplier() float64 { return float64(m) }
+
+func TestAutonomyMultiplierAffectsOnlyUnprotectedTelemetry(t *testing.T) {
+	config := testConfig()
+	config.DefaultSampleRate = 1
+	engine, err := NewEngineWithMultiplier(config, nil, fixedMultiplier(0.5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := domain.Event{ID: "auto-1", TenantID: "alpha", Source: "checkout", Type: "metric", Timestamp: time.Now().UTC(), Tags: map[string]string{}}
+	_, decision, _ := engine.Evaluate(event, 0, time.Now())
+	if decision.AutonomyMultiplier != 0.5 || decision.EffectiveRate != 0.5 {
+		t.Fatalf("unexpected autonomous rate: %+v", decision)
+	}
+
+	protected := event
+	protected.ID = "auto-2"
+	protected.Type = "request.error"
+	_, protectedDecision, _ := engine.Evaluate(protected, 0, time.Now())
+	if !protectedDecision.Protected || !protectedDecision.Keep {
+		t.Fatalf("protected event was sampled: %+v", protectedDecision)
+	}
+	if protectedDecision.EffectiveRate != 1 {
+		t.Fatalf("autonomy multiplier changed protected rate: %+v", protectedDecision)
+	}
+}

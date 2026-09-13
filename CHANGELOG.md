@@ -4,6 +4,18 @@
 
 _No changes yet._
 
+## [2.7.0] - 2026-09-13
+
+### Added
+- Shadow-first worker pressure forecasting with bounded `off`/`shadow`/`auto` modes.
+- Audited temporary non-protected sampling multiplier and automatic rollback guardrails.
+- Retry-stable autonomy multiplier capture in shaping decisions.
+- `/autonomy/status`, `autonomycheck`, Wasm plugin validation, proof scenario, docs, and ADR 0058.
+
+### Changed
+- Product/service versions advanced to v2.7.0.
+- CI and Operational Proof now validate autonomous-control and Wasm-boundary behavior.
+
 ## [2.6.0] - 2026-09-13
 
 ### Added

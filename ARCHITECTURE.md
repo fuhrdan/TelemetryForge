@@ -1,6 +1,6 @@
 # TelemetryForge Architecture
 
-TelemetryForge v2.6.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v2.7.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
 
@@ -483,3 +483,10 @@ Human lifecycle review / approval / activation
 ```
 
 The investigator has no production mutation interface. The v1.6 lifecycle remains the only path to configuration activation.
+
+
+## v2.7 autonomous control boundary
+
+Worker queue depth and job-completion signals feed a bounded trend predictor. The controller defaults to `off`; operators can enable `shadow` and then explicitly opt into `auto`. Auto mode cannot mutate lifecycle artifacts or durability/routing state. Its only production mutation is a temporary multiplier applied after shaping-policy evaluation to non-protected telemetry. The action is fsynced to a local audit trail before application and is automatically rolled back on TTL, recovery, error regression, or latency regression.
+
+The WebAssembly plugin boundary is capability-free and digest-pinned. v2.7 defines validation and a sandbox backend contract but intentionally does not bundle an execution engine.

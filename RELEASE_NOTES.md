@@ -1,45 +1,31 @@
-# TelemetryForge v2.6.0 Release Notes
+# TelemetryForge v2.7.0 Release Notes
 
-**High-Performance Fast Path**
+## Autonomous Control
 
-v2.6.0 accelerates the Durable Edge replay path while keeping every v2.1-v2.5 safety boundary intact. WAL fsync, configured replication quorum, mesh ownership/failover, cryptographic lineage, and ordered checkpointing remain authoritative; the new fast path begins only after those durability requirements have been satisfied.
+TelemetryForge v2.7.0 adds a shadow-first, reversible control loop to the worker while preserving every durability, routing, lineage, formal-verification, and fast-path boundary from v2.1-v2.6.
 
-## Highlights
+### Pressure prediction
 
-### Bounded replay batching
+The built-in controller observes bounded worker queue depth and completed-job SLO signals and uses a transparent least-squares trend projection over a bounded window. Forecasts expose current pressure, predicted pressure, slope, sample count, and confidence.
 
-The edge replay loop now reads up to a configurable batch of pending WAL records instead of forcing a one-record replay pass. The default is 64 records and the effective maximum is 1024.
+### Safe action boundary
 
-`TELEMETRYFORGE_EDGE_REPLAY_BATCH_SIZE=64`
+The binary defaults to `off`. In `shadow`, the controller records the action it would take without mutation. In explicit `auto`, it may apply only a TTL-bounded multiplier to non-protected shaping rates. Existing rule minimums and all protection rules still apply.
 
-Batch publishers return one result per input item. TelemetryForge advances the WAL checkpoint only through the contiguous successful prefix. A failed item and everything after it remain pending and replayable.
+Actions are fsynced to a local JSONL audit file before the multiplier changes. An audit failure suppresses mutation. Automatic rollback restores `1.0` on pressure recovery, TTL expiry, error-rate regression, or mean-processing-latency regression, followed by cooldown.
 
-### Kafka batch produce
+### Retry stability
 
-The Kafka publisher now implements the optional batch contract using franz-go asynchronous produce callbacks. Events are submitted in input order, each callback records its own result, and the replay loop waits for the batch before advancing durable checkpoints.
+Each shaping decision records the autonomy multiplier used. If downstream processing retries the event after the controller has changed, TelemetryForge reconstructs the original keep/drop decision with the original multiplier.
 
-JSON payloads use bounded reusable `bytes.Buffer` instances. A buffer remains owned by the Kafka record until its callback completes, then returns to the pool. Oversized buffers are discarded instead of being retained indefinitely.
+### WebAssembly predictor boundary
 
-### WAL scan allocation reduction
+`telemetryforge-plugincheck` validates digest-pinned WebAssembly binary-format-v1 modules and requires the declared exported entrypoint. The v2.7 host contract is capability-free and limited to bounded JSON input/output plus a deadline. No third-party Wasm engine is bundled; execution sandboxes remain an explicit backend responsibility.
 
-WAL frame scanning now uses a fixed-size frame-header array and a bounded reusable payload byte pool. JSON decoding reads directly from the payload bytes instead of allocating a temporary string representation.
+### Operational evidence
 
-### Lock-free bounded ring primitive
+`proof/autonomous-control.sh` tests shadow non-mutation, bounded auto action, SLO rollback, protected telemetry, audit transitions, and the Wasm validator and emits a `.tfproof.json` artifact.
 
-`internal/fastpath` adds a generic MPMC ring based on per-slot sequence counters. The ring rounds capacity to a power of two, never blocks, and refuses new writes when full rather than overwriting unread data. It is an acceleration primitive, never the only copy of accepted telemetry.
+### Explicit non-claims
 
-### Fast-path diagnostics
-
-`GET /edge/status` now includes replay batch counters plus Kafka JSON buffer-pool reuse/allocation/discard counters.
-
-### Reproducible performance evidence
-
-`proof/fastpath-performance.sh --execute` runs correctness checks and five allocation-aware Go microbenchmark samples, preserves raw output, emits a parsed JSON benchmark report, and wraps the evidence in `.tfproof.json`.
-
-The repository deliberately does **not** claim a universal event rate, p99.99 latency, or zero allocations across the complete data path. Microbenchmarks describe the runner that produced them. End-to-end capacity claims still require the existing full-stack k6 methodology with durability enabled and backlog/error behavior visible.
-
-## Local validation boundary
-
-The dependency-free fast-path, WAL, lineage, and replication packages were validated locally with race detection. The restricted build environment cannot download the repository's Go 1.27.1 toolchain or uncached franz-go/OpenTelemetry modules, so full edge/stream integration remains an authoritative CI check on Go 1.27.1.
-
-See `docs/performance/fast-path-v2.6.md` and ADR 0057.
+v2.7 does not claim general artificial intelligence, root-cause certainty, globally coordinated multi-worker control, universal cost savings, autonomous lifecycle promotion, or safe execution of arbitrary third-party Wasm engines.

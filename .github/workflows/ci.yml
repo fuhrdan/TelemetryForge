@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "v2.6.0"]
+    branches: ["main", "v2.7.0"]
   pull_request:
     branches: ["main"]
 
@@ -57,8 +57,12 @@ jobs:
         run: go test ./internal/connectors ./internal/router
       - name: Operational proof model tests
         run: go test ./internal/proof
-      - name: Replicated durable edge, mesh, and fast-path tests
-        run: go test ./internal/fastpath ./internal/lineage ./internal/wal ./internal/replication ./internal/mesh ./internal/edge
+      - name: Replicated durable edge, mesh, fast-path, and autonomous-control tests
+        run: go test ./internal/fastpath ./internal/lineage ./internal/wal ./internal/replication ./internal/mesh ./internal/edge ./internal/autonomy ./internal/shaping ./internal/wasmplugin
+      - name: Autonomous control proof preflight
+        run: |
+          go run ./cmd/autonomycheck --output /tmp/autonomy-check.json
+          go run ./cmd/plugincheck --manifest plugins/examples/noop-predictor.manifest.json --module plugins/examples/noop-predictor.wasm
       - name: Bounded formal protocol models
         run: |
           go test ./internal/formal

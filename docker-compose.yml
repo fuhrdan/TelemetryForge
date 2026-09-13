@@ -282,6 +282,8 @@ services:
       TELEMETRYFORGE_SHADOW_SHAPING_FILE: "/etc/telemetryforge/shaping/shadow.json"
       TELEMETRYFORGE_CARDINALITY_MAX_DIMENSIONS: "20000"
       TELEMETRYFORGE_SCHEMA_FAIL_OPEN: "true"
+      TELEMETRYFORGE_AUTONOMY_MODE: "shadow"
+      TELEMETRYFORGE_AUTONOMY_AUDIT_FILE: "/tmp/telemetryforge-autonomy/actions.jsonl"
       TELEMETRYFORGE_INCIDENT_LATENCY_MS: "1000"
       TELEMETRYFORGE_INCIDENT_ERROR_COUNT: "5"
       TELEMETRYFORGE_DATABASE_URL: "postgres://telemetryforge:telemetryforge@timescaledb:5432/telemetryforge?sslmode=disable"

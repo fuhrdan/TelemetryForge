@@ -70,8 +70,8 @@ func (processor *AdaptiveShaper) Process(ctx context.Context, event domain.Event
 		// retry the whole chain. Re-evaluate at the pressure/time captured by the
 		// durable first decision so the retry cannot change keep/drop behavior.
 		var reconstructed shaping.Decision
-		shaped, reconstructed, diff = processor.engine.Evaluate(
-			event, decision.QueuePressure, decision.ObservedAt,
+		shaped, reconstructed, diff = processor.engine.EvaluateWithMultiplier(
+			event, decision.QueuePressure, decision.ObservedAt, decision.AutonomyMultiplier,
 		)
 		if !sameShapingDecision(decision, reconstructed) {
 			// Reusing a name/version for different shaping content would make an
@@ -122,7 +122,7 @@ func sameShapingDecision(left, right shaping.Decision) bool {
 		left.Keep != right.Keep || left.Protected != right.Protected ||
 		left.ProtectionReason != right.ProtectionReason ||
 		left.BaseRate != right.BaseRate || left.EffectiveRate != right.EffectiveRate ||
-		left.QueuePressure != right.QueuePressure ||
+		left.QueuePressure != right.QueuePressure || left.AutonomyMultiplier != right.AutonomyMultiplier ||
 		left.PayloadDropped != right.PayloadDropped ||
 		left.OriginalBytes != right.OriginalBytes || left.ShapedBytes != right.ShapedBytes ||
 		left.Reason != right.Reason || !left.ObservedAt.Equal(right.ObservedAt) {

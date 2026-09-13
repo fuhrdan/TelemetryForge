@@ -13,13 +13,23 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 )
 
+// RateMultiplier supplies a bounded runtime multiplier for non-protected telemetry.
+type RateMultiplier interface{ CurrentMultiplier() float64 }
+
 // Engine evaluates one active shaping policy and optional shadow candidate.
 type Engine struct {
-	active Config
-	shadow *Config
+	active     Config
+	shadow     *Config
+	multiplier RateMultiplier
 }
 
 func NewEngine(active Config, shadow *Config) (*Engine, error) {
+	return NewEngineWithMultiplier(active, shadow, nil)
+}
+
+// NewEngineWithMultiplier applies a bounded runtime multiplier after the
+// immutable shaping policy has been evaluated. Protected events remain kept.
+func NewEngineWithMultiplier(active Config, shadow *Config, multiplier RateMultiplier) (*Engine, error) {
 	if err := active.Validate(); err != nil {
 		return nil, fmt.Errorf("active shaping config: %w", err)
 	}
@@ -28,7 +38,7 @@ func NewEngine(active Config, shadow *Config) (*Engine, error) {
 			return nil, fmt.Errorf("shadow shaping config: %w", err)
 		}
 	}
-	return &Engine{active: active, shadow: shadow}, nil
+	return &Engine{active: active, shadow: shadow, multiplier: multiplier}, nil
 }
 
 func (engine *Engine) Active() Config  { return engine.active }
@@ -36,16 +46,27 @@ func (engine *Engine) Shadow() *Config { return engine.shadow }
 
 // Evaluate returns the active result and an optional non-destructive shadow diff.
 func (engine *Engine) Evaluate(event domain.Event, queuePressure float64, now time.Time) (domain.Event, Decision, *ShadowDiff) {
+	multiplier := 1.0
+	if engine.multiplier != nil {
+		multiplier = clamp(engine.multiplier.CurrentMultiplier(), 0, 1)
+	}
+	return engine.EvaluateWithMultiplier(event, queuePressure, now, multiplier)
+}
+
+// EvaluateWithMultiplier makes retry decisions reproducible even if the live
+// autonomy controller changes between processing attempts.
+func (engine *Engine) EvaluateWithMultiplier(event domain.Event, queuePressure float64, now time.Time, multiplier float64) (domain.Event, Decision, *ShadowDiff) {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	} else {
 		now = now.UTC()
 	}
-	activeEvent, activeDecision := evaluateConfig(engine.active, event, queuePressure, now)
+	multiplier = clamp(multiplier, 0, 1)
+	activeEvent, activeDecision := evaluateConfig(engine.active, event, queuePressure, now, multiplier)
 	if engine.shadow == nil {
 		return activeEvent, activeDecision, nil
 	}
-	_, shadowDecision := evaluateConfig(*engine.shadow, event, queuePressure, now)
+	_, shadowDecision := evaluateConfig(*engine.shadow, event, queuePressure, now, multiplier)
 	activeEffects, shadowEffects := effects(activeDecision), effects(shadowDecision)
 	if activeDecision.Keep == shadowDecision.Keep && activeDecision.EffectiveRate == shadowDecision.EffectiveRate && equalStrings(activeEffects, shadowEffects) {
 		return activeEvent, activeDecision, nil
@@ -54,7 +75,7 @@ func (engine *Engine) Evaluate(event domain.Event, queuePressure float64, now ti
 	return activeEvent, activeDecision, diff
 }
 
-func evaluateConfig(config Config, event domain.Event, queuePressure float64, now time.Time) (domain.Event, Decision) {
+func evaluateConfig(config Config, event domain.Event, queuePressure float64, now time.Time, autonomyMultiplier float64) (domain.Event, Decision) {
 	originalBytes := canonicalBytes(event)
 	protected, protectionReason := isProtected(config.Protection, event)
 	rate := config.DefaultSampleRate
@@ -120,6 +141,13 @@ func evaluateConfig(config Config, event domain.Event, queuePressure float64, no
 	}
 
 	effective := effectiveRate(config.Pressure, rate, minRate, queuePressure)
+	autonomyMultiplier = clamp(autonomyMultiplier, 0, 1)
+	if !protected && autonomyMultiplier < 1 {
+		effective *= autonomyMultiplier
+		if effective < minRate {
+			effective = minRate
+		}
+	}
 	keep := protected || deterministicKeep(event, config, effective)
 	reason := "sampled by deterministic event hash"
 	if protected {
@@ -135,7 +163,7 @@ func evaluateConfig(config Config, event domain.Event, queuePressure float64, no
 		droppedList = append(droppedList, key)
 	}
 	sort.Strings(droppedList)
-	decision := Decision{TenantID: event.TenantID, EventID: event.ID, Source: event.Source, EventType: event.Type, ObservedAt: now, ConfigName: config.Name, ConfigVersion: config.Version, Rules: matched, Keep: keep, Protected: protected, ProtectionReason: protectionReason, BaseRate: rate, EffectiveRate: effective, QueuePressure: clamp(queuePressure, 0, 1), DroppedTags: droppedList, RenamedTags: renamed, PayloadDropped: payloadDropped, OriginalBytes: originalBytes, ShapedBytes: canonicalBytes(shaped), Reason: reason}
+	decision := Decision{TenantID: event.TenantID, EventID: event.ID, Source: event.Source, EventType: event.Type, ObservedAt: now, ConfigName: config.Name, ConfigVersion: config.Version, Rules: matched, Keep: keep, Protected: protected, ProtectionReason: protectionReason, BaseRate: rate, EffectiveRate: effective, QueuePressure: clamp(queuePressure, 0, 1), AutonomyMultiplier: autonomyMultiplier, DroppedTags: droppedList, RenamedTags: renamed, PayloadDropped: payloadDropped, OriginalBytes: originalBytes, ShapedBytes: canonicalBytes(shaped), Reason: reason}
 	return shaped, decision
 }
 

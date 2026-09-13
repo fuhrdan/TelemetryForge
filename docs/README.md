@@ -196,3 +196,7 @@ or long-term maintainability.
 - [Failure / chaos testing](operations/chaos-testing.md)
 - [Disaster recovery proof](operations/disaster-recovery.md)
 - [Kubernetes rolling proof](operations/rolling-proof.md)
+
+- [v2.7.0 delivered scope](roadmap/v2.7.0.md)
+- [Autonomous Control](autonomy/autonomous-control.md)
+- [WebAssembly Predictor Plugin Boundary](autonomy/wasm-plugins.md)

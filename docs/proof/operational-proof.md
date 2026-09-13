@@ -71,3 +71,7 @@ v2.5 adds a `formal-verification` scenario. Unlike outage scenarios, it does not
 ```bash
 TLA2TOOLS_JAR=/path/to/tla2tools.jar proof/formal-verification.sh --execute
 ```
+
+## v2.7 autonomous-control proof
+
+`proof/autonomous-control.sh --execute` runs the dependency-light autonomy/shaping/Wasm tests, executes `autonomycheck`, validates the checked-in Wasm fixture, and emits a `.tfproof.json` artifact. The assertions cover shadow non-mutation, bounded auto application, rollback, protected telemetry, audited transitions, and plugin identity/entrypoint validation. This is a controller-semantics proof, not a universal ML-performance or arbitrary-Wasm-sandbox claim.
