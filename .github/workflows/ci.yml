@@ -243,17 +243,17 @@ jobs:
       - name: Render Kubernetes manifests
         run: kubectl kustomize deployments/kubernetes/base > /tmp/telemetryforge-k8s.yaml
       - name: Parse Kubernetes manifests
-        run: kubectl apply --dry-run=client --validate=false -f /tmp/telemetryforge-k8s.yaml
+        run: ruby scripts/validate-k8s-yaml.rb /tmp/telemetryforge-k8s.yaml
       - name: Render production Kubernetes overlay
         run: kubectl kustomize deployments/kubernetes/overlays/production > /tmp/telemetryforge-production.yaml
       - name: Parse production Kubernetes overlay
-        run: kubectl apply --dry-run=client --validate=false -f /tmp/telemetryforge-production.yaml
+        run: ruby scripts/validate-k8s-yaml.rb /tmp/telemetryforge-production.yaml
       - name: Parse production secret example
-        run: kubectl apply --dry-run=client --validate=false -f deployments/kubernetes/overlays/production/secret.example.yaml
+        run: ruby scripts/validate-k8s-yaml.rb deployments/kubernetes/overlays/production/secret.example.yaml
       - name: Render eBPF Kubernetes overlay
         run: kubectl kustomize deployments/kubernetes/overlays/ebpf > /tmp/telemetryforge-ebpf-k8s.yaml
       - name: Parse eBPF Kubernetes overlay
-        run: kubectl apply --dry-run=client --validate=false -f /tmp/telemetryforge-ebpf-k8s.yaml
+        run: ruby scripts/validate-k8s-yaml.rb /tmp/telemetryforge-ebpf-k8s.yaml
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.16.2"
@@ -294,7 +294,7 @@ jobs:
           docker run --rm \
             -v "$PWD/deployments/observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro" \
             grafana/tempo:3.0.2 \
-            -config.file=/etc/tempo/tempo.yaml -config.verify
+            -config.file=/etc/tempo/tempo.yaml -config.verify=true
       - name: Validate Grafana dashboard JSON
         run: |
           python3 - <<'PY'

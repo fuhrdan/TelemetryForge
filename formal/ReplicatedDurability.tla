@@ -1,5 +1,5 @@
 ---- MODULE ReplicatedDurability ----
-EXTENDS FiniteSets, TLC
+EXTENDS FiniteSets, Naturals, TLC
 
 Copies == {"origin", "peerA", "peerB"}
 
