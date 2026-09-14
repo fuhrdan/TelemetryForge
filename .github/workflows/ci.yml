@@ -92,7 +92,7 @@ jobs:
           go test -run '^$' -bench 'Benchmark(Ring|BytePool|JSON)' -benchmem -count=5 ./internal/fastpath | tee proof/results/raw/fastpath-ci.log
           python3 scripts/parse-fastpath-bench.py proof/results/raw/fastpath-ci.log --out proof/results/raw/fastpath-ci.json
       - name: Upload fast-path benchmark evidence
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: telemetryforge-fastpath-${{ github.run_id }}
           path: |
@@ -147,7 +147,7 @@ jobs:
       - name: Cross-compile dependency-free collector package for arm64
         run: GOOS=linux GOARCH=arm64 go test -c -o /tmp/telemetryforge-ebpf-arm64.test ./internal/ebpf
       - name: Upload eBPF static evidence
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: telemetryforge-ebpf-${{ github.run_id }}
           path: /tmp/telemetryforge-ebpf-check.json
@@ -169,7 +169,7 @@ jobs:
           mkdir -p proof/results/raw
           go run ./cmd/multicloudcheck --events 10000 --output proof/results/raw/multicloud-ci.json
       - name: Upload multi-cloud model evidence
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: telemetryforge-multicloud-${{ github.run_id }}
           path: proof/results/raw/multicloud-ci.json
