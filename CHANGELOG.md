@@ -4,6 +4,23 @@
 
 _No changes yet._
 
+## [3.0.0] - 2026-09-14
+
+### Added
+- Global Edge Fabric runtime contract with explicit acceptance, delivery, and audit readiness dimensions.
+- `GET /edge/fabric/status` with per-capability state for durability, routing, lineage, fast-path replay, and eBPF collection.
+- Dependency-free `telemetryforge-fabriccheck` covering healthy, downstream-partition, quorum-loss, WAL-capacity, and required-eBPF scenarios.
+- Global Edge Fabric `.tfproof.json` scenario, ADR 0061, v3 architecture documentation, and v3 upgrade/rollback guidance.
+
+### Changed
+- Product/service/dashboard/Kubernetes versions advanced to v3.0.0.
+- CI now validates the v3 fabric contract and targets the `v3.0.0` release branch.
+- v3 runtime status distinguishes backlog-producing downstream degradation from loss of the durable acceptance boundary.
+
+### Compatibility
+- Preserved WAL v1/v2 read compatibility, `/api/v1`, `/internal/v1`, `.tfincident`, and `.tfproof.json` formats.
+- No database migration is required solely for the Global Edge Fabric contract.
+
 ## [2.9.0] - 2026-09-14
 
 ### Added

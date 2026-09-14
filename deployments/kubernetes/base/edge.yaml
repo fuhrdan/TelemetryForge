@@ -22,7 +22,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: edge
-          image: ghcr.io/fuhrdan/telemetryforge:v2.9.0
+          image: ghcr.io/fuhrdan/telemetryforge:v3.0.0
           command: ["/usr/local/bin/telemetryforge-edge"]
           ports:
             - name: http

@@ -28,6 +28,7 @@ on:
           - ebpf-edge
           - multi-cloud-proof
           - multi-cloud-compose
+          - global-edge-fabric
 
 permissions:
   contents: read
@@ -59,7 +60,7 @@ jobs:
           expected=$(cat formal/tla2tools.sha256)
           echo "${expected}  /tmp/tla2tools.jar" | sha256sum -c -
       - name: Start baseline stack
-        if: inputs.scenario != 'formal-verification' && inputs.scenario != 'fastpath-performance' && inputs.scenario != 'autonomous-control' && inputs.scenario != 'ebpf-edge' && inputs.scenario != 'multi-cloud-proof' && inputs.scenario != 'multi-cloud-compose'
+        if: inputs.scenario != 'formal-verification' && inputs.scenario != 'fastpath-performance' && inputs.scenario != 'autonomous-control' && inputs.scenario != 'ebpf-edge' && inputs.scenario != 'multi-cloud-proof' && inputs.scenario != 'multi-cloud-compose' && inputs.scenario != 'global-edge-fabric'
         run: docker compose up -d --build --wait timescaledb kafka kafka-init gateway edge worker router
       - name: Run selected proof
         shell: bash
@@ -116,6 +117,9 @@ jobs:
               ;;
             multi-cloud-compose)
               proof/multi-cloud-compose.sh --execute
+              ;;
+            global-edge-fabric)
+              proof/global-edge-fabric.sh --execute
               ;;
           esac
       - name: Verify generated proof artifacts

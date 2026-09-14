@@ -7,10 +7,9 @@
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-1.46.0-425CC7?logo=opentelemetry&logoColor=white)](https://opentelemetry.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**OpenTelemetry-native telemetry control plane for incident evidence, policy
-safety, cardinality control, and replayable investigations.**
+**OpenTelemetry-native Global Edge Telemetry Fabric for durable multi-cloud ingestion, evidence, policy safety, and replayable investigations.**
 
-> **Current release:** `v2.9.0` — Multi-Cloud Proof with reproducible cross-cloud fault accounting, destructive logical-cloud failover, and AWS/GCP/Azure deployment foundations.
+> **Current release:** `v3.0.0` — Global Edge Fabric with explicit acceptance/delivery/audit readiness, unified capability status, and preserved v2.x durability contracts.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -18,6 +17,20 @@ backend. It controls telemetry **before** downstream cost, cardinality, policy,
 and evidence decisions become irreversible.
 
 ## Signature capabilities
+
+### Global Edge Fabric
+
+v3.0 consolidates the v2.1-v2.9 edge milestones into one production-facing runtime contract without replacing their proven data paths. `GET /edge/fabric/status` separates **durable acceptance readiness**, **downstream delivery readiness**, and **cryptographic audit readiness**, then reports an overall `ready`, `degraded`, or `not_ready` state.
+
+```bash
+go run ./cmd/fabriccheck
+curl -s http://localhost:8083/edge/fabric/status
+proof/global-edge-fabric.sh --execute
+```
+
+A downstream partition can be reported as `degraded` while the WAL and configured replication quorum continue to accept safely. WAL capacity exhaustion, loss of required durability quorum, missing lineage identity, or an unavailable required eBPF collector fail closed rather than being mislabeled as ordinary degradation.
+
+Read [Global Edge Fabric](docs/fabric/global-edge-fabric.md) and [Upgrade to v3.0.0](docs/operations/upgrade-v3.md).
 
 ### Multi-Cloud Proof
 

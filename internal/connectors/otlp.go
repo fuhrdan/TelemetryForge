@@ -14,7 +14,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 )
 
-const ProductVersion = "1.8.0"
+const ProductVersion = "3.0.0"
 
 type otlpHTTPConnector struct {
 	spec   Spec

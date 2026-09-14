@@ -203,4 +203,7 @@ or long-term maintainability.
 
 - [v2.8.0 delivered scope](roadmap/v2.8.0.md)
 - [v2.9.0 delivered scope](roadmap/v2.9.0.md)
+- [v3.0.0 delivered scope](roadmap/v3.0.0.md)
+- [Global Edge Fabric](fabric/global-edge-fabric.md)
+- [Upgrade to v3.0.0](operations/upgrade-v3.md)
 - [eBPF Edge Collection](ebpf/edge-collection.md)

@@ -18,6 +18,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/domain"
 	tfebpf "github.com/fuhrdan/TelemetryForge/internal/ebpf"
 	"github.com/fuhrdan/TelemetryForge/internal/edge"
+	"github.com/fuhrdan/TelemetryForge/internal/fabric"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
 	"github.com/fuhrdan/TelemetryForge/internal/mesh"
 	"github.com/fuhrdan/TelemetryForge/internal/observability"
@@ -27,7 +28,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/wal"
 )
 
-const version = "2.9.0"
+const version = "3.0.0"
 
 func main() {
 	logger := logging.New()
@@ -164,6 +165,10 @@ func main() {
 
 	ebpfEnabled := boolEnv("TELEMETRYFORGE_EBPF_ENABLED", false)
 	ebpfRequired := boolEnv("TELEMETRYFORGE_EBPF_REQUIRED", false)
+	if ebpfRequired && !ebpfEnabled {
+		logger.Error("required eBPF collection cannot be disabled")
+		os.Exit(1)
+	}
 	ebpfSignals, err := tfebpf.ParseSignalsStrict(os.Getenv("TELEMETRYFORGE_EBPF_SIGNALS"))
 	if err != nil {
 		logger.Error("eBPF signal configuration invalid", "error", err)
@@ -219,6 +224,31 @@ func main() {
 
 	publicMux := http.NewServeMux()
 	publicMux.Handle("GET /metrics", metrics.Handler())
+	fabricStatus := func(ctx context.Context) fabric.Snapshot {
+		stats := durablePublisher.Stats()
+		meshSnapshot := meshManager.Snapshot(ctx)
+		healthyPeers := 0
+		for _, peer := range meshSnapshot.Peers {
+			if peer.Healthy {
+				healthyPeers++
+			}
+		}
+		probeContext, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+		replicationReady := replicationManager.Ready(probeContext) == nil
+		cancel()
+		deliveryContext, cancelDelivery := context.WithTimeout(ctx, 1500*time.Millisecond)
+		deliveryReady := meshPublisher.Ready(deliveryContext) == nil
+		cancelDelivery()
+		ebpfStatus := ebpfAgent.Status()
+		return fabric.Evaluate(fabric.Input{
+			NodeID: edgeID, WALReady: walStore.Ready() == nil, WALBytes: stats.Bytes, WALMaxBytes: stats.MaxBytes, PendingRecords: stats.PendingRecords,
+			LineageKeyID: stats.LineageKeyID, SealedSegments: stats.SealedSegments,
+			DurabilityMode: string(stats.Replication.Mode), DurabilityQuorum: stats.Replication.Quorum, ReplicationConfiguredPeers: stats.Replication.ConfiguredPeers, ReplicationReady: replicationReady,
+			MeshPolicy: meshSnapshot.Policy, MeshConfiguredPeers: len(meshSnapshot.Peers), MeshHealthyPeers: healthyPeers, DeliveryReady: deliveryReady,
+			FastPathBatchSize: stats.FastPath.ReplayBatchSize,
+			EBPFEnabled:       ebpfStatus.Enabled, EBPFRequired: ebpfStatus.Required, EBPFActive: ebpfStatus.Active,
+		})
+	}
 	publicMux.HandleFunc("GET /edge/status", func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(writer).Encode(struct {
@@ -228,6 +258,10 @@ func main() {
 			EBPF            tfebpf.Status          `json:"ebpf"`
 			KafkaBufferPool any                    `json:"kafka_buffer_pool"`
 		}{Status: durablePublisher.Stats(), ReplicaStore: replicaStore.Stats(), Mesh: meshManager.Snapshot(request.Context()), EBPF: ebpfAgent.Status(), KafkaBufferPool: stream.FastPathPoolStats()})
+	})
+	publicMux.HandleFunc("GET /edge/fabric/status", func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(fabricStatus(request.Context()))
 	})
 	publicMux.HandleFunc("GET /edge/ebpf/status", func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")

@@ -26,7 +26,7 @@ TELEMETRYFORGE_EDGE_WAL_SEGMENT_BYTES=67108864
 TELEMETRYFORGE_EDGE_WAL_MAX_BYTES=4294967296
 ```
 
-Run with `make run-edge`. `GET /ready` reflects local durable capacity rather than Kafka reachability. `GET /edge/status` returns segment count, bytes, capacity, pending records, committed sequence, last sequence, lineage signer key ID, sealed-segment count, final record hash, and latest signed segment root.
+Run with `make run-edge`. `GET /edge/status` returns segment count, bytes, capacity, pending records, committed sequence, last sequence, lineage signer key ID, sealed-segment count, final record hash, and latest signed segment root. v3.0 also exposes `GET /edge/fabric/status`, which separates durable acceptance readiness from downstream delivery readiness and cryptographic audit readiness.
 
 Verification includes append/reopen recovery, torn-tail truncation, completed-frame corruption rejection, capacity backpressure, sequence continuity, and asynchronous replay after a downstream outage. `make proof-wal-crash-recovery` emits the existing versioned `.tfproof.json` evidence format.
 

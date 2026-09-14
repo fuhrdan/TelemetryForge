@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "v2.9.0"]
+    branches: ["main", "v3.0.0"]
   pull_request:
     branches: ["main"]
 
@@ -43,6 +43,8 @@ jobs:
         run: go test -race -coverprofile=coverage.out ./...
       - name: Build
         run: go build ./...
+      - name: Validate v3 Global Edge Fabric contract
+        run: go test -race ./internal/fabric && go run ./cmd/fabriccheck
       - name: Validate active policy
         run: go run ./cmd/telemetryctl policy validate --file policies/active.json
       - name: Validate shadow policy

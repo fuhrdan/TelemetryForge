@@ -31,6 +31,20 @@
 | v2.7.0 | Released | Shadow-first autonomous control, reversible runtime actions, Wasm predictor boundary |
 | **v2.8.0** | **Released** | **Optional Linux eBPF edge counters with durable WAL/quorum handoff** |
 | **v2.9.0** | **Released** | **Multi-cloud fault accounting, destructive failover proof, AWS/GCP/Azure foundations** |
+| **v3.0.0** | **Released** | **Global Edge Fabric contract, unified readiness/capability status, v3 hardening and compatibility** |
+
+
+## v3.0.0 delivered
+
+- unified Global Edge Fabric runtime contract
+- explicit `acceptance_ready`, `delivery_ready`, and `audit_ready` dimensions
+- `ready`, `degraded`, and `not_ready` fabric states
+- `GET /edge/fabric/status` consolidated capability endpoint
+- dependency-free `telemetryforge-fabriccheck` with healthy, partition, quorum-loss, WAL-capacity, and required-eBPF scenarios
+- Global Edge Fabric `.tfproof.json` operational evidence
+- ADR 0061 and v3 upgrade/compatibility guidance
+- version alignment across binaries, dashboard, CI, and Kubernetes manifests
+- preserved v2 WAL, API, proof/archive, routing, and durability contracts
 
 ## v1.2.0 delivered
 

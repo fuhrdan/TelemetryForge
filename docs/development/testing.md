@@ -339,3 +339,15 @@ proof/multi-cloud-proof.sh --execute
 ```
 
 The `multi-cloud-compose` Operational Proof scenario is destructive and opt-in. It stops logical GCP/Azure edge peers in the local Compose topology to verify cross-cloud quorum continuation, fail-closed behavior after quorum collapse, and recovery. It does not represent a real provider outage.
+
+
+## v3.0.0 Global Edge Fabric contract coverage
+
+The dependency-free fabric contract tests the composition/readiness rules independently of Kafka/PostgreSQL dependencies:
+
+```bash
+go test -race ./internal/fabric
+go run ./cmd/fabriccheck
+```
+
+`proof/global-edge-fabric.sh --execute` records the healthy cross-cloud, downstream-partition, quorum-loss, WAL-capacity, and required-eBPF cases as `.tfproof.json` evidence. The fabric proof does not replace the narrower formal, cryptographic-lineage, performance, or multi-cloud proofs.

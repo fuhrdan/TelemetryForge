@@ -21,7 +21,7 @@ import (
 const (
 	FormatName     = "TelemetryForge Incident Archive"
 	FormatVersion  = 1
-	ProductVersion = "1.7.0"
+	ProductVersion = "3.0.0"
 
 	MaxEntries      = 128
 	MaxArchiveBytes = 512 << 20

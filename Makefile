@@ -1,4 +1,4 @@
-.PHONY: build run run-edge run-worker run-router routing-check telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence demo-schema demo-routing test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check demo-shaping archive-check demo-change connector-check proof-check proof-verify proof-k6-smoke proof-k6-sustained proof-k6-backpressure proof-kafka-outage proof-postgres-outage proof-worker-failover proof-connector-outage proof-backup-restore proof-wal-crash-recovery proof-edge-replication proof-mesh-failover proof-cryptographic-lineage proof-formal-verification proof-fastpath-performance proof-autonomous-control proof-ebpf-edge proof-multi-cloud proof-multi-cloud-compose multicloud-check formal-check edge-check intelligence-check autonomy-check plugin-check ebpf-check
+.PHONY: build run run-edge run-worker run-router routing-check telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence demo-schema demo-routing test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check demo-shaping archive-check demo-change connector-check proof-check proof-verify proof-k6-smoke proof-k6-sustained proof-k6-backpressure proof-kafka-outage proof-postgres-outage proof-worker-failover proof-connector-outage proof-backup-restore proof-wal-crash-recovery proof-edge-replication proof-mesh-failover proof-cryptographic-lineage proof-formal-verification proof-fastpath-performance proof-autonomous-control proof-ebpf-edge proof-multi-cloud proof-multi-cloud-compose proof-global-edge-fabric multicloud-check fabric-check formal-check edge-check intelligence-check autonomy-check plugin-check ebpf-check
 
 build:
 	go build ./...
@@ -218,9 +218,16 @@ proof-multi-cloud:
 proof-multi-cloud-compose:
 	proof/multi-cloud-compose.sh --execute
 
+proof-global-edge-fabric:
+	proof/global-edge-fabric.sh --execute
+
 multicloud-check:
 	go test ./internal/multicloudproof
 	go run ./cmd/multicloudcheck --events 10000
+
+fabric-check:
+	go test ./internal/fabric
+	go run ./cmd/fabriccheck
 
 autonomy-check:
 	go test ./internal/autonomy ./internal/shaping

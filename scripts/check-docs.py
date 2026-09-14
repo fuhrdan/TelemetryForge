@@ -103,7 +103,10 @@ REQUIRED = [
     ROOT / "docs" / "autonomy" / "wasm-plugins.md",
     ROOT / "docs" / "roadmap" / "v2.8.0.md",
     ROOT / "docs" / "roadmap" / "v2.9.0.md",
+    ROOT / "docs" / "roadmap" / "v3.0.0.md",
     ROOT / "docs" / "ebpf" / "edge-collection.md",
+    ROOT / "docs" / "fabric" / "global-edge-fabric.md",
+    ROOT / "docs" / "operations" / "upgrade-v3.md",
 ]
 
 LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

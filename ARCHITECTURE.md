@@ -1,8 +1,20 @@
 # TelemetryForge Architecture
 
-TelemetryForge v2.9.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v3.0.0 is an OpenTelemetry-native Global Edge Telemetry Fabric built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
+
+## v3.0 Global Edge Fabric contract
+
+v3.0 adds a composition layer over the existing edge subsystems rather than replacing them. `internal/fabric` evaluates live WAL capacity/readiness, configured replication readiness, mesh delivery availability, lineage identity, bounded fast-path configuration, and required/optional eBPF state. The edge exposes the result at `GET /edge/fabric/status`.
+
+The contract deliberately separates:
+
+- **acceptance readiness** — whether a new event can safely cross the configured WAL + quorum boundary;
+- **delivery readiness** — whether a healthy mesh owner can currently reach its terminal downstream dependency;
+- **audit readiness** — whether the cryptographic lineage identity is available.
+
+A downstream outage therefore becomes `degraded` when durable acceptance remains safe. WAL exhaustion, required quorum loss, missing lineage identity, or inactive required eBPF collection becomes `not_ready` and cannot be advertised as safe acceptance. See [Global Edge Fabric](docs/fabric/global-edge-fabric.md) and ADR 0061.
 
 ## v2.9 multi-cloud proof plane
 
@@ -138,6 +150,7 @@ OpenTelemetry traces.
 17. **Route optimization cannot weaken acceptance durability.** Mesh ownership is evaluated only after the origin WAL/quorum boundary; the origin record remains pending until local or remote terminal downstream delivery succeeds.
 18. **Replica acknowledgement follows fsync.** Receiving peers acknowledge only after the origin record is durably appended to the replica log.
 19. **Lineage changes fail verification.** WAL v2 record chaining, Merkle segment roots, and Ed25519 seals make retained-history mutation detectable; a pinned public key additionally authenticates the signer.
+20. **Fabric readiness is multidimensional.** Downstream delivery loss can degrade while WAL/quorum acceptance remains safe; loss of an acceptance prerequisite fails closed and is reported separately.
 
 ## Durable Edge boundary
 

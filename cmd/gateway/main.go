@@ -26,7 +26,7 @@ func main() {
 	traceShutdown, err := observability.InitTracing(
 		context.Background(),
 		"telemetryforge-gateway",
-		"2.9.0",
+		"3.0.0",
 		os.Getenv("TELEMETRYFORGE_OTLP_TRACES_ENDPOINT"),
 	)
 	if err != nil {
