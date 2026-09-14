@@ -326,3 +326,16 @@ Run `make autonomy-check`, `make plugin-check`, and `make proof-autonomous-contr
 `go run ./cmd/ebpfcheck` performs a dependency-free static program/host inspection. `--live` is intentionally a target-node check because CI runners do not provide authoritative BPF/perf capabilities or tracefs mounts.
 
 `proof/ebpf-edge.sh --execute` records the non-privileged semantics as `.tfproof.json`; it explicitly does not claim a successful live attach on the deployment kernel.
+
+
+## v2.9.0 multi-cloud proof coverage
+
+The dependency-free multi-cloud checker is race-tested in CI and can be run with:
+
+```bash
+go test -race ./internal/multicloudproof
+go run ./cmd/multicloudcheck --events 10000 --output /tmp/multicloud.json
+proof/multi-cloud-proof.sh --execute
+```
+
+The `multi-cloud-compose` Operational Proof scenario is destructive and opt-in. It stops logical GCP/Azure edge peers in the local Compose topology to verify cross-cloud quorum continuation, fail-closed behavior after quorum collapse, and recovery. It does not represent a real provider outage.

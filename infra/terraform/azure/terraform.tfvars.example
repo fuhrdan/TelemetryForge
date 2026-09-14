@@ -1,0 +1,4 @@
+name         = "telemetryforge"
+location     = "West US 2"
+node_vm_size = "Standard_D4s_v5"
+node_count   = 3

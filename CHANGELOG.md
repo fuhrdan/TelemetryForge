@@ -4,6 +4,19 @@
 
 _No changes yet._
 
+## [2.9.0] - 2026-09-14
+
+### Added
+- Deterministic AWS/GCP/Azure/bare-metal multi-cloud failure-domain checker with explicit event accounting.
+- Named cloud-outage, region-partition, capacity-pressure, ambiguous-network, and cascading-outage schedules.
+- `telemetryforge-multicloudcheck`, `multi-cloud-proof` and destructive logical-cloud Compose proof scenarios.
+- GCP GKE and Azure AKS Terraform foundations alongside the existing AWS EKS foundation.
+- ADR 0060, multi-cloud proof documentation, CI coverage, and `.tfproof.json` evidence integration.
+
+### Changed
+- Product/service versions advanced to v2.9.0.
+- Infrastructure validation now covers AWS, GCP, and Azure Terraform foundations.
+
 ## [2.8.0] - 2026-09-14
 
 ### Added

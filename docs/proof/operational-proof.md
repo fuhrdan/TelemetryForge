@@ -75,3 +75,9 @@ TLA2TOOLS_JAR=/path/to/tla2tools.jar proof/formal-verification.sh --execute
 ## v2.7 autonomous-control proof
 
 `proof/autonomous-control.sh --execute` runs the dependency-light autonomy/shaping/Wasm tests, executes `autonomycheck`, validates the checked-in Wasm fixture, and emits a `.tfproof.json` artifact. The assertions cover shadow non-mutation, bounded auto application, rollback, protected telemetry, audited transitions, and plugin identity/entrypoint validation. This is a controller-semantics proof, not a universal ML-performance or arbitrary-Wasm-sandbox claim.
+
+## v2.9 multi-cloud proof
+
+`proof/multi-cloud-proof.sh --execute` runs the dependency-free multi-cloud accounting model and emits both a raw JSON report and `.tfproof.json` evidence. The checked model uses AWS, GCP, Azure, and bare-metal failure domains and covers cloud outage, regional partition, capacity exhaustion, ambiguous network acknowledgement, and cascading cloud loss.
+
+`proof/multi-cloud-compose.sh --execute` is a separate destructive integration exercise. It uses the logical cloud labels in `deployments/multicloud/docker-compose.override.yml`, stops remote edge peers, verifies fail-closed cross-cloud quorum behavior, then restores them. Because all containers share one host, this scenario is not evidence of a real provider outage.

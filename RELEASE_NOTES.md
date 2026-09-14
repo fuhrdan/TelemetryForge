@@ -1,31 +1,44 @@
-# TelemetryForge v2.8.0 Release Notes
+# TelemetryForge v2.9.0 Release Notes
 
-## eBPF Edge Collection
+## Multi-Cloud Proof
 
-TelemetryForge v2.8.0 adds optional Linux kernel-level collection while preserving every durable-ingest, replication, routing, lineage, formal-verification, fast-path, and autonomous-control boundary delivered in v2.1-v2.7.
+TelemetryForge v2.9.0 turns the v2.2-v2.8 cross-cloud durability architecture into a reproducible failure-accounting milestone. The release adds cloud foundations for AWS, GCP, and Azure, a deterministic multi-cloud fault checker, a destructive logical-cloud Compose suite, and `.tfproof.json` evidence for accepted-event accounting.
 
-### Dependency-free tracepoint counters
+### Deterministic failure-domain checker
 
-The edge can attach tiny eBPF tracepoint programs for `sched_process_exec`, `sys_enter_connect`, and `tcp_retransmit_skb`. Each program performs only an atomic increment in a one-entry BPF array map. User space polls absolute counters and converts only newly observed counts into canonical TelemetryForge metrics.
+`telemetryforge-multicloudcheck` models AWS `us-west-2`, GCP `us-central1`, Azure `westus2`, and a bare-metal Denver edge. The default model requires durable copies in at least two distinct clouds and targets three copies while capacity exists.
 
-No packet payload, socket address, DNS name, command line, process argument, environment, or arbitrary syscall data is copied by the v2.8 kernel program.
+The checker runs six schedules:
 
-### Durable collector handoff
+- AWS cloud outage after durable acceptance;
+- GCP regional partition while ingestion continues;
+- disk/capacity pressure that removes durability quorum;
+- packet-loss/latency ambiguity that causes duplicate delivery attempts;
+- cascading AWS + Azure outage after three-copy persistence.
+- total delivery-path partition with accepted telemetry retained until recovery.
 
-Kernel metrics use the existing edge publisher. The new publish receipt distinguishes local WAL fsync from later replication acknowledgement. If a write never reaches the local WAL, its counter delta remains pending and is retried. Once the WAL persists it, the collector advances its baseline even if quorum acknowledgement later times out, because normal WAL replay owns recovery from that point.
+Every offered event is classified. A passing run requires zero lost, zero corrupted, and zero unaccounted accepted events, and all accepted events must be uniquely delivered after recovery. When durability quorum cannot be met, new telemetry is rejected before successful acknowledgement.
 
-### Deployment safety
+### Destructive logical-cloud suite
 
-eBPF remains disabled by default. Optional mode reports attach failure but leaves ordinary edge ingest available. `TELEMETRYFORGE_EBPF_REQUIRED=true` makes the configured collector a startup requirement.
+`proof/multi-cloud-compose.sh --execute` runs an opt-in destructive integration exercise against a local Compose topology labeled as AWS/GCP/Azure. It verifies baseline cross-cloud acceptance, continued acceptance after one logical cloud is stopped, fail-closed behavior after both remote clouds are stopped, and restored acceptance after recovery.
 
-The repository includes an explicit Kubernetes overlay and Docker Compose override for Linux hosts that provide tracefs plus BPF/perf permissions. The ordinary base deployment remains unprivileged.
+The containers still share one machine. This is runtime failover evidence, not a claim that a real public-cloud regional outage occurred.
 
-### Verification
+### Cloud deployment foundations
 
-`telemetryforge-ebpfcheck` validates the dependency-free program template and host surfaces. `--live` asks the target kernel to verify/attach the programs and read a snapshot; this is intentionally host-specific evidence rather than a CI portability claim.
+The repository now includes Kubernetes/network Terraform foundations for:
 
-`proof/ebpf-edge.sh` exercises the race-tested collector semantics and emits `.tfproof.json` evidence without pretending a hosted CI runner proves production-kernel attachment.
+- AWS EKS (`infra/terraform/aws`);
+- GCP GKE (`infra/terraform/gcp`);
+- Azure AKS (`infra/terraform/azure`).
 
-### Explicit non-claims
+Kafka and PostgreSQL/TimescaleDB remain external dependencies so each organization can use its approved managed or self-hosted platforms.
 
-v2.8 does not claim packet capture, per-flow attribution, DNS inspection, universal Linux/kernel/container support, zero overhead, or kernel-resident routing/policy/autonomous control.
+### Operational evidence
+
+`proof/multi-cloud-proof.sh --execute` emits a `.tfproof.json` artifact plus the raw machine-readable accounting report. CI race-tests the dependency-free checker and validates all three Terraform foundations.
+
+### Explicit claim boundary
+
+v2.9 proves named protocol/accounting properties under the checked model and supplies a destructive logical-cloud integration suite. It does not claim universal zero loss, public-cloud availability, WAN latency, or real-provider outage survival unless those properties are separately measured in an isolated real-provider run with corresponding evidence.

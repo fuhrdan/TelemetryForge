@@ -30,6 +30,7 @@
 | v2.6.0 | Released | Bounded replay batching, pooled buffers, lock-free ring primitives, allocation-aware benchmark proof |
 | v2.7.0 | Released | Shadow-first autonomous control, reversible runtime actions, Wasm predictor boundary |
 | **v2.8.0** | **Released** | **Optional Linux eBPF edge counters with durable WAL/quorum handoff** |
+| **v2.9.0** | **Released** | **Multi-cloud fault accounting, destructive failover proof, AWS/GCP/Azure foundations** |
 
 ## v1.2.0 delivered
 
@@ -364,3 +365,14 @@
 - explicit Kubernetes BPF/PERFMON + tracefs overlay
 - executable `.tfproof.json` eBPF collector proof
 - ADR 0059
+
+## v2.9.0 delivered
+
+- deterministic AWS/GCP/Azure/bare-metal failure-domain and event-accounting model
+- cloud outage, regional partition, durability-capacity exhaustion, ambiguous network acknowledgement, and cascading outage schedules
+- explicit zero-unaccounted-event and recovery-drain invariants for accepted telemetry
+- rejection-before-acceptance when requested durability quorum cannot be met
+- `telemetryforge-multicloudcheck` machine-readable report
+- `.tfproof.json` multi-cloud proof plus opt-in destructive logical-cloud Compose suite
+- GCP GKE and Azure AKS Terraform foundations alongside AWS EKS
+- ADR 0060 defining the model-vs-real-provider claim boundary

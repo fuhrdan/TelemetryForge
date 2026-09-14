@@ -10,7 +10,7 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current release:** `v2.8.0` — eBPF Edge Collection with bounded Linux kernel counters entering through the existing durable WAL/quorum boundary.
+> **Current release:** `v2.9.0` — Multi-Cloud Proof with reproducible cross-cloud fault accounting, destructive logical-cloud failover, and AWS/GCP/Azure deployment foundations.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -18,6 +18,19 @@ backend. It controls telemetry **before** downstream cost, cardinality, policy,
 and evidence decisions become irreversible.
 
 ## Signature capabilities
+
+### Multi-Cloud Proof
+
+v2.9 makes the cross-cloud durability contract measurable. A dependency-free checker models AWS, GCP, Azure, and bare-metal failure domains across cloud loss, regional partition, capacity exhaustion, ambiguous delivery acknowledgement, and cascading outages. Every accepted event must remain uniquely delivered or durably retained during a fault and must drain after recovery; new work fails closed when the requested durability quorum is unavailable.
+
+```bash
+go run ./cmd/multicloudcheck --events 10000 --output /tmp/multicloud.json
+proof/multi-cloud-proof.sh --execute
+```
+
+The repository also includes EKS, GKE, and AKS Terraform foundations plus an opt-in destructive Compose exercise. The deterministic model and single-host Compose topology are not presented as evidence of a real provider outage.
+
+Read [Multi-Cloud Proof](docs/multicloud/proof.md).
 
 ### eBPF Edge Collection
 

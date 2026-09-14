@@ -11,6 +11,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemet
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge-autonomycheck ./cmd/autonomycheck
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge-plugincheck ./cmd/plugincheck
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge-ebpfcheck ./cmd/ebpfcheck
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge-multicloudcheck ./cmd/multicloudcheck
 
 FROM alpine:3.24.1
 RUN addgroup -S telemetryforge && adduser -S -G telemetryforge telemetryforge
@@ -22,6 +23,7 @@ COPY --from=build /out/telemetryctl /usr/local/bin/telemetryctl
 COPY --from=build /out/telemetryforge-autonomycheck /usr/local/bin/telemetryforge-autonomycheck
 COPY --from=build /out/telemetryforge-plugincheck /usr/local/bin/telemetryforge-plugincheck
 COPY --from=build /out/telemetryforge-ebpfcheck /usr/local/bin/telemetryforge-ebpfcheck
+COPY --from=build /out/telemetryforge-multicloudcheck /usr/local/bin/telemetryforge-multicloudcheck
 COPY policies /etc/telemetryforge/policies
 COPY routing /etc/telemetryforge/routing
 COPY shaping /etc/telemetryforge/shaping

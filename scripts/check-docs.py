@@ -102,6 +102,7 @@ REQUIRED = [
     ROOT / "docs" / "autonomy" / "autonomous-control.md",
     ROOT / "docs" / "autonomy" / "wasm-plugins.md",
     ROOT / "docs" / "roadmap" / "v2.8.0.md",
+    ROOT / "docs" / "roadmap" / "v2.9.0.md",
     ROOT / "docs" / "ebpf" / "edge-collection.md",
 ]
 

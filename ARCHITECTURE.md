@@ -1,8 +1,16 @@
 # TelemetryForge Architecture
 
-TelemetryForge v2.8.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v2.9.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
+
+## v2.9 multi-cloud proof plane
+
+The cross-cloud durability path now has an executable fault-accounting layer in addition to runtime tests. `internal/multicloudproof` models AWS, GCP, Azure, and bare-metal failure domains and classifies every offered event as rejected-before-acceptance or accepted. Accepted events remain explicitly accounted as uniquely delivered, durably retained, or lost; a passing run requires zero lost, zero corrupted, and zero unaccounted events under the named schedules.
+
+The checked schedules cover whole-cloud outage, regional partition, durability-capacity exhaustion, ambiguous network acknowledgement, and cascading two-cloud loss after three-copy persistence. An opt-in Compose override exercises the same cloud labels against the real edge replication/mesh implementation on one host. AWS EKS, GCP GKE, and Azure AKS Terraform foundations provide a consistent deployment starting point.
+
+This proof layer does not alter the data path and does not turn CI into a public-cloud outage simulator. See [Multi-Cloud Proof](docs/multicloud/proof.md) and ADR 0060.
 
 ## v2.8 eBPF edge collection
 

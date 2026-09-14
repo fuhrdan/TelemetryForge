@@ -1,0 +1,36 @@
+# Logical multi-cloud topology for local/CI failure-domain exercises.
+# These labels emulate cloud boundaries; they are not public-cloud infrastructure.
+services:
+  edge:
+    environment:
+      TELEMETRYFORGE_EDGE_ID: "edge-aws-us-west-2"
+      TELEMETRYFORGE_EDGE_CLOUD: "aws"
+      TELEMETRYFORGE_EDGE_REGION: "us-west-2"
+      TELEMETRYFORGE_EDGE_ZONE: "us-west-2a"
+      TELEMETRYFORGE_EDGE_DURABILITY_MODE: "cross-cloud"
+      TELEMETRYFORGE_EDGE_REPLICATION_QUORUM: "2"
+      TELEMETRYFORGE_EDGE_PEERS: "edge-gcp-us-central1|http://edge-peer-b:8083|gcp|us-central1|us-central1-a,edge-azure-westus2|http://edge-peer-c:8083|azure|westus2|1"
+      TELEMETRYFORGE_MESH_CLOUD: "aws"
+      TELEMETRYFORGE_MESH_REGION: "us-west-2"
+      TELEMETRYFORGE_MESH_ZONE: "us-west-2a"
+      TELEMETRYFORGE_MESH_PEERS: "edge-gcp-us-central1|http://edge-peer-b:8083|gcp|us-central1|us-central1-a,edge-azure-westus2|http://edge-peer-c:8083|azure|westus2|1"
+  edge-peer-b:
+    environment:
+      TELEMETRYFORGE_EDGE_ID: "edge-gcp-us-central1"
+      TELEMETRYFORGE_EDGE_CLOUD: "gcp"
+      TELEMETRYFORGE_EDGE_REGION: "us-central1"
+      TELEMETRYFORGE_EDGE_ZONE: "us-central1-a"
+      TELEMETRYFORGE_MESH_CLOUD: "gcp"
+      TELEMETRYFORGE_MESH_REGION: "us-central1"
+      TELEMETRYFORGE_MESH_ZONE: "us-central1-a"
+      TELEMETRYFORGE_MESH_PEERS: "edge-aws-us-west-2|http://edge:8083|aws|us-west-2|us-west-2a,edge-azure-westus2|http://edge-peer-c:8083|azure|westus2|1"
+  edge-peer-c:
+    environment:
+      TELEMETRYFORGE_EDGE_ID: "edge-azure-westus2"
+      TELEMETRYFORGE_EDGE_CLOUD: "azure"
+      TELEMETRYFORGE_EDGE_REGION: "westus2"
+      TELEMETRYFORGE_EDGE_ZONE: "1"
+      TELEMETRYFORGE_MESH_CLOUD: "azure"
+      TELEMETRYFORGE_MESH_REGION: "westus2"
+      TELEMETRYFORGE_MESH_ZONE: "1"
+      TELEMETRYFORGE_MESH_PEERS: "edge-aws-us-west-2|http://edge:8083|aws|us-west-2|us-west-2a,edge-gcp-us-central1|http://edge-peer-b:8083|gcp|us-central1|us-central1-a"

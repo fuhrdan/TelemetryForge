@@ -202,4 +202,5 @@ or long-term maintainability.
 - [WebAssembly Predictor Plugin Boundary](autonomy/wasm-plugins.md)
 
 - [v2.8.0 delivered scope](roadmap/v2.8.0.md)
+- [v2.9.0 delivered scope](roadmap/v2.9.0.md)
 - [eBPF Edge Collection](ebpf/edge-collection.md)

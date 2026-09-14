@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "v2.8.0"]
+    branches: ["main", "v2.9.0"]
   pull_request:
     branches: ["main"]
 
@@ -152,6 +152,28 @@ jobs:
           if-no-files-found: error
 
 
+  multi-cloud-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.1"
+          cache: true
+      - name: Race-test multi-cloud accounting model
+        run: go test -race -count=1 ./internal/multicloudproof
+      - name: Generate machine-readable multi-cloud report
+        run: |
+          mkdir -p proof/results/raw
+          go run ./cmd/multicloudcheck --events 10000 --output proof/results/raw/multicloud-ci.json
+      - name: Upload multi-cloud model evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: telemetryforge-multicloud-${{ github.run_id }}
+          path: proof/results/raw/multicloud-ci.json
+          if-no-files-found: error
+
+
   kafka-integration:
     runs-on: ubuntu-latest
     steps:
@@ -235,11 +257,16 @@ jobs:
           terraform_version: "1.16.2"
           terraform_wrapper: false
       - name: Terraform format
-        run: terraform -chdir=infra/terraform/aws fmt -check
-      - name: Terraform init
-        run: terraform -chdir=infra/terraform/aws init -backend=false -input=false
-      - name: Terraform validate
-        run: terraform -chdir=infra/terraform/aws validate
+        run: |
+          terraform -chdir=infra/terraform/aws fmt -check
+          terraform -chdir=infra/terraform/gcp fmt -check
+          terraform -chdir=infra/terraform/azure fmt -check
+      - name: Terraform init and validate
+        run: |
+          for cloud in aws gcp azure; do
+            terraform -chdir=infra/terraform/${cloud} init -backend=false -input=false
+            terraform -chdir=infra/terraform/${cloud} validate
+          done
 
 
 

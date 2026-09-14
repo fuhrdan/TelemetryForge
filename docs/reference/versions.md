@@ -1,6 +1,6 @@
 # Technology Version Baseline
 
-Verified for the v2.8.0 release work on **2026-09-14**.
+Verified for the v2.9.0 release work on **2026-09-14**.
 
 | Component | Project baseline | Rationale |
 |---|---:|---|
@@ -9,6 +9,8 @@ Verified for the v2.8.0 release work on **2026-09-14**.
 | [Kubernetes](https://kubernetes.io/releases/) | 1.37.0 upstream / 1.36 EKS | Upstream stable plus current Amazon EKS standard-support boundary |
 | [Terraform](https://github.com/hashicorp/terraform/releases) | 1.16.2 | Current Terraform project baseline |
 | [AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest) | 6.62.0 | Current project AWS provider baseline |
+| [Google Provider](https://registry.terraform.io/providers/hashicorp/google/latest) | 8.2.0 | GCP/GKE foundation provider baseline |
+| [AzureRM Provider](https://registry.terraform.io/providers/hashicorp/azurerm/latest) | 5.4.0 | Azure/AKS foundation provider baseline |
 | [Apache Kafka](https://kafka.apache.org/community/downloads/) | 4.3.1 | Current project Kafka baseline |
 | [franz-go](https://pkg.go.dev/github.com/twmb/franz-go) | 1.21.6 | Kafka producer/consumer baseline |
 | [franz-go kadm](https://pkg.go.dev/github.com/twmb/franz-go/pkg/kadm) | 1.18.0 | Broker-derived consumer-group lag queries |
