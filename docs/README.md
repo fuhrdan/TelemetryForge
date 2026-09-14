@@ -200,3 +200,6 @@ or long-term maintainability.
 - [v2.7.0 delivered scope](roadmap/v2.7.0.md)
 - [Autonomous Control](autonomy/autonomous-control.md)
 - [WebAssembly Predictor Plugin Boundary](autonomy/wasm-plugins.md)
+
+- [v2.8.0 delivered scope](roadmap/v2.8.0.md)
+- [eBPF Edge Collection](ebpf/edge-collection.md)

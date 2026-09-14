@@ -10,7 +10,7 @@
 **OpenTelemetry-native telemetry control plane for incident evidence, policy
 safety, cardinality control, and replayable investigations.**
 
-> **Current release:** `v2.7.0` — Autonomous Control with shadow-first pressure prediction, bounded reversible sampling actions, and a capability-free Wasm predictor boundary.
+> **Current release:** `v2.8.0` — eBPF Edge Collection with bounded Linux kernel counters entering through the existing durable WAL/quorum boundary.
 
 TelemetryForge sits between applications and observability backends. It does
 not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
@@ -18,6 +18,19 @@ backend. It controls telemetry **before** downstream cost, cardinality, policy,
 and evidence decisions become irreversible.
 
 ## Signature capabilities
+
+### eBPF Edge Collection
+
+v2.8 adds optional Linux tracepoint eBPF collection to the durable edge. Tiny dependency-free BPF programs count process executions, socket connect attempts, and TCP retransmissions in kernel array maps; user space polls bounded deltas and persists them through the same WAL, replication, mesh, and Kafka path used by other telemetry.
+
+```bash
+go run ./cmd/ebpfcheck
+telemetryforge-ebpfcheck --live   # target Linux node with required privileges
+```
+
+The v2.8 kernel boundary is aggregate-only: no packet payloads, DNS names, command arguments, or process environments are copied from kernel memory. eBPF is disabled by default and the privileged deployment overlay is explicit opt-in.
+
+Read [eBPF Edge Collection](docs/ebpf/edge-collection.md).
 
 ### High-Performance Fast Path
 

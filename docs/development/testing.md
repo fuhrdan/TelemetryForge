@@ -317,3 +317,12 @@ go test -run '^$' -bench 'Benchmark(Ring|BytePool|JSON)' -benchmem -count=5 ./in
 ## v2.7.0 autonomous-control coverage
 
 Run `make autonomy-check`, `make plugin-check`, and `make proof-autonomous-control`. Unit tests cover shadow non-mutation, bounded auto application, rollback, audit-failure suppression, pressure forecasting, protected telemetry, retry-stable multipliers, Wasm digest/entrypoint validation, capability rejection, and backend failure propagation.
+
+
+## v2.8.0 eBPF edge coverage
+
+`go test -race ./internal/ebpf` validates CPU-list parsing, bounded signal filtering, eBPF instruction-template invariants, aggregate-only event envelopes, retry when local WAL persistence fails, no collector re-emission after local persistence, and optional/required attach-failure behavior.
+
+`go run ./cmd/ebpfcheck` performs a dependency-free static program/host inspection. `--live` is intentionally a target-node check because CI runners do not provide authoritative BPF/perf capabilities or tracefs mounts.
+
+`proof/ebpf-edge.sh --execute` records the non-privileged semantics as `.tfproof.json`; it explicitly does not claim a successful live attach on the deployment kernel.

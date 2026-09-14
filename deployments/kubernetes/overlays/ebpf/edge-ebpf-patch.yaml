@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: edge
+  namespace: telemetryforge
+spec:
+  template:
+    spec:
+      securityContext:
+        seccompProfile:
+          type: Unconfined
+      containers:
+        - name: edge
+          env:
+            - name: TELEMETRYFORGE_EBPF_ENABLED
+              value: "true"
+            - name: TELEMETRYFORGE_EBPF_REQUIRED
+              value: "true"
+            - name: TELEMETRYFORGE_EBPF_POLL_INTERVAL
+              value: "5s"
+            - name: TELEMETRYFORGE_EBPF_SIGNALS
+              value: "process_exec,socket_connect,tcp_retransmit"
+            - name: TELEMETRYFORGE_EBPF_TRACEFS_ROOT
+              value: "/sys/kernel/tracing"
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              add: ["BPF", "PERFMON"]
+          volumeMounts:
+            - name: tracefs
+              mountPath: /sys/kernel/tracing
+              readOnly: true
+      volumes:
+        - name: tracefs
+          hostPath:
+            path: /sys/kernel/tracing
+            type: Directory

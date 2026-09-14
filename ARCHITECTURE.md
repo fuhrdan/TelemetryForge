@@ -1,8 +1,16 @@
 # TelemetryForge Architecture
 
-TelemetryForge v2.7.0 is an OpenTelemetry-native telemetry control plane built
+TelemetryForge v2.8.0 is an OpenTelemetry-native telemetry control plane built
 around durability, bounded concurrency, evidence preservation, reversible
 policy, replayable investigations, and explicit tenant/security boundaries.
+
+## v2.8 eBPF edge collection
+
+The durable edge can optionally attach tiny Linux tracepoint eBPF programs that increment one-entry array-map counters for process executions, socket connect attempts, and TCP retransmissions. User space polls absolute counts, derives only the unpersisted delta, and creates canonical metric envelopes. No packet or process payload is copied through the v2.8 BPF program.
+
+Kernel collection does not create a second delivery path. A collector metric must cross local WAL fsync before its counter baseline advances. If local persistence succeeds but replication quorum later times out, the WAL owns replay and the collector does not re-emit the same delta. If local persistence fails, the delta remains pending for the next poll.
+
+The collector is disabled by default. Optional mode degrades visibly when host BPF/perf permissions are absent; required mode fails edge startup. Routing, shaping, autonomy, and retention remain user-space concerns. See [eBPF Edge Collection](docs/ebpf/edge-collection.md) and ADR 0059.
 
 ## v2.6 high-performance fast path
 

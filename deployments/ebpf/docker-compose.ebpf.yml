@@ -1,0 +1,16 @@
+services:
+  edge:
+    user: "0:0"
+    environment:
+      TELEMETRYFORGE_EBPF_ENABLED: "true"
+      TELEMETRYFORGE_EBPF_REQUIRED: "true"
+      TELEMETRYFORGE_EBPF_POLL_INTERVAL: "5s"
+      TELEMETRYFORGE_EBPF_SIGNALS: "process_exec,socket_connect,tcp_retransmit"
+      TELEMETRYFORGE_EBPF_TRACEFS_ROOT: "/sys/kernel/tracing"
+    cap_add:
+      - BPF
+      - PERFMON
+    security_opt:
+      - seccomp=unconfined
+    volumes:
+      - /sys/kernel/tracing:/sys/kernel/tracing:ro

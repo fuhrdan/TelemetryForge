@@ -319,3 +319,7 @@ Do not weaken fsync, replication, checkpoint, or audit semantics to improve a be
 ## Autonomous-control changes
 
 Changes under `internal/autonomy`, shaping multiplier integration, or `internal/wasmplugin` must preserve ADR 0058. Add/adjust tests proving shadow non-mutation, protected-event preservation, retry-stable decisions, rollback, audit failure behavior, and plugin capability restrictions. Run `make autonomy-check` and `make plugin-check` before submitting.
+
+## eBPF changes
+
+Changes under `internal/ebpf` must keep the kernel program bounded and collection-only. Run `go test -race ./internal/ebpf` and `go run ./cmd/ebpfcheck`. Do not add packet/process payload extraction or kernel-side routing/policy logic without a new ADR and security review. Live attachment tests belong on an explicitly privileged Linux target and must record the host/kernel assumptions.

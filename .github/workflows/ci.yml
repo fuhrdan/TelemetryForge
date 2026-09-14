@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main", "v2.7.0"]
+    branches: ["main", "v2.8.0"]
   pull_request:
     branches: ["main"]
 
@@ -130,6 +130,28 @@ jobs:
           TLA2TOOLS_JAR: /tmp/tla2tools.jar
         run: scripts/run-tlc.sh
 
+  ebpf-edge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.1"
+          cache: true
+      - name: Validate eBPF collector semantics
+        run: |
+          go test -race -count=1 ./internal/ebpf
+          go run ./cmd/ebpfcheck --output /tmp/telemetryforge-ebpf-check.json
+      - name: Cross-compile dependency-free collector package for arm64
+        run: GOOS=linux GOARCH=arm64 go test -c -o /tmp/telemetryforge-ebpf-arm64.test ./internal/ebpf
+      - name: Upload eBPF static evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: telemetryforge-ebpf-${{ github.run_id }}
+          path: /tmp/telemetryforge-ebpf-check.json
+          if-no-files-found: error
+
+
   kafka-integration:
     runs-on: ubuntu-latest
     steps:
@@ -204,6 +226,10 @@ jobs:
         run: kubectl apply --dry-run=client --validate=false -f /tmp/telemetryforge-production.yaml
       - name: Parse production secret example
         run: kubectl apply --dry-run=client --validate=false -f deployments/kubernetes/overlays/production/secret.example.yaml
+      - name: Render eBPF Kubernetes overlay
+        run: kubectl kustomize deployments/kubernetes/overlays/ebpf > /tmp/telemetryforge-ebpf-k8s.yaml
+      - name: Parse eBPF Kubernetes overlay
+        run: kubectl apply --dry-run=client --validate=false -f /tmp/telemetryforge-ebpf-k8s.yaml
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.16.2"

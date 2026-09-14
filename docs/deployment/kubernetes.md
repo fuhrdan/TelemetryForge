@@ -80,6 +80,7 @@ Readiness verifies Kafka and PostgreSQL.
 GET :8083/health
 GET :8083/ready
 GET :8083/edge/status
+GET :8083/edge/ebpf/status
 ```
 
 The base manifest keeps `TELEMETRYFORGE_EDGE_DURABILITY_MODE=local` so it can render without environment-specific topology metadata. v2.2 non-local durability requires operators to provide node cloud/region/zone identity, peer URLs, quorum, and `TELEMETRYFORGE_EDGE_REPLICATION_TOKEN`. Incoming replica logs use the persistent edge PVC under `/var/lib/telemetryforge/wal/replicas`.
@@ -174,3 +175,14 @@ To generate evidence from a real cluster, use `proof/k8s-rollout.sh --execute --
 ## v2.4 lineage key
 
 The base StatefulSet persists its default development lineage key in the WAL PVC. For production, mount an Ed25519 private/public key pair from your external-secret workflow and set `TELEMETRYFORGE_EDGE_LINEAGE_PRIVATE_KEY` / `TELEMETRYFORGE_EDGE_LINEAGE_PUBLIC_KEY` to those mounted paths. Do not place the private PEM directly in Git-managed manifests.
+
+
+## Optional eBPF edge overlay
+
+v2.8 keeps kernel collection disabled in the base. Linux nodes that explicitly require it can render:
+
+```bash
+kubectl kustomize deployments/kubernetes/overlays/ebpf
+```
+
+The overlay mounts host tracefs read-only, enables `TELEMETRYFORGE_EBPF_ENABLED`, uses an unconfined seccomp profile for the edge container, and adds only `BPF` and `PERFMON` after dropping the default capability set. It therefore has a materially larger kernel-observation privilege surface than the base deployment and should be used only on approved nodes. Cluster admission policy or kernel lockdown may still reject the pod/probes.

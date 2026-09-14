@@ -148,3 +148,41 @@ func TestPublisherReplaysPendingRecordsAsBoundedBatch(t *testing.T) {
 	}
 	t.Fatalf("batch replay did not drain: status=%+v events=%d", publisher.Stats(), len(downstream.Events()))
 }
+
+func TestPublishWithReceiptReportsLocalPersistenceBeforeQuorumFailure(t *testing.T) {
+	peerNode := replication.Node{ID: "edge-b", Domain: replication.FailureDomain{Cloud: "aws", Region: "us-west-2", Zone: "b"}}
+	peerStore, _ := replication.OpenStore(t.TempDir())
+	peerServer := httptest.NewServer(replication.NewHandler(peerStore, peerNode, "secret"))
+	peerURL := peerServer.URL
+	peerServer.Close()
+	defer peerStore.Close()
+
+	manager, err := replication.NewManager(replication.Config{
+		Local:   replication.Node{ID: "edge-a", Domain: replication.FailureDomain{Cloud: "aws", Region: "us-west-2", Zone: "a"}},
+		Peers:   []replication.Node{{ID: peerNode.ID, URL: peerURL, Domain: peerNode.Domain}},
+		Mode:    replication.ModeRegional,
+		Quorum:  2,
+		Timeout: 100 * time.Millisecond,
+		Token:   "secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := wal.Open(wal.Config{Directory: t.TempDir(), EdgeID: "edge-a", SegmentSizeBytes: 4096, MaxBytes: 8192})
+	if err != nil {
+		t.Fatal(err)
+	}
+	publisher := NewPublisher(store, stream.NewMemoryPublisher(), slog.New(slog.NewTextHandler(io.Discard, nil)), manager)
+	defer publisher.Close()
+	event := domain.Event{ID: "kernel-delta-1", Source: "edge-a-kernel", Type: "metric", Timestamp: time.Now().UTC(), SchemaVersion: "1.0.0"}
+	receipt, err := publisher.PublishWithReceipt(context.Background(), "telemetry.metrics", event)
+	if !errors.Is(err, replication.ErrQuorumUnavailable) {
+		t.Fatalf("expected quorum error, got %v", err)
+	}
+	if !receipt.Persisted || receipt.EdgeSequence == 0 {
+		t.Fatalf("expected local persistence receipt, got %+v", receipt)
+	}
+	if receipt.ReplicationSatisfied {
+		t.Fatalf("quorum failure cannot report replication satisfied: %+v", receipt)
+	}
+}

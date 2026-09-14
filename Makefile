@@ -1,4 +1,4 @@
-.PHONY: build run run-edge run-worker run-router routing-check telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence demo-schema demo-routing test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check demo-shaping archive-check demo-change connector-check proof-check proof-verify proof-k6-smoke proof-k6-sustained proof-k6-backpressure proof-kafka-outage proof-postgres-outage proof-worker-failover proof-connector-outage proof-backup-restore proof-wal-crash-recovery proof-edge-replication proof-mesh-failover proof-cryptographic-lineage proof-formal-verification proof-fastpath-performance proof-autonomous-control formal-check edge-check intelligence-check autonomy-check plugin-check
+.PHONY: build run run-edge run-worker run-router routing-check telemetryctl dashboard-dev dashboard-build demo-traffic demo-incident demo-cardinality demo-evidence demo-schema demo-routing test integration-test fmt vet check docs-check policy-check k8s-render terraform-check docker-up docker-down kafka-topics kafka-groups db-shell db-events dlq-tail load-smoke load-sustained load-backpressure observability-check demo-shaping archive-check demo-change connector-check proof-check proof-verify proof-k6-smoke proof-k6-sustained proof-k6-backpressure proof-kafka-outage proof-postgres-outage proof-worker-failover proof-connector-outage proof-backup-restore proof-wal-crash-recovery proof-edge-replication proof-mesh-failover proof-cryptographic-lineage proof-formal-verification proof-fastpath-performance proof-autonomous-control proof-ebpf-edge formal-check edge-check intelligence-check autonomy-check plugin-check ebpf-check
 
 build:
 	go build ./...
@@ -57,6 +57,7 @@ routing-check:
 k8s-render:
 	kubectl kustomize deployments/kubernetes/base >/dev/null
 	kubectl kustomize deployments/kubernetes/overlays/production >/dev/null
+	kubectl kustomize deployments/kubernetes/overlays/ebpf >/dev/null
 
 terraform-check:
 	terraform -chdir=infra/terraform/aws fmt -check
@@ -205,6 +206,9 @@ proof-fastpath-performance:
 proof-autonomous-control:
 	proof/autonomous-control.sh --execute
 
+proof-ebpf-edge:
+	proof/ebpf-edge.sh --execute
+
 autonomy-check:
 	go test ./internal/autonomy ./internal/shaping
 	go run ./cmd/autonomycheck
@@ -212,6 +216,10 @@ autonomy-check:
 plugin-check:
 	go test ./internal/wasmplugin
 	go run ./cmd/plugincheck --manifest plugins/examples/noop-predictor.manifest.json --module plugins/examples/noop-predictor.wasm
+
+ebpf-check:
+	go test ./internal/ebpf
+	go run ./cmd/ebpfcheck
 
 edge-check:
 	go test ./internal/fastpath ./internal/lineage ./internal/wal ./internal/replication ./internal/mesh ./internal/edge

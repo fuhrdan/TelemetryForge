@@ -4,6 +4,18 @@
 
 _No changes yet._
 
+## [2.8.0] - 2026-09-14
+
+### Added
+- Optional Linux tracepoint eBPF collector for aggregate process-exec, socket-connect, and TCP-retransmit counts.
+- Raw dependency-free BPF map/program loader for Linux amd64/arm64, with kernel-verifier logging on load failure.
+- Durable collector handoff that distinguishes local WAL persistence from later quorum acknowledgement.
+- `/edge/ebpf/status`, `telemetryforge-ebpfcheck`, proof scenario, CI job, docs, ADR 0059, and opt-in Kubernetes eBPF overlay.
+
+### Changed
+- Edge publisher can return a local-persistence receipt without changing the existing `Publish` contract.
+- Product/service versions advanced to v2.8.0.
+
 ## [2.7.0] - 2026-09-13
 
 ### Added

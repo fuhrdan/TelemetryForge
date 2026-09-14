@@ -77,16 +77,33 @@ func NewPublisherWithConfig(store *wal.Store, downstream stream.Publisher, logge
 	return publisher
 }
 
+// Receipt exposes the durable-local boundary separately from replication. This
+// is used by kernel collectors that must not duplicate an already-WAL-persisted
+// counter delta when a later replication acknowledgement times out.
+type Receipt struct {
+	Persisted            bool   `json:"persisted"`
+	EdgeSequence         uint64 `json:"edge_sequence,omitempty"`
+	ReplicationSatisfied bool   `json:"replication_satisfied"`
+}
+
 func (publisher *Publisher) Publish(ctx context.Context, topic string, event domain.Event) error {
+	_, err := publisher.PublishWithReceipt(ctx, topic, event)
+	return err
+}
+
+// PublishWithReceipt preserves Publish semantics while reporting whether the
+// event crossed the local fsync boundary before a later failure occurred.
+func (publisher *Publisher) PublishWithReceipt(ctx context.Context, topic string, event domain.Event) (Receipt, error) {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return Receipt{}, ctx.Err()
 	default:
 	}
 	record, err := publisher.store.Append(topic, event)
 	if err != nil {
-		return err
+		return Receipt{}, err
 	}
+	receipt := Receipt{Persisted: true, EdgeSequence: record.EdgeSequence, ReplicationSatisfied: publisher.replicator == nil}
 	publisher.logger.Debug("telemetry event durably persisted at edge", "event_id", event.ID, "edge_sequence", record.EdgeSequence, "source_sequence", record.SourceSequence, "topic", topic)
 
 	// Synchronous replication defines the v2.2 acceptance boundary. A failed
@@ -96,13 +113,14 @@ func (publisher *Publisher) Publish(ctx context.Context, topic string, event dom
 		if replicationErr != nil {
 			publisher.logger.Warn("edge replication quorum not satisfied", "edge_sequence", record.EdgeSequence, "event_id", event.ID, "acks", result.AckCount, "quorum", result.Quorum, "mode", result.Mode, "error", replicationErr)
 			publisher.signal()
-			return replicationErr
+			return receipt, replicationErr
 		}
+		receipt.ReplicationSatisfied = true
 		publisher.logger.Debug("edge replication quorum satisfied", "edge_sequence", record.EdgeSequence, "event_id", event.ID, "acks", result.AckCount, "quorum", result.Quorum, "mode", result.Mode)
 	}
 
 	publisher.signal()
-	return nil
+	return receipt, nil
 }
 
 func (publisher *Publisher) Ready(ctx context.Context) error {

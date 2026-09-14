@@ -15,6 +15,8 @@ import (
 
 	"github.com/fuhrdan/TelemetryForge/internal/api"
 	"github.com/fuhrdan/TelemetryForge/internal/config"
+	"github.com/fuhrdan/TelemetryForge/internal/domain"
+	tfebpf "github.com/fuhrdan/TelemetryForge/internal/ebpf"
 	"github.com/fuhrdan/TelemetryForge/internal/edge"
 	"github.com/fuhrdan/TelemetryForge/internal/logging"
 	"github.com/fuhrdan/TelemetryForge/internal/mesh"
@@ -25,7 +27,7 @@ import (
 	"github.com/fuhrdan/TelemetryForge/internal/wal"
 )
 
-const version = "2.7.0"
+const version = "2.8.0"
 
 func main() {
 	logger := logging.New()
@@ -160,6 +162,58 @@ func main() {
 	durablePublisher := edge.NewPublisherWithConfig(walStore, meshPublisher, logger, edge.Config{ReplayBatchSize: intEnv("TELEMETRYFORGE_EDGE_REPLAY_BATCH_SIZE", 64)}, replicationManager)
 	defer durablePublisher.Close()
 
+	ebpfEnabled := boolEnv("TELEMETRYFORGE_EBPF_ENABLED", false)
+	ebpfRequired := boolEnv("TELEMETRYFORGE_EBPF_REQUIRED", false)
+	ebpfSignals, err := tfebpf.ParseSignalsStrict(os.Getenv("TELEMETRYFORGE_EBPF_SIGNALS"))
+	if err != nil {
+		logger.Error("eBPF signal configuration invalid", "error", err)
+		os.Exit(1)
+	}
+	ebpfBackend := tfebpf.NewKernelBackend(tfebpf.KernelConfig{
+		TraceFSRoot: strings.TrimSpace(os.Getenv("TELEMETRYFORGE_EBPF_TRACEFS_ROOT")),
+		Signals:     ebpfSignals,
+	})
+	ebpfAgent, err := tfebpf.NewAgent(tfebpf.Config{
+		Enabled:      ebpfEnabled,
+		Required:     ebpfRequired,
+		PollInterval: durationEnv("TELEMETRYFORGE_EBPF_POLL_INTERVAL", 5*time.Second),
+		Topic:        envOrDefault("TELEMETRYFORGE_EBPF_METRIC_TOPIC", cfg.KafkaMetricTopic),
+		Source:       envOrDefault("TELEMETRYFORGE_EBPF_SOURCE", edgeID+"-kernel"),
+		TenantID:     envOrDefault("TELEMETRYFORGE_EBPF_TENANT_ID", cfg.DefaultTenant),
+		EdgeID:       edgeID,
+		Signals:      ebpfSignals,
+	}, kernelMetricPublisher{publisher: durablePublisher})
+	if err != nil {
+		logger.Error("eBPF collector configuration invalid", "error", err)
+		os.Exit(1)
+	}
+	ebpfContext, stopEBPF := context.WithCancel(context.Background())
+	ebpfDone := make(chan struct{})
+	ebpfRunning := false
+	if ebpfEnabled {
+		if startErr := ebpfAgent.Start(); startErr != nil {
+			if ebpfRequired {
+				logger.Error("required eBPF collector failed to attach", "error", startErr)
+				os.Exit(1)
+			}
+			logger.Warn("optional eBPF collector unavailable; edge continues without kernel collection", "error", startErr)
+		} else {
+			ebpfRunning = true
+			go func() {
+				defer close(ebpfDone)
+				if runErr := ebpfAgent.Run(ebpfContext); runErr != nil {
+					logger.Error("eBPF collector stopped", "error", runErr)
+				}
+			}()
+		}
+	}
+	defer func() {
+		stopEBPF()
+		if ebpfRunning {
+			<-ebpfDone
+		}
+	}()
+
 	apiHandler := api.NewServerWithObserver(logger, durablePublisher, api.Topics{Raw: cfg.KafkaRawTopic, Metric: cfg.KafkaMetricTopic}, nil, metrics)
 	apiHandler.SetRedactor(security.NewRedactor(cfg.RedactTags, cfg.RedactPayload))
 
@@ -171,8 +225,13 @@ func main() {
 			edge.Status
 			ReplicaStore    replication.StoreStats `json:"replica_store"`
 			Mesh            mesh.Snapshot          `json:"mesh"`
+			EBPF            tfebpf.Status          `json:"ebpf"`
 			KafkaBufferPool any                    `json:"kafka_buffer_pool"`
-		}{Status: durablePublisher.Stats(), ReplicaStore: replicaStore.Stats(), Mesh: meshManager.Snapshot(request.Context()), KafkaBufferPool: stream.FastPathPoolStats()})
+		}{Status: durablePublisher.Stats(), ReplicaStore: replicaStore.Stats(), Mesh: meshManager.Snapshot(request.Context()), EBPF: ebpfAgent.Status(), KafkaBufferPool: stream.FastPathPoolStats()})
+	})
+	publicMux.HandleFunc("GET /edge/ebpf/status", func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(ebpfAgent.Status())
 	})
 	publicMux.HandleFunc("GET /edge/route", func(writer http.ResponseWriter, request *http.Request) {
 		key := strings.TrimSpace(request.URL.Query().Get("key"))
@@ -253,6 +312,27 @@ func int64Env(name string, fallback int64) int64 {
 		return fallback
 	}
 	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+type kernelMetricPublisher struct {
+	publisher *edge.Publisher
+}
+
+func (adapter kernelMetricPublisher) PublishKernelMetric(ctx context.Context, topic string, event domain.Event) (bool, error) {
+	receipt, err := adapter.publisher.PublishWithReceipt(ctx, topic, event)
+	return receipt.Persisted, err
+}
+
+func durationEnv(name string, fallback time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	value, err := time.ParseDuration(raw)
 	if err != nil || value <= 0 {
 		return fallback
 	}

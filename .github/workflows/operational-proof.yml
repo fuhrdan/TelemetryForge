@@ -25,6 +25,7 @@ on:
           - formal-verification
           - fastpath-performance
           - autonomous-control
+          - ebpf-edge
 
 permissions:
   contents: read
@@ -56,7 +57,7 @@ jobs:
           expected=$(cat formal/tla2tools.sha256)
           echo "${expected}  /tmp/tla2tools.jar" | sha256sum -c -
       - name: Start baseline stack
-        if: inputs.scenario != 'formal-verification' && inputs.scenario != 'fastpath-performance' && inputs.scenario != 'autonomous-control'
+        if: inputs.scenario != 'formal-verification' && inputs.scenario != 'fastpath-performance' && inputs.scenario != 'autonomous-control' && inputs.scenario != 'ebpf-edge'
         run: docker compose up -d --build --wait timescaledb kafka kafka-init gateway edge worker router
       - name: Run selected proof
         shell: bash
@@ -104,6 +105,9 @@ jobs:
               ;;
             autonomous-control)
               proof/autonomous-control.sh --execute
+              ;;
+            ebpf-edge)
+              proof/ebpf-edge.sh --execute
               ;;
           esac
       - name: Verify generated proof artifacts

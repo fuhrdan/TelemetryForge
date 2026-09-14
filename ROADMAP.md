@@ -28,7 +28,8 @@
 | v2.4.0 | Released | Cryptographic lineage, Merkle segment seals, Ed25519 audit verification |
 | v2.5.0 | Released | TLA+ safety models, bounded exhaustive checking, fuzzed protocol schedules |
 | v2.6.0 | Released | Bounded replay batching, pooled buffers, lock-free ring primitives, allocation-aware benchmark proof |
-| **v2.7.0** | **Released** | **Shadow-first autonomous control, reversible runtime actions, Wasm predictor boundary** |
+| v2.7.0 | Released | Shadow-first autonomous control, reversible runtime actions, Wasm predictor boundary |
+| **v2.8.0** | **Released** | **Optional Linux eBPF edge counters with durable WAL/quorum handoff** |
 
 ## v1.2.0 delivered
 
@@ -349,3 +350,17 @@
 - capability-free WebAssembly manifest/module validation and sandbox backend contract
 - executable autonomy check and `.tfproof.json` proof scenario
 - ADR 0058
+
+
+## v2.8.0 delivered
+
+- dependency-free Linux tracepoint eBPF counter programs
+- process-exec, socket-connect, and TCP-retransmit aggregate signals
+- monotonic map polling and counter-delta envelope generation
+- local-WAL persistence receipts for duplicate-safe collector handoff
+- optional/required collector startup modes
+- `/edge/ebpf/status` plus eBPF state in `/edge/status`
+- static/live `telemetryforge-ebpfcheck` tooling
+- explicit Kubernetes BPF/PERFMON + tracefs overlay
+- executable `.tfproof.json` eBPF collector proof
+- ADR 0059

@@ -349,6 +349,23 @@ See [Cryptographic Lineage](../security/cryptographic-lineage.md) for key handli
 See [Global Routing Mesh](../mesh/global-routing-mesh.md) for routing semantics and failover behavior.
 
 
+## eBPF edge collection (v2.8)
+
+The collector is Linux-only and disabled by default. Host tracefs and BPF/perf syscall permissions are required for live attachment.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TELEMETRYFORGE_EBPF_ENABLED` | `false` | Enable optional kernel counter collection |
+| `TELEMETRYFORGE_EBPF_REQUIRED` | `false` | Fail edge startup when enabled probes cannot attach |
+| `TELEMETRYFORGE_EBPF_POLL_INTERVAL` | `5s` | User-space BPF map polling cadence; minimum 250ms |
+| `TELEMETRYFORGE_EBPF_SIGNALS` | `process_exec,socket_connect,tcp_retransmit` | Supported bounded signal set |
+| `TELEMETRYFORGE_EBPF_TRACEFS_ROOT` | auto-detect | Override `/sys/kernel/tracing` or debug tracefs root |
+| `TELEMETRYFORGE_EBPF_METRIC_TOPIC` | metric topic | Destination topic for durable kernel metrics |
+| `TELEMETRYFORGE_EBPF_SOURCE` | `<edge-id>-kernel` | Canonical source field for generated metrics |
+| `TELEMETRYFORGE_EBPF_TENANT_ID` | default tenant | Tenant assigned to host-level kernel metrics |
+
+See [eBPF Edge Collection](../ebpf/edge-collection.md).
+
 ## Autonomous control (v2.7)
 
 The worker binary defaults to autonomy `off`. Use `shadow` before `auto`.

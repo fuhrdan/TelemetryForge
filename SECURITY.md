@@ -284,3 +284,9 @@ Recommendations are advisory. The intelligence package has no production configu
 ## v2.7 autonomous control and WebAssembly boundary
 
 Autonomous control is disabled by default. `auto` mode can only adjust the temporary non-protected shaping multiplier and must fsync an audit record before mutation. It cannot mutate lifecycle artifacts, routing, replication, cryptographic lineage, or protected telemetry. The WebAssembly plugin host is capability-free; module validation is not treated as an execution sandbox, and a future/configured execution backend must independently enforce memory/instruction isolation.
+
+## eBPF collector privilege boundary (v2.8)
+
+The eBPF collector is disabled by default. Enabling it grants the edge process additional kernel-observation capability and may require `CAP_BPF`, `CAP_PERFMON`, tracefs access, and a seccomp policy that permits BPF/perf syscalls. Use the checked-in privileged overlay only on approved Linux nodes.
+
+v2.8 BPF programs collect aggregate counters only. They do not copy packet payloads, DNS names, process arguments, command lines, environments, or secrets from kernel memory. Reports that demonstrate unintended kernel-data exposure, capability escape, verifier bypass, or cross-tenant disclosure are security issues.
