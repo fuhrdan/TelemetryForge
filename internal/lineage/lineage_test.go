@@ -3,6 +3,7 @@ package lineage
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -62,7 +63,9 @@ func TestGenerateKeyPairRefusesOverwrite(t *testing.T) {
 	if _, err := GenerateKeyPair(privatePath, publicPath, false); err == nil {
 		t.Fatal("expected overwrite refusal")
 	}
-	if info, err := os.Stat(privatePath); err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("unexpected private key permissions: %v %v", info, err)
+	if runtime.GOOS != "windows" {
+		if info, err := os.Stat(privatePath); err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("unexpected private key permissions: %v %v", info, err)
+		}
 	}
 }

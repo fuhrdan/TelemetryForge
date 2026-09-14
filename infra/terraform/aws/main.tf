@@ -30,9 +30,9 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name                                      = "${var.name}-public-${each.key}"
-    "kubernetes.io/role/elb"                  = "1"
-    "kubernetes.io/cluster/${var.name}"       = "shared"
+    Name                                = "${var.name}-public-${each.key}"
+    "kubernetes.io/role/elb"            = "1"
+    "kubernetes.io/cluster/${var.name}" = "shared"
   }
 }
 
@@ -46,9 +46,9 @@ resource "aws_subnet" "private" {
   cidr_block        = cidrsubnet(var.vpc_cidr, 4, each.value + 8)
 
   tags = {
-    Name                                      = "${var.name}-private-${each.key}"
-    "kubernetes.io/role/internal-elb"         = "1"
-    "kubernetes.io/cluster/${var.name}"       = "shared"
+    Name                                = "${var.name}-private-${each.key}"
+    "kubernetes.io/role/internal-elb"   = "1"
+    "kubernetes.io/cluster/${var.name}" = "shared"
   }
 }
 
@@ -107,9 +107,9 @@ resource "aws_iam_role" "cluster" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "eks.amazonaws.com" }
-      Action = "sts:AssumeRole"
+      Action    = "sts:AssumeRole"
     }]
   })
 }
@@ -143,9 +143,9 @@ resource "aws_iam_role" "nodes" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "ec2.amazonaws.com" }
-      Action = "sts:AssumeRole"
+      Action    = "sts:AssumeRole"
     }]
   })
 }

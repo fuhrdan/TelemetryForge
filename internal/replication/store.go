@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -517,6 +518,12 @@ func writeFull(writer io.Writer, payload []byte) error {
 }
 
 func syncDirectory(directory string) error {
+	// Go cannot fsync directory handles through os.File on Windows. Replica
+	// files themselves are fsynced before rename, so treat the directory flush
+	// as a POSIX-only durability reinforcement rather than failing all writes.
+	if runtime.GOOS == "windows" {
+		return nil
+	}
 	file, err := os.Open(directory)
 	if err != nil {
 		return err

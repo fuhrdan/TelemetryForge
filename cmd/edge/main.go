@@ -187,7 +187,7 @@ func main() {
 		TenantID:     envOrDefault("TELEMETRYFORGE_EBPF_TENANT_ID", cfg.DefaultTenant),
 		EdgeID:       edgeID,
 		Signals:      ebpfSignals,
-	}, kernelMetricPublisher{publisher: durablePublisher})
+	}, ebpfBackend, kernelMetricPublisher{publisher: durablePublisher})
 	if err != nil {
 		logger.Error("eBPF collector configuration invalid", "error", err)
 		os.Exit(1)

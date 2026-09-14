@@ -27,6 +27,7 @@ func TestChangeIntelligenceBeforeAfterAndRollback(t *testing.T) {
 	defer store.Close()
 
 	now := time.Now().UTC().Truncate(time.Second)
+	unique := fmt.Sprintf("%d", time.Now().UTC().UnixNano())
 	tenant := "change-intel-" + unique
 	tenantCtx := security.WithTenant(ctx, tenant)
 	source := "checkout-" + unique
