@@ -127,6 +127,7 @@ func TestFlightRecorderFreezeDeduplicatesRetries(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+	ctx = security.WithTenant(ctx, fmt.Sprintf("integration-flight-retry-%d", time.Now().UnixNano()))
 
 	store, err := storage.NewPostgresStore(ctx, databaseURL)
 	if err != nil {

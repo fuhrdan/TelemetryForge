@@ -30,6 +30,10 @@ resource "azurerm_kubernetes_cluster" "this" {
     vnet_subnet_id = azurerm_subnet.aks.id
   }
 
+  node_provisioning_profile {
+    mode = "Manual"
+  }
+
   identity {
     type = "SystemAssigned"
   }
