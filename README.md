@@ -16,6 +16,53 @@ not try to replace Grafana, Datadog, Splunk, Honeycomb, or another visualization
 backend. It controls telemetry **before** downstream cost, cardinality, policy,
 and evidence decisions become irreversible.
 
+## Architecture at a Glance
+
+```mermaid
+flowchart LR
+    SRC[Applications / Hosts / Edge] --> EDGE[Durable Edge]
+    EDGE -->|fsync + durability quorum| WAL[Replicated WAL]
+    WAL --> MESH[Global Routing Mesh]
+    MESH --> KAFKA[Kafka]
+
+    KAFKA --> PROC[Bounded Processing Pipeline]
+    PROC --> FR[Flight Recorder]
+    PROC --> SCHEMA[Schema Intelligence]
+    PROC --> CARD[Cardinality Firewall]
+    PROC --> STORE[(TimescaleDB)]
+    PROC --> ROUTE[Connector / Routing Platform]
+
+    STORE --> API[Query / Dashboard / Investigation]
+    ROUTE --> OBS[Observability Backends]
+
+    WAL --> LINEAGE[Cryptographic Lineage]
+    FR --> EVIDENCE[Replayable Incident Evidence]
+```
+
+TelemetryForge separates **durable acceptance**, **processing**, **downstream delivery**, and **audit evidence** so a downstream failure does not have to become telemetry loss.
+
+The durability boundary remains explicit: accepted work is persisted before downstream processing, configured replication requirements fail closed, and ambiguous downstream delivery remains replayable rather than being silently treated as success.
+
+## Engineering Evidence
+
+| Area                       | Evidence                                                                                                                                                                                                             |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Architecture**           | [System architecture](docs/architecture/overview.md) · [Event flow](docs/architecture/event-flow.md) · [Backpressure](docs/architecture/backpressure.md) · [Failure handling](docs/architecture/failure-handling.md) |
+| **Design decisions**       | [Architecture Decision Records](docs/adr/) covering Kafka, partitioning, bounded concurrency, offset commits, storage, idempotency, retries/DLQ, incident capture, and more                                          |
+| **Performance**            | [High-Performance Fast Path](docs/performance/fast-path-v2.6.md) with reproducible `ns/op`, `B/op`, and `allocs/op` evidence                                                                                         |
+| **Operational proof**      | [Proof framework](docs/performance/operational-proof.md) for scale, failure, recovery, backup/restore, rollout, and durability claims                                                                                |
+| **Formal verification**    | [TLA+ / bounded safety verification](docs/formal/formal-verification.md) for core durable-edge protocol invariants                                                                                                   |
+| **Multi-cloud resilience** | [Multi-Cloud Proof](docs/multicloud/proof.md) across modeled cloud loss, regional partition, capacity exhaustion, and ambiguous delivery                                                                             |
+
+## Engineering Principles
+
+* **Durability before throughput claims** — performance work does not bypass WAL or configured replication guarantees.
+* **Fail closed when guarantees cannot be met** — loss of required durability quorum removes readiness instead of silently weakening the contract.
+* **Bounded concurrency and backpressure** — capacity is explicit rather than hidden behind unbounded queues.
+* **Evidence over inference** — incident investigations retain supporting and contradictory evidence and allow `insufficient_evidence` as a valid result.
+* **Safe policy evolution** — shadow evaluation observes real traffic without mutating the active event path.
+* **Measured, reproducible claims** — benchmark and operational results preserve environment and raw evidence rather than publishing invented universal throughput numbers.
+
 ## Signature capabilities
 
 ### Global Edge Fabric
