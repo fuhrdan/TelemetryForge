@@ -133,7 +133,7 @@ jobs:
           done
           test "$found" -eq 1
       - name: Upload proof evidence
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: telemetryforge-proof-${{ inputs.scenario }}-${{ github.run_id }}
           path: |
