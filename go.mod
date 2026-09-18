@@ -3,7 +3,7 @@ module github.com/fuhrdan/TelemetryForge
 go 1.27.1
 
 require (
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.2
 	github.com/twmb/franz-go v1.21.6
