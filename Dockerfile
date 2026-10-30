@@ -13,7 +13,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemet
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge-ebpfcheck ./cmd/ebpfcheck
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/telemetryforge-multicloudcheck ./cmd/multicloudcheck
 
-FROM alpine:3.24.1
+FROM alpine:3.24.3
 RUN addgroup -S telemetryforge && adduser -S -G telemetryforge telemetryforge
 COPY --from=build /out/telemetryforge-gateway /usr/local/bin/telemetryforge-gateway
 COPY --from=build /out/telemetryforge-edge /usr/local/bin/telemetryforge-edge
